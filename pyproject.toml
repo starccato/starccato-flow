@@ -1,0 +1,15 @@
+[project]
+name = "starccato_flow"
+version = "0.0.1"
+authors = [
+  { name="Tarin", email="tarin.eccleston@gmail.com" },
+]
+description = "Flow for Starccato"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
