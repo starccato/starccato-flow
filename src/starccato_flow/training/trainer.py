@@ -13,6 +13,7 @@ from ..utils.defaults import X_LENGTH, HIDDEN_DIM, Z_DIM, LR, BATCH_SIZE, DEVICE
 from ..nn import flow, vae
 
 from ..data.toy_data import ToyData
+from ..data.ccsn_data import CCSNData
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -76,7 +77,6 @@ class Trainer:
         )
         self.criterion = nn.BCELoss()
 
-        # cache a latent-vector for visualisation/testing
         self.fixed_noise = torch.randn(batch_size, nz, 1, device=DEVICE)
 
         # Lists to keep track of progress

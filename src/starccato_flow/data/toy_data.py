@@ -2,7 +2,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-'''This class generates synthetic time series data for testing purposes.'''
+"""
+This class generates synthetic time series data for testing purposes.
+"""
 
 class ToyData:
     def __init__(self, num_signals, signal_length, noise_level=0.1):
