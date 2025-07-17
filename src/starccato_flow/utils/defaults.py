@@ -13,7 +13,6 @@ from tqdm import tqdm
 X_LENGTH = 256
 HIDDEN_DIM = 512
 Z_DIM = 8
-LR = 1e-3 # should this be a default value?
 
 BATCH_SIZE = 32
 

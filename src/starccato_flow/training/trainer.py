@@ -9,8 +9,9 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm, trange
 
-from ..utils.defaults import X_LENGTH, HIDDEN_DIM, Z_DIM, LR, BATCH_SIZE, DEVICE
-from ..nn import flow, vae
+from ..utils.defaults import X_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..nn.vae import VAE
+from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
 from ..data.ccsn_data import CCSNData
@@ -25,41 +26,46 @@ def _set_seed(seed: int):
 class Trainer:
     def __init__(
         self,
-        nz: int = NZ,
-        nc: int = NC,
-        ngf: int = NGF,
-        ndf: int = NDF,
+        x_length: int = X_LENGTH,
+        hidden_dim: int = HIDDEN_DIM,
+        z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs=128,
-        lr_g=0.00002,
-        lr_d=0.00002,
-        beta1=0.5,
+        lr_vae=1e-3,
         checkpoint_interval=16,
         outdir: str = "outdir",
+        toy: bool = True
     ):
-        self.nz = nz
-        self.nc = nc
-        self.ngf = ngf
-        self.ndf = ndf
+        self.x_length = x_length
+        self.hidden_dim = hidden_dim
+        self.z_dim = z_dim
         self.seed = seed
         self.batch_size = batch_size
         self.num_epochs = num_epochs
-        self.lr_g = lr_g
-        self.lr_d = lr_d
-        self.beta1 = beta1
+        self.lr_vae = lr_vae
+        self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
-        self.dataset = TrainingData(batch_size=batch_size)
+        self.toy = toy
+
+        if self.toy:
+            self.training_dataset = ToyData(batch_size=batch_size)
+            self.validation_dataset = ToyData(batch_size=batch_size)
+        else:
+            # placeholder
+            self.training_dataset = CCSNData(batch_size=batch_size)
+            self.validation_dataset = CCSNData(batch_size=batch_size)
+
         self.checkpoint_interval = checkpoint_interval
 
         os.makedirs(outdir, exist_ok=True)
         _set_seed(self.seed)
 
         # setup networks
-        self.netG = Generator(nz=nz, ngf=ngf, nc=nc).to(DEVICE)
-        self.netG.apply(_init_weights)
-        self.netD = Discriminator(nz=nz, ndf=ndf, nc=nc).to(DEVICE)
-        self.netD.apply(_init_weights)
+        self.vae = VAE(nz=nz, ngf=ngf, nc=nc).to(DEVICE)
+        self.vae.apply(_init_weights)
+        self.flow = FLOW().to(DEVICE)
+        self.flow.apply(_init_weights)
 
         # setup optimisers
         self.optimizerG = optim.Adam(
@@ -270,14 +276,31 @@ class TrainMetadata:
         plt.savefig(fname)
 
 
-def _init_weights(m: torch.nn.Module) -> None:
+def _init_weights_vae(m: torch.nn.Module) -> None:
     """This function initialises the weights of the model."""
     if type(m) == torch.nn.Conv1d or type(m) == torch.nn.ConvTranspose1d:
         torch.nn.init.normal_(m.weight, 0.0, 0.02)
     if type(m) == torch.nn.BatchNorm1d:
         torch.nn.init.normal_(m.weight, 1.0, 0.02)
         torch.nn.init.zeros_(m.bias)
+    if type(m) == torch.nn.Linear:
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
 
+
+### TODO: alter this for flows
+def _init_weights_flow(m: torch.nn.Module) -> None:
+    """This function initialises the weights of the model."""
+    if type(m) == torch.nn.Conv1d or type(m) == torch.nn.ConvTranspose1d:
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+    if type(m) == torch.nn.BatchNorm1d:
+        torch.nn.init.normal_(m.weight, 1.0, 0.02)
+        torch.nn.init.zeros_(m.bias)
+    if type(m) == torch.nn.Linear:
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
 
 def train(**kwargs):
     trainer = Trainer(**kwargs)
