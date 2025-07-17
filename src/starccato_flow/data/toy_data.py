@@ -5,17 +5,13 @@ from torch.utils.data import DataLoader
 '''This class generates synthetic time series data for testing purposes.'''
 
 class ToyData:
-    def __init__(self, indices, num_signals, signal_length, noise_level=0.1):
-        self.indices = indices
+    def __init__(self, num_signals, signal_length, noise_level=0.1):
         self.num_signals = num_signals
         self.signal_length = signal_length
         self.noise_level = noise_level
 
         self.parameters = self.generate_parameters()
         self.signals = self.generate_data()
-
-        self.parameters = self.parameters[self.indices]
-        self.signals = self.signals[self.indices]
 
         self.max_strain = abs(self.signals).max()
 
@@ -37,16 +33,12 @@ class ToyData:
             signals.append(signal)
         return np.array(signals)  # Shape: (num_signals, signal_length)
 
-    ### overloads ###
     def __len__(self):
         return self.num_signals
 
     @property
     def shape(self):
         return self.signals.shape
-
-    def get_indices(self):
-        return self.indices
 
     def normalise_signals(self, signal):
         normalised_signal = signal / self.max_strain
