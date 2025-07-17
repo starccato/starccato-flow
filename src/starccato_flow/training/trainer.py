@@ -33,6 +33,7 @@ class Trainer:
         batch_size: int = BATCH_SIZE,
         num_epochs=128,
         lr_vae=1e-3,
+        lr_flow=1e-3,
         checkpoint_interval=16,
         outdir: str = "outdir",
         toy: bool = True
@@ -62,31 +63,35 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup networks
-        self.vae = VAE(nz=nz, ngf=ngf, nc=nc).to(DEVICE)
-        self.vae.apply(_init_weights)
+        self.vae = VAE(latent_dim=self.z_dim, hidden_dim=self.hidden_dim, input_dim=self.x_length).to(DEVICE)
+        self.vae.apply(_init_weights_vae)
         self.flow = FLOW().to(DEVICE)
-        self.flow.apply(_init_weights)
+        self.flow.apply(_init_weights_flow)
 
         # setup optimisers
-        self.optimizerG = optim.Adam(
-            self.netG.parameters(), lr=self.lr_g, betas=(self.beta1, 0.999)
+        self.optimizerVAE = optim.Adam(
+            self.vae.parameters(), lr=self.lr_vae
         )
-        self.optimizerD = optim.Adam(
-            self.netD.parameters(), lr=self.lr_d, betas=(self.beta1, 0.999)
+        self.optimizerFlow = optim.Adam(
+            self.flow.parameters(), lr=self.lr_flow
         )
-        sched_kwargs = dict(start_factor=1.0, end_factor=0.5, total_iters=32)
-        self.schedulerG = lr_scheduler.LinearLR(
-            self.optimizerG, **sched_kwargs
-        )
-        self.schedulerD = lr_scheduler.LinearLR(
-            self.optimizerD, **sched_kwargs
-        )
-        self.criterion = nn.BCELoss()
 
-        self.fixed_noise = torch.randn(batch_size, nz, 1, device=DEVICE)
+        self.fixed_noise = torch.randn(batch_size, z_dim, 1, device=DEVICE)
 
-        # Lists to keep track of progress
-        self.train_metadata: TrainMetadata = TrainMetadata()
+        self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
+
+    def loss_function(x, x_hat, mean, log_var):
+        # sse loss
+        reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum')
+        reproduction_loss *= 1 * x.shape[1]
+        
+        # KL Divergence loss
+        kld_loss = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
+
+        # total loss
+        total_loss = reproduction_loss + kld_loss
+
+        return total_loss, reproduction_loss, kld_loss
 
     @property
     def plt_kwgs(self):

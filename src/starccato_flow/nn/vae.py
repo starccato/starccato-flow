@@ -4,11 +4,10 @@ from torch import nn
 ''' Fully connected (Vanilla) VAE (Variational Autoencoder) implementation in PyTorch.'''
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim, hidden_dim, input_dim, input_channels, DEVICE):
+    def __init__(self, latent_dim, hidden_dim, input_dim):
         super(VAE, self).__init__()
         self.encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
         self.decoder = Decoder(latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
-        self.DEVICE = DEVICE
         
     def reparameterization(self, mean, var):
         epsilon = torch.randn_like(var).to(self.DEVICE)  # sampling epsilon        
