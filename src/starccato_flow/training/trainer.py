@@ -76,13 +76,13 @@ class Trainer:
         self.optimizerVAE = optim.Adam(
             self.vae.parameters(), lr=self.lr_vae
         )
-        self.optimizerFlow = optim.Adam(
-            self.flow.parameters(), lr=self.lr_flow
-        )
+        # self.optimizerFlow = optim.Adam(
+        #     self.flow.parameters(), lr=self.lr_flow
+        # )
 
         self.fixed_noise = torch.randn(batch_size, z_dim, 1, device=DEVICE)
 
-        self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
+        # self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
 
     def loss_function(x, x_hat, mean, log_var):
         # sse loss
@@ -139,7 +139,7 @@ class Trainer:
                 params = params.view(params.size(0), -1).to(DEVICE)
 
                 self.optimizerVAE.zero_grad()
-                recon, mean, log_var = self.vae(signal, params)
+                recon, mean, log_var = self.vae(signal)
                 loss, rec_loss, kld = Trainer.loss_function(signal, recon, mean, log_var)
                 loss.backward()
                 self.optimizerVAE.step()
@@ -167,7 +167,7 @@ class Trainer:
                 for val_signal, val_params in val_loader:
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-                    recon, mean, log_var = self.vae(val_signal, val_params)
+                    recon, mean, log_var = self.vae(val_signal)
                     v_loss, v_rec_loss, v_kld = Trainer.loss_function(val_signal, recon, mean, log_var)
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
@@ -195,8 +195,8 @@ class Trainer:
         return f"{self.outdir}/generator_weights.pt"
 
     def save_models(self):
-        save_model(self.netG, self.save_fname)
-        # logger.info(f"Saved model to {self.save_fname}")
+        torch.save(self.vae.state_dict(), self.save_fname)
+        print(f"Saved VAE model to {self.save_fname}")
 
 
 # class TrainMetadata:

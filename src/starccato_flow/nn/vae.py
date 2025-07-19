@@ -10,7 +10,7 @@ class VAE(nn.Module):
         self.decoder = Decoder(z_dim=z_dim, hidden_dim=hidden_dim, output_dim=y_length)
         
     def reparameterization(self, mean, var):
-        epsilon = torch.randn_like(var).to(self.DEVICE)  # sampling epsilon        
+        epsilon = torch.randn_like(var)  # sampling epsilon        
         z = mean + var * epsilon  # reparameterization trick
         return z
     
