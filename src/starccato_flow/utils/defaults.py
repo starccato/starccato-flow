@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 # model parameters
 
-X_LENGTH = 256
+Y_LENGTH = 256
 HIDDEN_DIM = 512
 Z_DIM = 8
 

@@ -407,7 +407,7 @@ def animate_latent_morphs(
     plt.show()
 
 def plot_signal_distribution(
-    signals: np.ndarray, # (x_length, num_signals)
+    signals: np.ndarray, # (y_length, num_signals)
     generated: bool = True,
     fname: str = None,
 ):

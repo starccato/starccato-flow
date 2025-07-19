@@ -4,10 +4,10 @@ from torch import nn
 ''' Fully connected (Vanilla) VAE (Variational Autoencoder) implementation in PyTorch.'''
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim, hidden_dim, input_dim):
+    def __init__(self, z_dim, hidden_dim, y_length):
         super(VAE, self).__init__()
-        self.encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
-        self.decoder = Decoder(latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
+        self.encoder = Encoder(y_length=y_length, hidden_dim=hidden_dim, z_dim=z_dim)
+        self.decoder = Decoder(z_dim=z_dim, hidden_dim=hidden_dim, output_dim=y_length)
         
     def reparameterization(self, mean, var):
         epsilon = torch.randn_like(var).to(self.DEVICE)  # sampling epsilon        
@@ -21,9 +21,9 @@ class VAE(nn.Module):
         return x_hat, mean, log_var
 
 class Decoder(nn.Module):
-    def __init__(self, latent_dim, hidden_dim, output_dim):
+    def __init__(self, z_dim, hidden_dim, output_dim):
         super(Decoder, self).__init__()
-        self.FC_hidden = nn.Linear(latent_dim, hidden_dim)
+        self.FC_hidden = nn.Linear(z_dim, hidden_dim)
         self.FC_hidden2 = nn.Linear(hidden_dim, hidden_dim)
         self.FC_output = nn.Linear(hidden_dim, output_dim)
         self.LeakyReLU = nn.LeakyReLU(0.2)
@@ -35,12 +35,12 @@ class Decoder(nn.Module):
         return x_hat
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dim):
+    def __init__(self, y_length, hidden_dim, z_dim):
         super(Encoder, self).__init__()
-        self.FC_input = nn.Linear(input_dim, hidden_dim)
+        self.FC_input = nn.Linear(y_length, hidden_dim)
         self.FC_input2 = nn.Linear(hidden_dim, hidden_dim)
-        self.FC_mean = nn.Linear(hidden_dim, latent_dim)
-        self.FC_var = nn.Linear(hidden_dim, latent_dim)
+        self.FC_mean = nn.Linear(hidden_dim, z_dim)
+        self.FC_var = nn.Linear(hidden_dim, z_dim)
         self.LeakyReLU = nn.LeakyReLU(0.2)
         
     def forward(self, x):
