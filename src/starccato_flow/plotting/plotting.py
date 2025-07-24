@@ -122,10 +122,10 @@ def plot_loss(
     
     plt.tight_layout()
 
-    if fname:
-        plt.savefig(fname)
+    # if fname:
+    #     plt.savefig(fname)
     
-    return axes.get_figure()
+    # return axes.get_figure()
 
 def plot_individual_loss(
     total_losses: List[float],
@@ -145,10 +145,10 @@ def plot_individual_loss(
     
     plt.tight_layout()
 
-    if fname:
-        plt.savefig(fname)
+    # if fname:
+    #     plt.savefig(fname)
     
-    return axes.get_figure()
+    # return axes.get_figure()
 
 def plot_training_validation_loss(
     losses: List[float],
@@ -171,7 +171,7 @@ def plot_training_validation_loss(
     if fname:
         plt.savefig(fname)
     
-    return axes.get_figure()
+    # return axes.get_figure()
 
 def plot_latent_morphs(
     model: VAE, 

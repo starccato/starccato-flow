@@ -8,8 +8,16 @@ signals: y
 parameters: x (frequencies and phases)
 """
 
+def _set_seed(seed: int):
+    """Set the random seed for reproducibility."""
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    return seed
+
 class ToyData:
     def __init__(self, num_signals, signal_length, noise_level=0.1):
+        _set_seed(42)
         self.num_signals = num_signals
         self.signal_length = signal_length
         self.noise_level = noise_level

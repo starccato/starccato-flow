@@ -72,4 +72,9 @@ DEVICE = get_device()
 #         logger.info("Removing cached weights file.")
 #         os.remove(GENERATOR_WEIGHTS_FN)
 
+# _ROOT_URL = "https://raw.githubusercontent.com/starccato/data/main/training"
+SIGNALS_CSV = f"../data/training/richers_1764.csv"
+PARAMETERS_CSV = f"../data/training/richers_1764_parameters.csv"
+TIME_CSV = f"../data/training/richers_1764_times.csv"
+
 

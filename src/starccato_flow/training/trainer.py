@@ -9,7 +9,7 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm, trange
 
-from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d
+from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d, plot_loss, plot_individual_loss
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -121,12 +121,12 @@ class Trainer:
         train_loader = self.training_dataset.get_loader(self.batch_size)
         val_loader = self.validation_dataset.get_loader(self.batch_size)
 
-        avg_total_losses = []
-        avg_reproduction_losses = []
-        avg_kld_losses = []
-        avg_total_losses_val = []
-        avg_reproduction_losses_val = []
-        avg_kld_losses_val = []
+        self.avg_total_losses = []
+        self.avg_reproduction_losses = []
+        self.avg_kld_losses = []
+        self.avg_total_losses_val = []
+        self.avg_reproduction_losses_val = []
+        self.avg_kld_losses_val = []
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
             self.vae.train()
@@ -154,9 +154,9 @@ class Trainer:
             avg_reproduction_loss = reproduction_loss / total_samples
             avg_kld_loss = kld_loss / total_samples
 
-            avg_total_losses.append(avg_total_loss)
-            avg_reproduction_losses.append(avg_reproduction_loss)
-            avg_kld_losses.append(avg_kld_loss)
+            self.avg_total_losses.append(avg_total_loss)
+            self.avg_reproduction_losses.append(avg_reproduction_loss)
+            self.avg_kld_losses.append(avg_kld_loss)
 
             # Validation
             self.vae.eval()
@@ -178,9 +178,9 @@ class Trainer:
             avg_reproduction_loss_val = val_reproduction_loss / val_samples
             avg_kld_loss_val = val_kld_loss / val_samples
 
-            avg_total_losses_val.append(avg_total_loss_val)
-            avg_reproduction_losses_val.append(avg_reproduction_loss_val)
-            avg_kld_losses_val.append(avg_kld_loss_val)
+            self.avg_total_losses_val.append(avg_total_loss_val)
+            self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
+            self.avg_kld_losses_val.append(avg_kld_loss_val)
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
@@ -201,6 +201,20 @@ class Trainer:
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
         self.save_models()
+
+    def display_results(self):
+        # Plot training and validation losses
+        fig, axes = plt.subplots(3, 1, figsize=(10, 12))
+        plot_individual_loss(
+            self.avg_total_losses, self.avg_reproduction_losses, self.avg_kld_losses
+        )
+        plot_individual_loss(
+            self.avg_total_losses_val, self.avg_reproduction_losses_val, self.avg_kld_losses_val
+        )
+        plot_loss(self.avg_total_losses, self.avg_total_losses_val)
+        plt.tight_layout()
+        plt.show()
+        
 
     @property
     def save_fname(self):
