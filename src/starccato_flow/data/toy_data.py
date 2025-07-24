@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader
 
 """
 This class generates synthetic time series data for testing purposes.
+signals: y
+parameters: x (frequencies and phases)
 """
 
 class ToyData:
@@ -31,7 +33,7 @@ class ToyData:
         for i in range(self.num_signals):
             frequency = self.parameters[i, 0]
             phase = self.parameters[i, 1]
-            signal = np.sin(2 * np.pi * frequency * t + phase) + np.random.normal(0, self.noise_level, self.signal_length)
+            signal = 400 * np.sin(2 * np.pi * frequency * t + phase) + np.random.normal(0, self.noise_level, self.signal_length)
             signals.append(signal)
         return np.array(signals)  # Shape: (num_signals, signal_length)
 
