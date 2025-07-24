@@ -4,10 +4,21 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
 
+from sklearn.decomposition import PCA
+import seaborn as sns
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+import torch
+
 import numpy as np
 import pandas as pd
 
 import torch
+
+from ..nn.vae import VAE
+
+from ..utils.defaults import DEVICE
 
 plt.rcParams.update({
     'font.size': 12,
@@ -34,7 +45,7 @@ def plot_waveform_grid(
         x = [value - (53 / 4096) for value in x]
         y = signals[i].flatten()
         y = y * max_value
-        ax.set_ylim(-600, 300)
+        # ax.set_ylim(-600, 300)
         ax.plot(x, y, color="red")
 
         ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
@@ -517,3 +528,53 @@ def plot_gradients(
 
     plt.show()
     return fig, axes
+
+def plot_latent_space_3d(model, dataloader):
+    model.eval()
+    latent_vectors = []
+    labels = []
+
+    with torch.no_grad():
+        for y, x in dataloader:
+            y = y.to(DEVICE)
+            x = x.to(DEVICE)
+            x = x.view(x.size(0), -1)
+            y = y.view(y.size(0), -1)
+
+            mean, _ = model.encoder(y)
+            latent_vectors.append(mean.cpu().numpy())
+            labels.append(x.argmax(dim=1).cpu().numpy())
+
+    latent_vectors = np.concatenate(latent_vectors, axis=0)
+    labels = np.concatenate(labels, axis=0)
+
+    # Reduce to 3 dimensions for 3D plotting
+    pca = PCA(n_components=3)
+    latent_3d = pca.fit_transform(latent_vectors)
+
+    # Plot in 3D
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Use a colorblind-friendly palette
+    unique_labels = np.unique(labels)
+    palette = sns.color_palette("colorblind", len(unique_labels))
+    colors = [palette[label] for label in labels]
+
+    scatter = ax.scatter(latent_3d[:, 0], latent_3d[:, 1], latent_3d[:, 2],
+                         c=colors, s=40, alpha=0.7)
+
+    ax.set_title('Latent Space Representation (3D)', fontsize=20)
+    ax.set_xlabel('Latent Dimension 1')
+    ax.set_ylabel('Latent Dimension 2')
+    ax.set_zlabel('Latent Dimension 3')
+    ax.grid(True)
+
+    # Create legend manually
+    from matplotlib.lines import Line2D
+    legend_elements = [Line2D([0], [0], marker='o', color='w', label=str(lbl),
+                              markerfacecolor=palette[i], markersize=10)
+                       for i, lbl in enumerate(unique_labels)]
+    ax.legend(handles=legend_elements, title='Class')
+
+    plt.show()

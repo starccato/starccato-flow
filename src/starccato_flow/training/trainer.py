@@ -9,7 +9,7 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm, trange
 
-# from ..plotting.plotting import plot_waveform_grid
+from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -80,7 +80,8 @@ class Trainer:
         #     self.flow.parameters(), lr=self.lr_flow
         # )
 
-        self.fixed_noise = torch.randn(batch_size, z_dim, 1, device=DEVICE)
+        # self.fixed_noise = torch.randn(batch_size, z_dim, 1, device=DEVICE)
+        self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
 
         # self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
 
@@ -184,6 +185,17 @@ class Trainer:
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
+            if (epoch + 1) % self.checkpoint_interval == 0:
+                # gridded plots
+                with torch.no_grad():
+                    generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+                
+                plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain)
+                plot_latent_space_3d(
+                    model=self.vae,
+                    dataloader=train_loader
+                )
+                
 
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
