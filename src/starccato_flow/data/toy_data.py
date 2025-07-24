@@ -29,8 +29,8 @@ class ToyData:
 
     def generate_parameters(self):
         # Generate synthetic parameters for each signal
-        frequencies = np.random.uniform(0.5, 2.0, size=self.num_signals)
-        phases = np.random.uniform(0, 2 * np.pi, size=self.num_signals)
+        frequencies = np.random.normal(loc=1.0, scale=0.2, size=self.num_signals)  # mean=1.0, std=0.2
+        phases = np.random.normal(loc=np.pi, scale=1.0, size=self.num_signals)      # mean=pi, std=1.0
         # Shape: (num_signals, 2)
         parameters = np.stack([frequencies, phases], axis=1)
         return parameters
