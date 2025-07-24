@@ -97,7 +97,7 @@ class CCSNData(Dataset):
         self.mean = self.signals.mean()
         self.std = np.std(self.signals, axis=None)
         self.scaling_factor = 5
-        self.max_value = abs(self.signals).max()
+        self.max_strain = abs(self.signals).max()
         self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
 
     def __str__(self):
@@ -114,7 +114,7 @@ class CCSNData(Dataset):
         """Display summary stats about the data"""
         str = f"Signal Dataset mean: {self.mean:.3f} +/- {self.std:.3f}\n"
         str += f"Signal Dataset scaling factor (to match noise in generator): {self.scaling_factor}\n"
-        str += f"Signal Dataset max value: {self.max_value}\n"
+        str += f"Signal Dataset max value: {self.max_strain}\n"
         # str += f"Signal Dataset max parameter value: {self.max_parameter_value}\n"
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"
@@ -125,7 +125,7 @@ class CCSNData(Dataset):
         return standardized_signal
 
     def normalise_signals(self, signal):
-        normalised_signal = signal / self.max_value
+        normalised_signal = signal / self.max_strain
         return normalised_signal
     
     def normalise_parameters(self, parameters):
@@ -155,9 +155,9 @@ class CCSNData(Dataset):
 
         return torch.tensor(normalised_signal, dtype=torch.float32), torch.tensor(parameters, dtype=torch.float32)
 
-    def get_loader(self) -> DataLoader:
+    def get_loader(self, batch_size=32) -> DataLoader:
         return DataLoader(
-            self, batch_size=self.batch_size, shuffle=True, num_workers=0
+            self, batch_size=batch_size, shuffle=True, num_workers=0
         )
 
     def get_signals_iterator(self):

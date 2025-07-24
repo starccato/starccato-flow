@@ -58,8 +58,8 @@ class Trainer:
             self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # placeholder
-            self.training_dataset = CCSNData(batch_size=batch_size)
-            self.validation_dataset = CCSNData(batch_size=batch_size)
+            self.training_dataset = CCSNData()
+            self.validation_dataset = CCSNData()
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
@@ -80,7 +80,6 @@ class Trainer:
         #     self.flow.parameters(), lr=self.lr_flow
         # )
 
-        # self.fixed_noise = torch.randn(batch_size, z_dim, 1, device=DEVICE)
         self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
 
         # self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
