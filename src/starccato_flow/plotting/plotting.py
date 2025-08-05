@@ -41,12 +41,12 @@ def plot_waveform_grid(
 
     # plot each signal on a separate subplot
     for i, ax in enumerate(axes):
-        x = [i / 4096 for i in range(0, 256)]
-        x = [value - (53 / 4096) for value in x]
+        d = [i / 4096 for i in range(0, 256)]
+        d = [value - (53 / 4096) for value in d]
         y = signals[i].flatten()
         y = y * max_value
         ax.set_ylim(-600, 300)
-        ax.plot(x, y, color="red")
+        ax.plot(d, y, color="red")
 
         ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
         ax.grid(True)
@@ -80,16 +80,16 @@ def plot_reconstruction(
 ) -> Tuple[plt.Figure, plt.Axes]:
     fig, ax = plt.subplots(figsize=(15, 4))
 
-    x = [i / 4096 for i in range(0, 256)]
-    x = [value - (53 / 4096) for value in x]
+    d = [i / 4096 for i in range(0, 256)]
+    d = [value - (53 / 4096) for value in d]
 
     # plot the original signal
     y_original = original.flatten() * max_value
-    ax.plot(x, y_original, color="blue", label="Original Signal")
+    ax.plot(d, y_original, color="blue", label="Original Signal")
     
     # plot the reconstructed signal
     y_reconstructed = reconstructed.flatten() * max_value
-    ax.plot(x, y_reconstructed, color="orange", label="Decoder Reconstructed Signal")
+    ax.plot(d, y_reconstructed, color="orange", label="Decoder Reconstructed Signal")
 
     ax.set_ylim(-600, 300)
     ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
@@ -194,12 +194,12 @@ def plot_latent_morphs(
     axes = axes.flatten()
 
     # X-axis values (shared across all plots)
-    x_vals = [i / 4096 for i in range(0, 256)]
-    x_vals = [value - (53 / 4096) for value in x_vals]
+    d_vals = [i / 4096 for i in range(0, 256)]
+    d_vals = [value - (53 / 4096) for value in d_vals]
 
     # Plot signal_1 (blue)
     y1 = signal_1.cpu().detach().numpy().flatten() * max_value
-    axes[0].plot(x_vals, y1, color="blue")
+    axes[0].plot(d_vals, y1, color="blue")
     axes[0].set_ylim(-600, 300)
     axes[0].axvline(x=0, color="black", linestyle="--", alpha=0.5)
     axes[0].grid(True)
@@ -209,7 +209,7 @@ def plot_latent_morphs(
     for i, signal in enumerate(morphed_signals):
         y_interp = signal.flatten() * max_value
         # y_interp = signal.flatten()
-        axes[i + 1].plot(x_vals, y_interp, color="red")
+        axes[i + 1].plot(d_vals, y_interp, color="red")
         axes[i + 1].set_ylim(-600, 300)
         axes[i + 1].axvline(x=0, color="black", linestyle="--", alpha=0.5)
         axes[i + 1].grid(True)
@@ -217,7 +217,7 @@ def plot_latent_morphs(
 
     # Plot signal_2 (blue)
     y2 = signal_2.cpu().detach().numpy().flatten() * max_value
-    axes[-1].plot(x_vals, y2, color="blue")
+    axes[-1].plot(d_vals, y2, color="blue")
     axes[-1].set_ylim(-600, 300)
     axes[-1].axvline(x=0, color="black", linestyle="--", alpha=0.5)
     axes[-1].grid(True)
@@ -254,8 +254,8 @@ def plot_latent_morph_grid(
         signal_2_np = signal_2.cpu().detach().numpy().flatten() * max_value
 
         # X-axis
-        x_vals = [i / 4096 for i in range(0, 256)]
-        x_vals = [x - (53 / 4096) for x in x_vals]
+        d_vals = [i / 4096 for i in range(0, 256)]
+        d_vals = [d - (53 / 4096) for d in d_vals]
 
         # Posterior means for background latent scatter
         all_means = []
@@ -270,7 +270,7 @@ def plot_latent_morph_grid(
     
     # ----- Row 1: Signals -----
     ax1 = fig.add_subplot(2, 3, 1)
-    ax1.plot(x_vals, signal_1_np, color='blue')
+    ax1.plot(d_vals, signal_1_np, color='blue')
     ax1.axvline(x=0, linestyle="--", color="black", alpha=0.5)
     ax1.set_ylim(-600, 300)
     ax1.set_title("Start Signal")
@@ -278,7 +278,7 @@ def plot_latent_morph_grid(
     ax1.grid(True)
 
     ax2 = fig.add_subplot(2, 3, 2)
-    ax2.plot(x_vals, signal_mid, color='red')
+    ax2.plot(d_vals, signal_mid, color='red')
     ax2.axvline(x=0, linestyle="--", color="black", alpha=0.5)
     ax2.set_ylim(-600, 300)
     ax2.set_title("Interpolated Signal")
@@ -286,7 +286,7 @@ def plot_latent_morph_grid(
     ax2.grid(True)
 
     ax3 = fig.add_subplot(2, 3, 3)
-    ax3.plot(x_vals, signal_2_np, color='blue')
+    ax3.plot(d_vals, signal_2_np, color='blue')
     ax3.axvline(x=0, linestyle="--", color="black", alpha=0.5)
     ax3.set_ylim(-600, 300)
     ax3.set_title("End Signal")
@@ -381,12 +381,12 @@ def animate_latent_morphs(
     ax_signal = fig.add_subplot(212)  # Second plot (bottom) in vertical layout
 
     # X-axis values (shared across all plots)
-    x_vals = [i / 4096 for i in range(0, 256)]
-    x_vals = [value - (53 / 4096) for value in x_vals]
+    d_vals = [i / 4096 for i in range(0, 256)]
+    d_vals = [value - (53 / 4096) for value in d_vals]
 
     # Initialize the plot
     line, = ax_signal.plot([], [], color="red")
-    ax_signal.set_xlim(min(x_vals), max(x_vals))
+    ax_signal.set_xlim(min(d_vals), max(d_vals))
     ax_signal.set_ylim(-600, 300)
     ax_signal.axvline(x=0, color="black", linestyle="--", alpha=0.5)
     ax_signal.grid(True)
@@ -401,7 +401,7 @@ def animate_latent_morphs(
 
     def update(frame):
         y_interp = morphed_signals[frame].flatten() * max_value
-        line.set_data(x_vals, y_interp)
+        line.set_data(d_vals, y_interp)
         # ax_signal.set_title(f"Interpolated Signal {frame + 1}")
 
         # Update the moving point in the latent space
@@ -435,18 +435,18 @@ def plot_signal_distribution(
     median_line = signals_df.median(axis=1)
 
     # Transform x values
-    x = [i / 4096 for i in range(0, 256)]
-    x = [value - (53 / 4096) for value in x]
+    d = [i / 4096 for i in range(0, 256)]
+    d = [value - (53 / 4096) for value in d]
 
     percentile_2_5 = signals_df.quantile(0.025, axis=1)
     percentile_97_5 = signals_df.quantile(0.975, axis=1)
-    plt.fill_between(x, percentile_2_5, percentile_97_5, color=distribution_color, alpha=0.25, label='Central 95%')
+    plt.fill_between(d, percentile_2_5, percentile_97_5, color=distribution_color, alpha=0.25, label='Central 95%')
 
     percentile_25 = signals_df.quantile(0.25, axis=1)
     percentile_75 = signals_df.quantile(0.75, axis=1)
-    plt.fill_between(x, percentile_25, percentile_75, color=distribution_color, alpha=0.5, label='Central 50%')
+    plt.fill_between(d, percentile_25, percentile_75, color=distribution_color, alpha=0.5, label='Central 50%')
 
-    plt.plot(x, median_line.values, color='k', linestyle='-', linewidth=1, alpha=1.0, label='Median of signals')
+    plt.plot(d, median_line.values, color='k', linestyle='-', linewidth=1, alpha=1.0, label='Median of signals')
     plt.axvline(x=0, color='black', linestyle='--', alpha=0.5)  
     plt.ylim(-600, 300)
     plt.xlabel('time (s)', size=20)
@@ -468,8 +468,8 @@ def plot_single_signal(
     fname: str = None,  # Added missing comma
 ):
     # Generate x-axis values
-    x = [i / 4096 for i in range(0, 256)]
-    x = [value - (53 / 4096) for value in x]
+    d = [i / 4096 for i in range(0, 256)]
+    d = [value - (53 / 4096) for value in d]
 
     # Process signal for plotting
     y = signal.flatten()
@@ -477,7 +477,7 @@ def plot_single_signal(
 
     # Plot
     plt.figure(figsize=(8, 6))
-    plt.plot(x, y, color='blue')
+    plt.plot(d, y, color='blue')
     plt.axvline(x=0, color='black', linestyle='--', alpha=0.5)
     plt.ylim(-600, 300)
     plt.xlabel('time (s)', size=20)
@@ -534,10 +534,10 @@ def plot_latent_space_3d(model, dataloader):
     latent_vectors = []
 
     with torch.no_grad():
-        for y, x in dataloader:
+        for y, d in dataloader:
             y = y.to(DEVICE)
-            x = x.to(DEVICE)
-            x = x.view(x.size(0), -1)
+            d = d.to(DEVICE)
+            d = d.view(d.size(0), -1)
             y = y.view(y.size(0), -1)
 
             mean, _ = model.encoder(y)

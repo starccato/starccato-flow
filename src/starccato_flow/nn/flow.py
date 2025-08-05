@@ -1,5 +1,4 @@
 import torch
-
 """Placeholder."""
 
 class FLOW(torch.nn.Module):
@@ -26,15 +25,15 @@ class FLOW(torch.nn.Module):
         # self.fc1 = torch.nn.Linear(y_length, hidden_dim)
         # self.fc2 = torch.nn.Linear(hidden_dim, z_dim)
 
-    def forward(self, x):
+    def forward(self, d):
         """
         Forward pass of the model.
 
-        :param x: Input tensor of shape (batch_size, y_length).
+        :param d: Input tensor of shape (batch_size, y_length).
         :return: Output tensor after processing through the model.
         """
         # Implement the forward pass logic here
         # Example:
-        # x = torch.relu(self.fc1(x))
-        # x = self.fc2(x)
-        return x  # Placeholder for actual output logic
+        # d = torch.relu(self.fc1(d))
+        # d = self.fc2(d)
+        return d  # Placeholder for actual output logic
