@@ -9,7 +9,7 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm, trange
 
-from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d, plot_loss, plot_individual_loss
+from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -200,6 +200,13 @@ class Trainer:
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
         self.save_models()
+
+    def plot_generated_signal_distribution(self, background, font_family, font_name):
+
+        with torch.no_grad():
+            generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+        
+        plot_signal_distribution(signals=generated_signals, generated=True, background=background, font_family=font_family, font_name=font_name)
 
     def display_results(self):
         # Plot training and validation losses

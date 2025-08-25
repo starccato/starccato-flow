@@ -477,18 +477,19 @@ def plot_signal_distribution(
                      color="white", alpha=0.5)
     # Blue overlay
     plt.fill_between(d, percentile_25, percentile_75,
-                     color=distribution_color, alpha=0.7,
+                     color=distribution_color, alpha=0.75,
                      label='Central 50%')
 
     # === Median line with white underlay ===
-    plt.plot(d, median_line.values, color="white", linewidth=3.0, alpha=0.9)
-    plt.plot(d, median_line.values, color=distribution_color, linewidth=1.5, alpha=1.0, label='Median of signals')
+    # plt.plot(d, median_line.values, color="white", linewidth=3.0, alpha=0.9)
+    plt.plot(d, median_line.values, color="white", linewidth=1.5, alpha=0.75, label='Median of signals')
 
     # Vertical reference line
     plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
 
     # Labels, limits, and grid
     plt.ylim(-600, 300)
+    plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=20, color=text_color)
     plt.ylabel('hD (cm)', size=20, color=text_color)
     plt.grid(True, color=grid_color, alpha=0.3)
