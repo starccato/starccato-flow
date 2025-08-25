@@ -7,6 +7,7 @@ import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 import torch
 
+from ..plotting import plot_signal_distribution
 from ..utils.defaults import BATCH_SIZE
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 
@@ -99,6 +100,9 @@ class CCSNData(Dataset):
         self.scaling_factor = 5
         self.max_strain = abs(self.signals).max()
         self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
+
+    def plot_signal_distribution(self, savefig: Optional[str] = None):
+        plot_signal_distribution(self.signals, savefig=savefig)
 
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"
