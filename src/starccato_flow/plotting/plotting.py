@@ -418,49 +418,92 @@ def animate_latent_morphs(
     plt.show()
 
 def plot_signal_distribution(
-    signals: np.ndarray, # (y_length, num_signals)
+    signals: np.ndarray,  # (y_length, num_signals)
     generated: bool = True,
+    background: str = "black",
     fname: str = None,
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
 ):
-    if generated == True:
+    # Set font globally for this plot
+    plt.rcParams.update({
+        'font.size': 12,
+        'font.family': font_family,
+        f'font.{font_family}': [font_name]
+    })
+    if generated:
         distribution_color = 'red'
     else:
         distribution_color = 'blue'
-    
-    num_signals = signals.shape[0]
-    signal_length = signals.shape[1]
 
     signals_df = pd.DataFrame(signals)
-
     median_line = signals_df.median(axis=1)
 
     # Transform x values
     d = [i / 4096 for i in range(0, 256)]
     d = [value - (53 / 4096) for value in d]
 
+    # Set theme colors
+    if background == "black":
+        plt.style.use("dark_background")
+        text_color = "white"
+        median_color = "white"
+        vline_color = "white"
+        grid_color = "gray"
+        legend_facecolor = "black"
+    else:
+        plt.style.use("default")
+        text_color = "black"
+        median_color = "black"
+        vline_color = "black"
+        grid_color = "lightgray"
+        legend_facecolor = "white"
+
+    # === Percentiles with white base + blue overlay ===
     percentile_2_5 = signals_df.quantile(0.025, axis=1)
     percentile_97_5 = signals_df.quantile(0.975, axis=1)
-    plt.fill_between(d, percentile_2_5, percentile_97_5, color=distribution_color, alpha=0.25, label='Central 95%')
+    # White base
+    plt.fill_between(d, percentile_2_5, percentile_97_5,
+                     color="white", alpha=0.25)
+    # Blue overlay
+    plt.fill_between(d, percentile_2_5, percentile_97_5,
+                     color=distribution_color, alpha=0.4,
+                     label='Central 95%')
 
     percentile_25 = signals_df.quantile(0.25, axis=1)
     percentile_75 = signals_df.quantile(0.75, axis=1)
-    plt.fill_between(d, percentile_25, percentile_75, color=distribution_color, alpha=0.5, label='Central 50%')
+    # White base
+    plt.fill_between(d, percentile_25, percentile_75,
+                     color="white", alpha=0.5)
+    # Blue overlay
+    plt.fill_between(d, percentile_25, percentile_75,
+                     color=distribution_color, alpha=0.7,
+                     label='Central 50%')
 
-    plt.plot(d, median_line.values, color='k', linestyle='-', linewidth=1, alpha=1.0, label='Median of signals')
-    plt.axvline(x=0, color='black', linestyle='--', alpha=0.5)  
+    # === Median line with white underlay ===
+    plt.plot(d, median_line.values, color="white", linewidth=3.0, alpha=0.9)
+    plt.plot(d, median_line.values, color=distribution_color, linewidth=1.5, alpha=1.0, label='Median of signals')
+
+    # Vertical reference line
+    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
+
+    # Labels, limits, and grid
     plt.ylim(-600, 300)
-    plt.xlabel('time (s)', size=20)
-    plt.ylabel('hD (cm)', size=20)
-    plt.grid(True)
-    plt.legend()
+    plt.xlabel('time (s)', size=20, color=text_color)
+    plt.ylabel('hD (cm)', size=20, color=text_color)
+    plt.grid(True, color=grid_color, alpha=0.3)
 
+    # Legend
+    plt.legend(facecolor=legend_facecolor,
+               edgecolor=text_color, labelcolor=text_color)
+
+    # Save or show
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight")
-
+        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=legend_facecolor)
     plt.show()
+    # Optionally reset font to default after plot
+    plt.rcdefaults()
 
-import numpy as np
-import matplotlib.pyplot as plt
 
 def plot_single_signal(
     signal: np.ndarray,
