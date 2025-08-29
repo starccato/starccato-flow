@@ -434,7 +434,7 @@ def plot_signal_distribution(
     if generated:
         distribution_color = 'red'
     else:
-        distribution_color = 'blue'
+        distribution_color = '#005FA3'
 
     signals_df = pd.DataFrame(signals)
     median_line = signals_df.median(axis=1)
@@ -482,10 +482,10 @@ def plot_signal_distribution(
 
     # === Median line with white underlay ===
     # plt.plot(d, median_line.values, color="white", linewidth=3.0, alpha=0.9)
-    plt.plot(d, median_line.values, color="white", linewidth=1.5, alpha=0.75, label='Median of signals')
+    plt.plot(d, median_line.values, color="white", linestyle=(0,(1,1)), linewidth=1.5, alpha=1.0, label='Median of signals')
 
     # Vertical reference line
-    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
+    plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
 
     # Labels, limits, and grid
     plt.ylim(-600, 300)
@@ -522,7 +522,7 @@ def plot_single_signal(
     # Plot
     plt.figure(figsize=(8, 6))
     plt.plot(d, y, color='blue')
-    plt.axvline(x=0, color='black', linestyle='--', alpha=0.5)
+    plt.axvline(x=0, color='black', linestyle='dotted', alpha=0.5)
     plt.ylim(-600, 300)
     plt.xlabel('time (s)', size=20)
     plt.ylabel('hD (cm)', size=20)

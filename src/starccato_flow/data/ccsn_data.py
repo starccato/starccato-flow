@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 
 from ..plotting.plotting import plot_signal_distribution
-from ..utils.defaults import BATCH_SIZE
+from ..utils.defaults import BATCH_SIZE, DEVICE
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
@@ -156,8 +156,10 @@ class CCSNData(Dataset):
         parameters = parameters.reshape(1, -1)
 
         normalised_signal = self.normalise_signals(signal)
-
-        return torch.tensor(normalised_signal, dtype=torch.float32), torch.tensor(parameters, dtype=torch.float32)
+        return (
+            torch.tensor(normalised_signal, dtype=torch.float32, device=DEVICE),
+            torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
+        )
 
     def get_loader(self, batch_size=32) -> DataLoader:
         return DataLoader(

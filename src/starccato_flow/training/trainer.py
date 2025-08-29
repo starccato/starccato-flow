@@ -202,11 +202,27 @@ class Trainer:
         self.save_models()
 
     def plot_generated_signal_distribution(self, background, font_family, font_name):
+        number_of_signals = 10000
+        noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
 
+        start_time = time.time()
         with torch.no_grad():
-            generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+            generated_signals = self.vae.decoder(noise).cpu().detach().numpy()
+        end_time = time.time()
+
+        execution_time = end_time - start_time
+        print("Execution Time:", execution_time, "seconds")    
+
+        generated_signals_transpose = np.empty((Y_LENGTH, 0))
+
+        for i in range(number_of_signals):
+            y = generated_signals[i, :].flatten()
+            y = y * self.training_dataset.max_strain
+            y = y.reshape(-1, 1)
+            
+            generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
         
-        plot_signal_distribution(signals=generated_signals, generated=True, background=background, font_family=font_family, font_name=font_name)
+        plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name)
 
     def display_results(self):
         # Plot training and validation losses
