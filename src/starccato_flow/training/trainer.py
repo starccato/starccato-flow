@@ -33,7 +33,7 @@ class Trainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs=128,
+        num_epochs=256,
         lr_vae=1e-3,
         lr_flow=1e-3,
         checkpoint_interval=16,
