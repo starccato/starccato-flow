@@ -1,0 +1,3 @@
+SIGNAL_COLOUR = "deepskyblue"
+GENERATED_SIGNAL_COLOUR = "red"
+

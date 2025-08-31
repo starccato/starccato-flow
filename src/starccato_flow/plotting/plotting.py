@@ -20,6 +20,8 @@ from ..nn.vae import VAE
 
 from ..utils.defaults import DEVICE
 
+from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR
+
 plt.rcParams.update({
     'font.size': 12,
     'font.family': 'serif',
@@ -32,7 +34,13 @@ def plot_waveform_grid(
     num_cols: int = 2,
     num_rows: int = 4,
     fname: str = None,
+    generated: bool = False,
 ) -> Tuple[plt.Figure, plt.Axes]:
+    if generated:
+        signal_colour = GENERATED_SIGNAL_COLOUR
+    else:
+        signal_colour = SIGNAL_COLOUR
+
     fig, axes = plt.subplots(
         num_rows, num_cols, figsize=(10, 15)
     )
@@ -46,7 +54,7 @@ def plot_waveform_grid(
         y = signals[i].flatten()
         y = y * max_value
         ax.set_ylim(-600, 300)
-        ax.plot(d, y, color="red")
+        ax.plot(d, y, color=signal_colour)
 
         ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
         ax.grid(True)
@@ -186,6 +194,7 @@ def plot_latent_morphs(
         mean_1, _ = model.encoder(signal_1)
         mean_2, _ = model.encoder(signal_2)
 
+
         interpolated_latents = [mean_1 * (1 - alpha) + mean_2 * alpha for alpha in np.linspace(0, 1, steps)]
         morphed_signals = [model.decoder(latent).cpu().detach().numpy() for latent in interpolated_latents]
 
@@ -209,7 +218,7 @@ def plot_latent_morphs(
     for i, signal in enumerate(morphed_signals):
         y_interp = signal.flatten() * max_value
         # y_interp = signal.flatten()
-        axes[i + 1].plot(d_vals, y_interp, color="red")
+        axes[i + 1].plot(d_vals, y_interp, color=GENERATED_SIGNAL_COLOUR)
         axes[i + 1].set_ylim(-600, 300)
         axes[i + 1].axvline(x=0, color="black", linestyle="--", alpha=0.5)
         axes[i + 1].grid(True)
@@ -278,7 +287,7 @@ def plot_latent_morph_grid(
     ax1.grid(True)
 
     ax2 = fig.add_subplot(2, 3, 2)
-    ax2.plot(d_vals, signal_mid, color='red')
+    ax2.plot(d_vals, signal_mid, color=GENERATED_SIGNAL_COLOUR)
     ax2.axvline(x=0, linestyle="--", color="black", alpha=0.5)
     ax2.set_ylim(-600, 300)
     ax2.set_title("Interpolated Signal")
@@ -308,10 +317,10 @@ def plot_latent_morph_grid(
         [mean_1[0].cpu(), mean_2[0].cpu()],
         [mean_1[1].cpu(), mean_2[1].cpu()],
         [mean_1[2].cpu(), mean_2[2].cpu()],
-        color='red', linestyle='--'
+        color=GENERATED_SIGNAL_COLOUR, linestyle='--'
     )
     ax5.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), color='blue', label="Start", alpha=0.5)
-    ax5.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), mean_mid[2].cpu(), color='red', label="Midpoint")
+    ax5.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), mean_mid[2].cpu(), color=GENERATED_SIGNAL_COLOUR, label="Midpoint")
     ax5.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), color='blue', label="End", alpha=0.5)
     ax5.set_title("Latent Space Path")
     ax5.set_xlabel('Latent Dim 1')
@@ -369,7 +378,7 @@ def animate_latent_morphs(
     ax_latent.scatter(mean_2[0].cpu().numpy(), mean_2[1].cpu().numpy(), mean_2[2].cpu().numpy(), color='green', s=50, label='Signal 2')
     ax_latent.plot([mean_1[0].cpu().numpy(), mean_2[0].cpu().numpy()],
                    [mean_1[1].cpu().numpy(), mean_2[1].cpu().numpy()],
-                   [mean_1[2].cpu().numpy(), mean_2[2].cpu().numpy()], color='red', linestyle='--', label='Interpolation Path', linewidth=2)
+                   [mean_1[2].cpu().numpy(), mean_2[2].cpu().numpy()], color=GENERATED_SIGNAL_COLOUR, linestyle='--', label='Interpolation Path', linewidth=2)
     moving_point, = ax_latent.plot([], [], [], 'ro', markersize=7, label='Interpolated Point')
     # ax_latent.set_title('Latent Space Interpolation')
     ax_latent.set_xlabel('Latent Dim 1')
@@ -385,7 +394,7 @@ def animate_latent_morphs(
     d_vals = [value - (53 / 4096) for value in d_vals]
 
     # Initialize the plot
-    line, = ax_signal.plot([], [], color="red")
+    line, = ax_signal.plot([], [], color=GENERATED_SIGNAL_COLOUR)
     ax_signal.set_xlim(min(d_vals), max(d_vals))
     ax_signal.set_ylim(-600, 300)
     ax_signal.axvline(x=0, color="black", linestyle="--", alpha=0.5)
@@ -432,9 +441,9 @@ def plot_signal_distribution(
         f'font.{font_family}': [font_name]
     })
     if generated:
-        distribution_color = 'red'
+        distribution_color = GENERATED_SIGNAL_COLOUR
     else:
-        distribution_color = 'deepskyblue'
+        distribution_color = SIGNAL_COLOUR
 
     signals_df = pd.DataFrame(signals)
     median_line = signals_df.median(axis=1)
