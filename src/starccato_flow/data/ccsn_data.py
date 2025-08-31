@@ -101,8 +101,11 @@ class CCSNData(Dataset):
         self.max_strain = abs(self.signals).max()
         self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
 
-    def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman"):
-        plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name)
+    def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+        plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+
+    def plot_signal_examples(self, n_signals=5, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+        pass
  
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"

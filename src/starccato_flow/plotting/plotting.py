@@ -421,9 +421,9 @@ def plot_signal_distribution(
     signals: np.ndarray,  # (y_length, num_signals)
     generated: bool = True,
     background: str = "black",
-    fname: str = None,
     font_family: str = "serif",
     font_name: str = "Times New Roman",
+    fname: str = None
 ):
     # Set font globally for this plot
     plt.rcParams.update({
@@ -434,7 +434,7 @@ def plot_signal_distribution(
     if generated:
         distribution_color = 'red'
     else:
-        distribution_color = '#005FA3'
+        distribution_color = 'deepskyblue'
 
     signals_df = pd.DataFrame(signals)
     median_line = signals_df.median(axis=1)
@@ -450,14 +450,16 @@ def plot_signal_distribution(
         median_color = "white"
         vline_color = "white"
         grid_color = "gray"
-        legend_facecolor = "black"
+        legend_facecolor = "none"
+        transparent = True
     else:
         plt.style.use("default")
         text_color = "black"
         median_color = "black"
         vline_color = "black"
         grid_color = "lightgray"
-        legend_facecolor = "white"
+        legend_facecolor = "none"
+        transparent = False
 
     # === Percentiles with white base + blue overlay ===
     percentile_2_5 = signals_df.quantile(0.025, axis=1)
@@ -492,7 +494,6 @@ def plot_signal_distribution(
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=20, color=text_color)
     plt.ylabel('hD (cm)', size=20, color=text_color)
-    plt.grid(True, color=grid_color, alpha=0.3)
 
     # Legend
     plt.legend(facecolor=legend_facecolor,
@@ -500,7 +501,9 @@ def plot_signal_distribution(
 
     # Save or show
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=legend_facecolor)
+        plt.savefig(fname, dpi=300, bbox_inches="tight",
+                    facecolor="none" if transparent else legend_facecolor,
+                    transparent=transparent)
     plt.show()
     # Optionally reset font to default after plot
     plt.rcdefaults()

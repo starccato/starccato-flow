@@ -201,7 +201,7 @@ class Trainer:
         # Optionally: plot final results or save model
         self.save_models()
 
-    def plot_generated_signal_distribution(self, background, font_family, font_name):
+    def plot_generated_signal_distribution(self, background, font_family, font_name, fname):
         number_of_signals = 10000
         noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
 
@@ -221,8 +221,8 @@ class Trainer:
             y = y.reshape(-1, 1)
             
             generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
-        
-        plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name)
+
+        plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def display_results(self):
         # Plot training and validation losses
