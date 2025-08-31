@@ -434,6 +434,9 @@ def plot_signal_distribution(
     font_name: str = "Times New Roman",
     fname: str = None
 ):
+    # set figure size
+    plt.figure(figsize=(8, 8))
+
     # Set font globally for this plot
     plt.rcParams.update({
         'font.size': 12,

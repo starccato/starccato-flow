@@ -188,8 +188,8 @@ class Trainer:
                 # gridded plots
                 with torch.no_grad():
                     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-                
-                plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain)
+                print(f"Generated signals shape: {generated_signals.shape}")
+                plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
                 plot_latent_space_3d(
                     model=self.vae,
                     dataloader=train_loader
