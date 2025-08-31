@@ -20,7 +20,7 @@ from ..nn.vae import VAE
 
 from ..utils.defaults import DEVICE
 
-from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR
+from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR
 
 plt.rcParams.update({
     'font.size': 12,
@@ -304,7 +304,7 @@ def plot_latent_morph_grid(
 
     # ----- Row 2: Latent space -----
     ax4 = fig.add_subplot(2, 3, 4, projection='3d')
-    ax4.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color='gray')
+    ax4.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
     ax4.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), color='blue', label="Start")
     ax4.set_title("Start in Latent Space")
     ax4.set_xlabel('Latent Dim 1')
@@ -312,7 +312,7 @@ def plot_latent_morph_grid(
     ax4.set_zlabel('Latent Dim 3')
 
     ax5 = fig.add_subplot(2, 3, 5, projection='3d')
-    ax5.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color='gray')
+    ax5.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
     ax5.plot(
         [mean_1[0].cpu(), mean_2[0].cpu()],
         [mean_1[1].cpu(), mean_2[1].cpu()],
@@ -328,7 +328,7 @@ def plot_latent_morph_grid(
     ax5.set_zlabel('Latent Dim 3')
 
     ax6 = fig.add_subplot(2, 3, 6, projection='3d')
-    ax6.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color='gray')
+    ax6.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
     ax6.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), color='blue', label="End")
     ax6.set_title("End in Latent Space")
     ax6.set_xlabel('Latent Dim 1')
@@ -373,7 +373,7 @@ def animate_latent_morphs(
 
     # Create 3D plot for latent space
     ax_latent = fig.add_subplot(211, projection='3d')  # First plot (top) in vertical layout
-    ax_latent.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], color='gray', alpha=0.2, label='Posterior Distribution')
+    ax_latent.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], color=LATENT_SPACE_COLOUR, alpha=0.2, label='Posterior Distribution')
     ax_latent.scatter(mean_1[0].cpu().numpy(), mean_1[1].cpu().numpy(), mean_1[2].cpu().numpy(), color='blue', s=50, label='Signal 1')
     ax_latent.scatter(mean_2[0].cpu().numpy(), mean_2[1].cpu().numpy(), mean_2[2].cpu().numpy(), color='green', s=50, label='Signal 2')
     ax_latent.plot([mean_1[0].cpu().numpy(), mean_2[0].cpu().numpy()],
@@ -506,6 +506,16 @@ def plot_signal_distribution(
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=20, color=text_color)
     plt.ylabel('hD (cm)', size=20, color=text_color)
+
+    # Add note for n in the bottom right
+    n = signals.shape[1] if signals.ndim > 1 else len(signals)
+    plt.text(
+        0.98, 0.02, f"n = {n}",
+        ha='right', va='bottom',
+        transform=plt.gca().transAxes,
+        fontsize=16, color=text_color,
+        alpha=0.8
+    )
 
     # Legend
     plt.legend(facecolor=legend_facecolor,

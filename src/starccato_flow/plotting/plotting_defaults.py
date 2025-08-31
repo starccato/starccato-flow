@@ -1,3 +1,4 @@
 SIGNAL_COLOUR = "deepskyblue"
 GENERATED_SIGNAL_COLOUR = "red"
+LATENT_SPACE_COLOUR = "grey"
 
