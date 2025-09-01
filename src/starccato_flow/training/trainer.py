@@ -9,7 +9,7 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm, trange
 
-from ..plotting.plotting import plot_waveform_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
+from ..plotting.plotting import plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -189,7 +189,16 @@ class Trainer:
                 with torch.no_grad():
                     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
                 print(f"Generated signals shape: {generated_signals.shape}")
-                plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+                # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+                plot_signal_grid(
+                    signals=generated_signals,
+                    max_value=self.training_dataset.max_strain,
+                    num_cols=3,
+                    num_rows=1,
+                    fname="plots/ccsn_generated_signal_grid.svg",
+                    background="black",
+                    generated=False
+                )
                 plot_latent_space_3d(
                     model=self.vae,
                     dataloader=train_loader

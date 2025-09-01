@@ -7,7 +7,7 @@ import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 import torch
 
-from ..plotting.plotting import plot_signal_distribution
+from ..plotting.plotting import plot_signal_distribution, plot_signal_grid
 from ..utils.defaults import BATCH_SIZE, DEVICE
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 
@@ -104,8 +104,19 @@ class CCSNData(Dataset):
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
-    def plot_signal_examples(self, n_signals=5, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
-        pass
+    def plot_signal_grid(self, n_signals=5, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+        # Example usage
+        selected_signals = [0, 300, 1000]
+
+        plot_signal_grid(
+            signals=self.signals[:, selected_signals].transpose(),
+            max_value=1,
+            num_cols=3,
+            num_rows=1,
+            fname="plots/ccsn_signal_grid.svg",
+            background=background,
+            generated=False
+        )
  
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"

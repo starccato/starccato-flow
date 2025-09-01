@@ -7,6 +7,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import torch
@@ -426,6 +427,9 @@ def animate_latent_morphs(
 
     plt.show()
 
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
+
 def plot_signal_distribution(
     signals: np.ndarray,  # (y_length, num_signals)
     generated: bool = True,
@@ -435,18 +439,16 @@ def plot_signal_distribution(
     fname: str = None
 ):
     # set figure size
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(6, 6))
 
     # Set font globally for this plot
     plt.rcParams.update({
-        'font.size': 12,
         'font.family': font_family,
         f'font.{font_family}': [font_name]
     })
-    if generated:
-        distribution_color = GENERATED_SIGNAL_COLOUR
-    else:
-        distribution_color = SIGNAL_COLOUR
+
+    # Choose signal colour
+    distribution_color = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
 
     signals_df = pd.DataFrame(signals)
     median_line = signals_df.median(axis=1)
@@ -455,7 +457,7 @@ def plot_signal_distribution(
     d = [i / 4096 for i in range(0, 256)]
     d = [value - (53 / 4096) for value in d]
 
-    # Set theme colors
+    # Theme colors
     if background == "black":
         plt.style.use("dark_background")
         text_color = "white"
@@ -473,30 +475,20 @@ def plot_signal_distribution(
         legend_facecolor = "none"
         transparent = False
 
-    # === Percentiles with white base + blue overlay ===
-    percentile_2_5 = signals_df.quantile(0.025, axis=1)
-    percentile_97_5 = signals_df.quantile(0.975, axis=1)
-    # White base
-    plt.fill_between(d, percentile_2_5, percentile_97_5,
-                     color="white", alpha=0.25)
-    # Blue overlay
-    plt.fill_between(d, percentile_2_5, percentile_97_5,
-                     color=distribution_color, alpha=0.4,
-                     label='Central 95%')
+    # === Percentiles with white base + overlay ===
+    p2_5 = signals_df.quantile(0.025, axis=1)
+    p97_5 = signals_df.quantile(0.975, axis=1)
+    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
+    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
 
-    percentile_25 = signals_df.quantile(0.25, axis=1)
-    percentile_75 = signals_df.quantile(0.75, axis=1)
-    # White base
-    plt.fill_between(d, percentile_25, percentile_75,
-                     color="white", alpha=0.5)
-    # Blue overlay
-    plt.fill_between(d, percentile_25, percentile_75,
-                     color=distribution_color, alpha=0.75,
-                     label='Central 50%')
+    p25 = signals_df.quantile(0.25, axis=1)
+    p75 = signals_df.quantile(0.75, axis=1)
+    plt.fill_between(d, p25, p75, color="white", alpha=0.4)
+    plt.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
 
-    # === Median line with white underlay ===
-    # plt.plot(d, median_line.values, color="white", linewidth=3.0, alpha=0.9)
-    plt.plot(d, median_line.values, color="white", linestyle=(0,(1,1)), linewidth=1.5, alpha=1.0, label='Median of signals')
+    # === Median line ===
+    plt.plot(d, median_line.values, color=median_color,
+             linestyle=(0, (1, 1)), linewidth=1.5, alpha=1.0)
 
     # Vertical reference line
     plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
@@ -504,22 +496,29 @@ def plot_signal_distribution(
     # Labels, limits, and grid
     plt.ylim(-600, 300)
     plt.xlim(min(d), max(d))
-    plt.xlabel('time (s)', size=20, color=text_color)
-    plt.ylabel('hD (cm)', size=20, color=text_color)
+    plt.xlabel('time (s)', size=16, color=text_color)
+    plt.ylabel('hD (cm)', size=16, color=text_color)
 
-    # Add note for n in the bottom right
+    # Sample size note
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     plt.text(
         0.98, 0.02, f"n = {n}",
         ha='right', va='bottom',
         transform=plt.gca().transAxes,
-        fontsize=16, color=text_color,
+        fontsize=12, color=text_color,
         alpha=0.8
     )
+    plt.tick_params(axis='both', which='major', labelsize=12, colors=text_color)
 
-    # Legend
-    plt.legend(facecolor=legend_facecolor,
-               edgecolor=text_color, labelcolor=text_color)
+    # === Custom Legend (with true colors) ===
+    legend_handles = [
+        mpatches.Patch(color=distribution_color, alpha=0.6, label="Central 95%"),
+        mpatches.Patch(color=distribution_color, alpha=1.00, label="Central 50%"),
+        mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)), linewidth=1.5, label="Median of signals")
+    ]
+    plt.legend(handles=legend_handles,
+               facecolor="none", edgecolor=text_color, labelcolor=text_color, fontsize=12, loc = 'upper right',
+               framealpha=0.0)
 
     # Save or show
     if fname:
@@ -527,7 +526,7 @@ def plot_signal_distribution(
                     facecolor="none" if transparent else legend_facecolor,
                     transparent=transparent)
     plt.show()
-    # Optionally reset font to default after plot
+
     plt.rcdefaults()
 
 
@@ -631,3 +630,85 @@ def plot_latent_space_3d(model, dataloader):
     ax.grid(True)
 
     plt.show()
+
+
+    import matplotlib.ticker as mtick
+
+def plot_signal_grid(
+    signals: np.ndarray,
+    max_value: float,
+    num_cols: int = 2,
+    num_rows: int = 4,
+    fname: str = None,
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    background: str = "white",
+    x_y_label_on: bool = True,
+    generated: bool = False,
+):
+    fig, axes = plt.subplots(
+        num_rows, num_cols, figsize=(5.6, 2,)
+    )
+
+    # Set font globally for this plot
+    plt.rcParams.update({
+        'font.family': font_family,
+        f'font.{font_family}': [font_name]
+    })
+
+    signal_color = "red" if generated else "deepskyblue"
+
+    # Theme colors
+    if background == "black":
+        plt.style.use("dark_background")
+        text_color = "white"
+        vline_color = "white"
+        grid_color = "gray"
+        transparent = True
+    else:
+        plt.style.use("default")
+        text_color = "black"
+        vline_color = "black"
+        grid_color = "lightgray"
+        transparent = False
+
+    axes = axes.flatten()
+
+    for i, ax in enumerate(axes):
+        d = [j / 4096 for j in range(256)]
+        d = [value - (53 / 4096) for value in d]
+
+        y = signals[i].flatten() * max_value
+        ax.set_ylim(-600, 300)
+        ax.set_xlim(min(d), max(d))
+        ax.plot(d, y, color=signal_color)
+
+        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+
+        # ✅ Force ticks
+        ax.set_yticks([300, 0, -600])
+        ax.set_xticks([0.00])
+
+        # ✅ Format ticks to 2 decimals
+        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter("%.2f"))
+
+        ax.tick_params(axis="both", colors=text_color, labelsize=12)
+
+        # Remove y-axis ticks for right-hand columns
+        if i % num_cols != 0:
+            ax.set_yticklabels([])
+
+        # Remove x-axis ticks for all but bottom row
+        if i < num_cols * (num_rows - 1):
+            ax.set_xticklabels([])
+
+        # Spine colors
+        for spine in ax.spines.values():
+            spine.set_color(text_color)
+
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, transparent=transparent, dpi=300, bbox_inches="tight")
+
+    plt.show()
+    plt.rcdefaults()
