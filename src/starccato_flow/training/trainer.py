@@ -197,7 +197,7 @@ class Trainer:
                     num_rows=1,
                     fname="plots/ccsn_generated_signal_grid.svg",
                     background="black",
-                    generated=False
+                    generated=True
                 )
                 plot_latent_space_3d(
                     model=self.vae,

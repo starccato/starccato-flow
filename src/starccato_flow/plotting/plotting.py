@@ -427,6 +427,128 @@ def animate_latent_morphs(
 
     plt.show()
 
+def plot_latent_morph_up_and_down(
+    model,
+    signal_1: torch.Tensor,
+    signal_2: torch.Tensor,
+    max_value: float,
+    train_dataset,
+    steps=10,
+    background="white",
+    font_family="sans-serif",
+    font_name="Avenir",
+    fname="plots/latent_morph.svg"
+):
+    model.eval()
+    with torch.no_grad():
+        # Encode signals
+        mean_1, _ = model.encoder(signal_1)
+        mean_2, _ = model.encoder(signal_2)
+
+        # Get middle latent point
+        alpha = 0.5
+        mean_mid = mean_1 * (1 - alpha) + mean_2 * alpha
+        signal_mid = model.decoder(mean_mid).cpu().detach().numpy().flatten() * max_value
+
+        # Reconstruct signals
+        signal_1_np = signal_1.cpu().detach().numpy().flatten() * max_value
+        signal_2_np = signal_2.cpu().detach().numpy().flatten() * max_value
+
+        # X-axis
+        x_vals = [i / 4096 for i in range(0, 256)]
+        x_vals = [x - (53 / 4096) for x in x_vals]
+
+        # Posterior means for background latent scatter
+        all_means = []
+        for x, _ in train_dataset:
+            x = torch.tensor(x).to(DEVICE)
+            mean, _ = model.encoder(x)
+            all_means.append(mean.cpu().numpy())
+        all_means = np.concatenate(all_means, axis=0)
+
+
+    if background == "black":
+        plt.style.use('dark_background')
+        plt.rcParams['axes.facecolor'] = 'black'
+        plt.rcParams['figure.facecolor'] = 'black'
+        plt.rcParams['savefig.facecolor'] = 'black'
+        plt.rcParams['text.color'] = 'white'
+        plt.rcParams['axes.labelcolor'] = 'white'
+        plt.rcParams['xtick.color'] = 'white'
+        plt.rcParams['ytick.color'] = 'white'
+        text_colour = 'white'
+        grid_color = 'white'
+        vline_color = 'white'
+    else:
+        plt.style.use('default')
+        plt.rcParams['axes.facecolor'] = 'white'
+        plt.rcParams['figure.facecolor'] = 'white'
+        plt.rcParams['savefig.facecolor'] = 'white'
+        plt.rcParams['text.color'] = 'black'
+        plt.rcParams['axes.labelcolor'] = 'black'
+        plt.rcParams['xtick.color'] = 'black'
+        plt.rcParams['ytick.color'] = 'black'
+        text_colour = 'black'
+        grid_color = 'black'
+        vline_color = 'black'
+    
+    plt.rcParams['font.family'] = font_family
+    plt.rcParams['font.sans-serif'] = font_name
+    plt.rcParams['font.size'] = 12
+
+    mean_1 = mean_1.squeeze()
+    mean_2 = mean_2.squeeze()
+    mean_mid = mean_mid.squeeze()
+
+    # Set up figure
+    px = 1/plt.rcParams['figure.dpi']
+    fig = plt.figure(figsize=(600*px, 900*px))
+
+    ax1 = fig.add_subplot(2, 1, 1)
+    # plot all the signals on the plot
+    # To ensure the red "Interpolant" plot is on top, set a higher zorder for it:
+    ax1.plot(x_vals, signal_1_np, color='deepskyblue', label='Signal 1', alpha=0.5, linewidth=2, zorder=1)
+    ax1.plot(x_vals, signal_mid, color='red', label='Interpolant', linewidth=2, zorder=3)  # Highest zorder
+    ax1.plot(x_vals, signal_2_np, color='deepskyblue', label='Signal 2', alpha=0.75, linewidth=2, zorder=2)
+    plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
+    ax1.set_ylim(-600, 300)
+    ax1.set_xlim(left=x_vals[0], right=x_vals[-1])
+    ax1.set_xlabel("time (s)", fontsize=16)
+    ax1.set_ylabel("hD (cm)", fontsize=16)
+    ax1.tick_params(axis='both', which='major', labelsize=12)    
+
+    ax1.legend(loc='upper center', fontsize=12, facecolor='none', bbox_to_anchor=(0.5, 1.125), ncol=3, frameon=False)
+
+    # create the latent plot, but only use the first 2 dimensions
+    ax2 = fig.add_subplot(2, 1, 2)
+    ax2.scatter(all_means[:, 0], all_means[:, 1], alpha=0.2, color='gray', edgecolors='none', s=50)
+    ax2.plot(
+        [mean_1[0].cpu(), mean_2[0].cpu()],
+        [mean_1[1].cpu(), mean_2[1].cpu()],
+        color='red', linestyle='--', linewidth=3
+    )
+    ax2.scatter(mean_1[0].cpu(), mean_1[1].cpu(), color='deepskyblue', label="Signal 1", alpha=0.5, edgecolors='none', s=100)
+    ax2.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), color='red', label="Interpolant", edgecolors='none', s=100)
+    ax2.scatter(mean_2[0].cpu(), mean_2[1].cpu(), color='deepskyblue', label="Signal 2", alpha=0.75, edgecolors='none', s=100)
+    ax2.set_xlabel('Latent Dimension 1', fontsize=16)
+    ax2.set_ylabel('Latent Dimension 2', fontsize=16)
+    ax2.tick_params(axis='both', which='major', labelsize=12)
+    ax2.legend(loc='upper center', fontsize=12, facecolor='none', bbox_to_anchor=(0.5, 1.125), ncol=3, frameon=False)
+
+    # Sample size note
+    n = 1684
+    plt.text(
+        0.98, 0.02, f"n = {n}",
+        ha='right', va='bottom',
+        transform=plt.gca().transAxes,
+        fontsize=12, color=text_colour,
+        alpha=0.8
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=0.2)
+    plt.savefig(fname=fname, dpi=300, bbox_inches='tight', transparent=True)
+
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 
@@ -685,11 +807,11 @@ def plot_signal_grid(
 
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
 
-        # ✅ Force ticks
-        ax.set_yticks([300, 0, -600])
+        # Force ticks
+        ax.set_yticks([300, 0, -300, -600])
         ax.set_xticks([0.00])
 
-        # ✅ Format ticks to 2 decimals
+        # Format ticks to 2 decimals
         ax.xaxis.set_major_formatter(mtick.FormatStrFormatter("%.2f"))
 
         ax.tick_params(axis="both", colors=text_color, labelsize=12)
