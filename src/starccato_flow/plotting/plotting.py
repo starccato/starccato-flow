@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
 
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
+
 from sklearn.decomposition import PCA
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -549,9 +552,6 @@ def plot_latent_morph_up_and_down(
     plt.subplots_adjust(wspace=0.2)
     plt.savefig(fname=fname, dpi=300, bbox_inches='tight', transparent=True)
 
-import matplotlib.patches as mpatches
-import matplotlib.lines as mlines
-
 def plot_signal_distribution(
     signals: np.ndarray,  # (y_length, num_signals)
     generated: bool = True,
@@ -833,4 +833,112 @@ def plot_signal_grid(
         plt.savefig(fname, transparent=transparent, dpi=300, bbox_inches="tight")
 
     plt.show()
+    plt.rcdefaults()
+
+def plot_reconstruction(
+    vae,
+    signal,
+    number_of_signals=1000,
+    max_value=None,
+    background="white",
+    distribution_color="red",
+    font_family="sans-serif",
+    font_name="Avenir",
+    fname="plots/ccsn_reconstruction.svg"
+):
+    vae.eval()
+    signal = signal.unsqueeze(0)  # Add batch dimension if needed
+
+    # Generate multiple reconstructions using the same signal
+    reconstructed_signals = []
+    with torch.no_grad():
+        for _ in range(number_of_signals):
+            reconstruction, _, _ = vae(signal)
+            reconstructed_signals.append(reconstruction.squeeze().cpu().numpy() * max_value)
+
+    # Convert to numpy array for plotting
+    reconstructed_signals = np.array(reconstructed_signals)
+
+    # Original signal
+    signal_np = signal.squeeze().cpu().numpy() * max_value
+
+    # Create a DataFrame for reconstructed signals
+    reconstructed_signals_df = pd.DataFrame(reconstructed_signals.T)
+
+    # Transform x values
+    d = [i / 4096 for i in range(0, 256)]
+    d = [value - (53 / 4096) for value in d]
+
+    # Theme colors
+    if background == "black":
+        plt.style.use("dark_background")
+        text_color = "white"
+        median_color = "white"
+        vline_color = "white"
+        grid_color = "gray"
+        legend_facecolor = "none"
+        transparent = True
+    else:
+        plt.style.use("default")
+        text_color = "black"
+        median_color = "black"
+        vline_color = "black"
+        grid_color = "lightgray"
+        legend_facecolor = "none"
+        transparent = False
+
+    # Set up the figure
+    plt.figure(figsize=(6, 6))
+
+    # === Percentiles with white base + overlay ===
+    p2_5 = reconstructed_signals_df.quantile(0.025, axis=1)
+    p97_5 = reconstructed_signals_df.quantile(0.975, axis=1)
+    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
+    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
+
+    p25 = reconstructed_signals_df.quantile(0.25, axis=1)
+    p75 = reconstructed_signals_df.quantile(0.75, axis=1)
+    plt.fill_between(d, p25, p75, color="white", alpha=0.4)
+    plt.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
+
+    # === Median line ===
+    plt.plot(d, signal_np, color=median_color, linewidth=1.5, alpha=1.0)
+
+    # Vertical reference line
+    plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
+
+    # Labels, limits, and grid
+    plt.ylim(-600, 300)
+    plt.xlim(min(d), max(d))
+    plt.xlabel('time (s)', size=16, color=text_color)
+    plt.ylabel('hD (cm)', size=16, color=text_color)
+
+    # Sample size note
+    n = reconstructed_signals_df.shape[1] if reconstructed_signals_df.ndim > 1 else len(reconstructed_signals_df)
+    plt.text(
+        0.98, 0.02, f"n = {n}",
+        ha='right', va='bottom',
+        transform=plt.gca().transAxes,
+        fontsize=12, color=text_color,
+        alpha=0.8
+    )
+    plt.tick_params(axis='both', which='major', labelsize=12, colors=text_color)
+
+    # === Custom Legend (with true colors) ===
+    legend_handles = [
+        mpatches.Patch(color=distribution_color, alpha=0.6, label="Central 95%"),
+        mpatches.Patch(color=distribution_color, alpha=1.00, label="Central 50%"),
+        mlines.Line2D([], [], color=median_color, linewidth=1.5, label="Original Signal")
+    ]
+    plt.legend(handles=legend_handles,
+               facecolor="none", edgecolor=text_color, labelcolor=text_color, fontsize=12, loc='upper right',
+               framealpha=0.0)
+
+    # Save or show
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight",
+                    facecolor="none" if transparent else legend_facecolor,
+                    transparent=transparent)
+    plt.show()
+
     plt.rcdefaults()
