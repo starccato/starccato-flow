@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 import torch
+from scipy.fft import fft, ifft
 
 from ..plotting.plotting import plot_signal_distribution, plot_signal_grid
 from ..utils.defaults import BATCH_SIZE, DEVICE
@@ -14,11 +15,11 @@ from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
 
 class CCSNData(Dataset):
-    def __init__(self, batch_size=BATCH_SIZE, frac=1, train=True , indices=None, multi_param=False):
-        ### read data from csv files
+    def __init__(self, batch_size=BATCH_SIZE, frac=1, train=True, noise=True, indices=None, multi_param=False):
         self.parameters = pd.read_csv(PARAMETERS_CSV)
         self.signals = pd.read_csv(SIGNALS_CSV).astype("float32").T
         self.signals.index = [i for i in range(len(self.signals.index))]
+        self.noise = noise
 
         assert (
             self.signals.shape[0] == self.parameters.shape[0],
@@ -104,16 +105,22 @@ class CCSNData(Dataset):
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
-    def plot_signal_grid(self, n_signals=5, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
-        # Example usage
-        selected_signals = [0, 300, 1000]
+    def plot_signal_grid(self, n_signals=3, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+        # Collect indices of the signals to plot
+        selected_signals = []
+        for i in range(n_signals):
+            signal = self.__getitem__(i+100)[0].cpu().numpy().flatten()  # Flatten the signal
+            selected_signals.append(signal)
+
+        # Convert selected signals to a NumPy array for plotting
+        selected_signals = np.array(selected_signals)
 
         plot_signal_grid(
-            signals=self.signals[:, selected_signals].transpose(),
-            max_value=1,
+            signals=selected_signals,
+            max_value=self.max_strain,
             num_cols=3,
             num_rows=1,
-            fname="plots/ccsn_signal_grid.svg",
+            fname=fname,
             background=background,
             generated=False
         )
@@ -137,10 +144,32 @@ class CCSNData(Dataset):
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"
 
-    def standardize(self, signal):
-        standardized_signal = (signal - self.mean) / self.std
-        standardized_signal = standardized_signal / self.scaling_factor
-        return standardized_signal
+    def add_aLIGO_noise(self, signal):
+        dataDeltaT = 1 / 4096  # Sampling rate: 4096 Hz
+        dataSec = 256 / 4096   # Duration: 256 samples at 4096 Hz
+        dataN = int(dataSec / dataDeltaT)  # Number of samples
+        
+        # Generate noise
+        noise = self.rnoise(
+            N=dataN,
+            delta_t=dataDeltaT,
+            one_sided=True,
+            pad=1
+        ).reshape(1, -1)  # shape (1, 256)
+
+        noise = noise * 500
+
+        # Mean center the noise
+        noise = noise - noise.mean()
+
+        signal = signal / 3.086e+22
+
+        # Add noise to the signal
+        aLIGO_signal = signal + noise
+
+        aLIGO_signal = aLIGO_signal * 3.086e+22
+
+        return aLIGO_signal
 
     def normalise_signals(self, signal):
         normalised_signal = signal / self.max_strain
@@ -169,7 +198,11 @@ class CCSNData(Dataset):
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         parameters = parameters.reshape(1, -1)
 
-        normalised_signal = self.normalise_signals(signal)
+        if self.noise:
+            aLIGO_signal = self.add_aLIGO_noise(signal)
+
+        normalised_signal = self.normalise_signals(aLIGO_signal)
+
         return (
             torch.tensor(normalised_signal, dtype=torch.float32, device=DEVICE),
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
@@ -180,5 +213,62 @@ class CCSNData(Dataset):
             self, batch_size=batch_size, shuffle=True, num_workers=0
         )
 
-    def get_signals_iterator(self):
-        return next(iter(self.get_loader()))
+    def spec_adv(self, frequencies, log=False):
+        """
+        Compute the advanced LIGO power spectral density (PSD).
+
+        Parameters:
+            frequencies (np.ndarray): Array of frequencies.
+            log (bool): Whether to return the logarithm of the PSD.
+
+        Returns:
+            np.ndarray: The PSD values for the given frequencies.
+        """
+        cutoff = -109.35 + np.log(2e10)
+        x = frequencies / 215
+        x2 = x ** 2
+        log_psd = (
+            np.log(1e-49)
+            + np.log(x ** -4.14 - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 ** 2) / (1 + 0.5 * x2))
+        )
+        log_psd[(log_psd > cutoff) | (~np.isfinite(log_psd))] = cutoff
+
+        return log_psd if log else np.exp(log_psd)
+
+    def rnoise(self, N, delta_t, one_sided=True, pad=1):
+        """
+        Generate random noise in the Fourier domain based on a given spectral density.
+
+        Parameters:
+            N (int): Number of samples.
+            delta_t (float): Time step.
+            specdens (callable): Spectral density function.
+            one_sided (bool): Whether the spectrum is one-sided.
+            pad (int): Padding factor.
+
+        Returns:
+            np.ndarray: Time-domain noise.
+        """
+        orig_N = N
+        N *= pad
+        delta_f = 1 / (N * delta_t)
+        frequencies = np.arange(0, N // 2 + 1) * delta_f
+
+        psd = self.spec_adv(frequencies, log=False)
+        psd[~np.isfinite(psd)] = 0
+        psd[psd < 0] = 0
+
+        amplitude = np.sqrt(psd / (2 if one_sided else 1))
+        real = np.random.normal(0, amplitude)
+        imag = np.random.normal(0, amplitude)
+        imag[0] = 0  # DC component should be real
+        if N % 2 == 0:
+            imag[-1] = 0  # Nyquist component should be real
+
+        noise_ft = real + 1j * imag
+        noise_ft = np.concatenate([noise_ft, np.conj(noise_ft[-2:0:-1])])
+
+        noise = np.real(ifft(noise_ft))
+        noise = noise[:orig_N] if pad > 1 else noise
+
+        return noise

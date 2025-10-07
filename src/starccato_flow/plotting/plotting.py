@@ -84,39 +84,39 @@ def plot_waveform_grid(
     plt.show()
     return fig, axes
 
-def plot_reconstruction(
-    original: torch.Tensor,
-    reconstructed: torch.Tensor,
-    max_value: float,
-    fname: str = None,
-) -> Tuple[plt.Figure, plt.Axes]:
-    fig, ax = plt.subplots(figsize=(15, 4))
+# def plot_reconstruction(
+#     original: torch.Tensor,
+#     reconstructed: torch.Tensor,
+#     max_value: float,
+#     fname: str = None,
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     fig, ax = plt.subplots(figsize=(15, 4))
 
-    d = [i / 4096 for i in range(0, 256)]
-    d = [value - (53 / 4096) for value in d]
+#     d = [i / 4096 for i in range(0, 256)]
+#     d = [value - (53 / 4096) for value in d]
 
-    # plot the original signal
-    y_original = original.flatten() * max_value
-    ax.plot(d, y_original, color="blue", label="Original Signal")
+#     # plot the original signal
+#     y_original = original.flatten() * max_value
+#     ax.plot(d, y_original, color="blue", label="Original Signal")
     
-    # plot the reconstructed signal
-    y_reconstructed = reconstructed.flatten() * max_value
-    ax.plot(d, y_reconstructed, color="orange", label="Decoder Reconstructed Signal")
+#     # plot the reconstructed signal
+#     y_reconstructed = reconstructed.flatten() * max_value
+#     ax.plot(d, y_reconstructed, color="orange", label="Decoder Reconstructed Signal")
 
-    ax.set_ylim(-600, 300)
-    ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
-    ax.grid(True)
-    ax.set_title("Original and Reconstructed Signals")
-    ax.set_xlabel("time (s)")
-    ax.set_ylabel("hD (cm)")
-    ax.legend()
+#     ax.set_ylim(-600, 300)
+#     ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
+#     ax.grid(True)
+#     ax.set_title("Original and Reconstructed Signals")
+#     ax.set_xlabel("time (s)")
+#     ax.set_ylabel("hD (cm)")
+#     ax.legend()
 
-    plt.tight_layout()
-    if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight")
+#     plt.tight_layout()
+#     if fname:
+#         plt.savefig(fname, dpi=300, bbox_inches="tight")
 
-    plt.show()
-    return fig, ax
+#     plt.show()
+#     return fig, ax
 
 def plot_loss(
     losses: List[float],
