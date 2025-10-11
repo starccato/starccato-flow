@@ -196,7 +196,7 @@ class Trainer:
                     num_cols=3,
                     num_rows=1,
                     fname="plots/ccsn_generated_signal_grid.svg",
-                    background="black",
+                    background="white",
                     generated=True
                 )
                 plot_latent_space_3d(

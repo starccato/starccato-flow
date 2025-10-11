@@ -157,7 +157,7 @@ class CCSNData(Dataset):
             pad=1
         ).reshape(1, -1)  # shape (1, 256)
 
-        noise = noise * 500
+        noise = noise * 1000
 
         # Mean center the noise
         noise = noise - noise.mean()

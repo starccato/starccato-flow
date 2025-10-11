@@ -1,187 +1,327 @@
 from typing import List, Optional, Tuple
-
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
-
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
-
-from sklearn.decomposition import PCA
-import seaborn as sns
-import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-from mpl_toolkits.mplot3d import Axes3D
-import numpy as np
-import torch
-
 import numpy as np
 import pandas as pd
-
 import torch
-
 from ..nn.vae import VAE
-
 from ..utils.defaults import DEVICE
-
 from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR
 
-plt.rcParams.update({
-    'font.size': 12,
-    'font.family': 'serif',
-    'font.serif': ['Times New Roman']
-})
+def set_plot_style(background: str = "white", font_family: str = "serif", font_name: str = "Times New Roman") -> None:
+    """Set consistent matplotlib plot styling.
+    
+    Args:
+        background (str): Background color, either "white" or "black"
+        font_family (str): Font family to use
+        font_name (str): Specific font name to use
+    """
+    if background == "black":
+        plt.style.use('dark_background')
+        text_color = 'white'
+        background_color = 'black'
+    else:
+        plt.style.use('default')
+        text_color = 'black'
+        background_color = 'white'
+    
+    plt.rcParams.update({
+        'axes.facecolor': background_color,
+        'figure.facecolor': background_color,
+        'savefig.facecolor': background_color,
+        'text.color': text_color,
+        'axes.labelcolor': text_color,
+        'xtick.color': text_color,
+        'ytick.color': text_color,
+        'font.family': font_family,
+        f'font.{font_family}': [font_name],
+        'font.size': 12
+    })
+
+def get_time_axis(length: int = 256) -> np.ndarray:
+    """Generate consistent time axis values.
+    
+    Args:
+        length (int): Number of time points
+    
+    Returns:
+        np.ndarray: Array of time values
+    """
+    return np.linspace(-53 / 4096, (length - 53) / 4096, length)
 
 def plot_waveform_grid(
     signals: np.ndarray,
     max_value: float,
     num_cols: int = 2,
     num_rows: int = 4,
-    fname: str = None,
+    fname: Optional[str] = None,
     generated: bool = False,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
 ) -> Tuple[plt.Figure, plt.Axes]:
-    if generated:
-        signal_colour = GENERATED_SIGNAL_COLOUR
-    else:
-        signal_colour = SIGNAL_COLOUR
+    """Plot a grid of waveform signals.
+    
+    Args:
+        signals (np.ndarray): Array of signals to plot
+        max_value (float): Maximum value for scaling
+        num_cols (int): Number of columns in grid
+        num_rows (int): Number of rows in grid
+        fname (Optional[str]): Filename to save plot
+        generated (bool): Whether signals are generated (affects color)
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        Tuple[plt.Figure, plt.Axes]: Figure and axes objects
+    """
+    # Set consistent styling
+    set_plot_style(background, font_family, font_name)
+    
+    # Set colors based on background and generated status
+    signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
+    vline_color = "white" if background == "black" else "black"
 
-    fig, axes = plt.subplots(
-        num_rows, num_cols, figsize=(10, 15)
-    )
-
+    # Create figure and axes
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 15))
     axes = axes.flatten()
 
-    # plot each signal on a separate subplot
+    # Get time axis
+    d = get_time_axis()
+
+    # Plot each signal
     for i, ax in enumerate(axes):
-        d = [i / 4096 for i in range(0, 256)]
-        d = [value - (53 / 4096) for value in d]
-        y = signals[i].flatten()
-        y = y * max_value
+        if i >= len(signals):  # Handle case where fewer signals than slots
+            ax.axis('off')
+            continue
+            
+        y = signals[i].flatten() * max_value
         ax.set_ylim(-600, 300)
         ax.plot(d, y, color=signal_colour)
-
-        ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
+        
+        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         ax.grid(True)
-
-        # remove y-axis ticks for the right-hand column
+        
+        # Handle axis labels
         if i % num_cols == num_cols - 1:
             ax.yaxis.set_ticklabels([])
-
-        # remove x-axis tick labels for all but the bottom two plots
         if i < num_cols * (num_rows - 1):
             ax.xaxis.set_ticklabels([])
 
-    # for i in range(512, 8 * 4):
-    #     fig.delaxes(axes[i])
+    # Add overall labels
+    fig.supxlabel('time (s)', fontsize=16)
+    fig.supylabel('hD (cm)', fontsize=16)
 
-    fig.supxlabel('time (s)', fontsize=32)
-    fig.supylabel('hD (cm)', fontsize=32)
+    # Finalize and save
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
+    plt.show()
+    plt.rcdefaults()  # Reset to default style
+    return fig, axes
+
+def plot_reconstruction(
+    original: torch.Tensor,
+    reconstructed: torch.Tensor,
+    max_value: float,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> Tuple[plt.Figure, plt.Axes]:
+    """Plot original and reconstructed signals for comparison.
+    
+    Args:
+        original (torch.Tensor): Original signal
+        reconstructed (torch.Tensor): Reconstructed signal
+        max_value (float): Maximum value for scaling
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        Tuple[plt.Figure, plt.Axes]: Figure and axes objects
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+
+    # Create figure and get time axis
+    fig, ax = plt.subplots(figsize=(15, 4))
+    d = get_time_axis()
+
+    # Plot signals
+    y_original = original.flatten() * max_value
+    y_reconstructed = reconstructed.flatten() * max_value
+    
+    ax.plot(d, y_original, color="deepskyblue", 
+            label="Original Signal", linewidth=2)
+    ax.plot(d, y_reconstructed, color=GENERATED_SIGNAL_COLOUR, 
+            label="Reconstructed Signal", linewidth=2)
+
+    # Style the plot
+    ax.set_ylim(-600, 300)
+    ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(axis="both", colors=vline_color, labelsize=12)
+    
+    # Style spines
+    for spine in ax.spines.values():
+        spine.set_color(vline_color)
+    
+    # Labels
+    ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
+    ax.set_ylabel("hD (cm)", fontsize=16, color=vline_color)
+    ax.legend(fontsize=12, loc='upper right', framealpha=0.0, 
+             labelcolor=vline_color)
+
+    # Add sample size note
+    n = len(y_original)
+    plt.text(
+        0.98, 0.02, f"n = {n}",
+        ha='right', va='bottom',
+        transform=ax.transAxes,
+        fontsize=12, color=vline_color,
+        alpha=0.8
+    )
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight")
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
 
     plt.show()
-    return fig, axes
-
-# def plot_reconstruction(
-#     original: torch.Tensor,
-#     reconstructed: torch.Tensor,
-#     max_value: float,
-#     fname: str = None,
-# ) -> Tuple[plt.Figure, plt.Axes]:
-#     fig, ax = plt.subplots(figsize=(15, 4))
-
-#     d = [i / 4096 for i in range(0, 256)]
-#     d = [value - (53 / 4096) for value in d]
-
-#     # plot the original signal
-#     y_original = original.flatten() * max_value
-#     ax.plot(d, y_original, color="blue", label="Original Signal")
-    
-#     # plot the reconstructed signal
-#     y_reconstructed = reconstructed.flatten() * max_value
-#     ax.plot(d, y_reconstructed, color="orange", label="Decoder Reconstructed Signal")
-
-#     ax.set_ylim(-600, 300)
-#     ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
-#     ax.grid(True)
-#     ax.set_title("Original and Reconstructed Signals")
-#     ax.set_xlabel("time (s)")
-#     ax.set_ylabel("hD (cm)")
-#     ax.legend()
-
-#     plt.tight_layout()
-#     if fname:
-#         plt.savefig(fname, dpi=300, bbox_inches="tight")
-
-#     plt.show()
-#     return fig, ax
+    plt.rcdefaults()
+    return fig, ax
 
 def plot_loss(
     losses: List[float],
-    fname: str = None,
-    axes: plt.Axes = None,
-):
+    fname: Optional[str] = None,
+    axes: Optional[plt.Axes] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Axes:
+    """Plot training loss curve.
+    
+    Args:
+        losses (List[float]): List of loss values
+        fname (Optional[str]): Filename to save plot
+        axes (Optional[plt.Axes]): Existing axes to plot on
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Axes: The plot axes
+    """
+    set_plot_style(background, font_family, font_name)
+    
     if axes is None:
         fig = plt.figure(figsize=(10, 6))
         axes = fig.gca()
-    axes.plot(losses, label="Total Training Loss)")
-    axes.set_xlabel("Epoch", size=20)
-    axes.set_ylabel("Loss", size=20)
-    # axes.set_ylim(0, 100)
-    axes.legend(fontsize=16)
+    
+    axes.plot(losses, label="Total Training Loss")
+    axes.set_xlabel("Epoch", size=16)
+    axes.set_ylabel("Loss", size=16)
+    axes.legend(fontsize=12)
     
     plt.tight_layout()
-
-    # if fname:
-    #     plt.savefig(fname)
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
-    # return axes.get_figure()
+    plt.rcdefaults()
+    return axes
 
 def plot_individual_loss(
     total_losses: List[float],
     reconstruction_losses: List[float],
     kld_losses: List[float],
-    fname: str = None,
-): 
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Figure:
+    """Plot individual components of the loss.
+    
+    Args:
+        total_losses (List[float]): Total loss values
+        reconstruction_losses (List[float]): Reconstruction loss values
+        kld_losses (List[float]): KLD loss values
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
     fig = plt.figure(figsize=(10, 6))
     axes = fig.gca()
 
-    axes.plot(total_losses, label="Total Training Loss", color='orange')
-    axes.plot(reconstruction_losses, label="Total Validation Loss", color='yellow')
-    axes.plot(kld_losses, label="Total Validation Loss", color='red')
-    axes.set_xlabel("Epoch", size=20)
-    axes.set_ylabel("Loss", size=20)
-    axes.legend(fontsize=16)
+    axes.plot(total_losses, label="Total Loss", color='orange')
+    axes.plot(reconstruction_losses, label="Reconstruction Loss", color='yellow')
+    axes.plot(kld_losses, label="KLD Loss", color='red')
+    axes.set_xlabel("Epoch", size=16)
+    axes.set_ylabel("Loss", size=16)
+    axes.legend(fontsize=12)
     
     plt.tight_layout()
-
-    # if fname:
-    #     plt.savefig(fname)
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
-    # return axes.get_figure()
+    plt.rcdefaults()
+    return fig
 
 def plot_training_validation_loss(
     losses: List[float],
     validation_losses: List[float],
-    fname: str = None,
-    axes: plt.Axes = None,
-):
+    fname: Optional[str] = None,
+    axes: Optional[plt.Axes] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Axes:
+    """Plot training and validation loss curves.
+    
+    Args:
+        losses (List[float]): Training loss values
+        validation_losses (List[float]): Validation loss values
+        fname (Optional[str]): Filename to save plot
+        axes (Optional[plt.Axes]): Existing axes to plot on
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Axes: The plot axes
+    """
+    set_plot_style(background, font_family, font_name)
+    
     if axes is None:
         fig = plt.figure(figsize=(10, 6))
         axes = fig.gca()
 
-    axes.plot(losses, label="Total Training Loss", color='orange')
-    axes.plot(validation_losses, label="Total Validation Loss", color='grey')
-    axes.set_xlabel("Epoch", size=20)
-    axes.set_ylabel("Loss", size=20)
-    axes.legend(fontsize=16)
+    axes.plot(losses, label="Training Loss", color='orange')
+    axes.plot(validation_losses, label="Validation Loss", color='grey')
+    axes.set_xlabel("Epoch", size=16)
+    axes.set_ylabel("Loss", size=16)
+    axes.legend(fontsize=12)
     
     plt.tight_layout()
-
     if fname:
-        plt.savefig(fname)
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
+    plt.rcdefaults()
+    return axes
     
     # return axes.get_figure()
 
@@ -189,68 +329,122 @@ def plot_latent_morphs(
     model: VAE, 
     signal_1: torch.Tensor,
     signal_2: torch.Tensor,
-    max_value: float, 
-    steps=10
-):
+    max_value: float,
+    steps: int = 10,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """Plot a sequence of signals showing latent space morphing between two signals.
+    
+    Args:
+        model (VAE): VAE model for encoding/decoding
+        signal_1 (torch.Tensor): Starting signal
+        signal_2 (torch.Tensor): Ending signal
+        max_value (float): Maximum value for scaling
+        steps (int): Number of interpolation steps
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        Tuple[plt.Figure, List[plt.Axes]]: Figure and list of axes objects
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    
     model.eval()
-
     with torch.no_grad():
         mean_1, _ = model.encoder(signal_1)
         mean_2, _ = model.encoder(signal_2)
+        
+        # Generate interpolated signals
+        interpolated_latents = [mean_1 * (1 - alpha) + mean_2 * alpha 
+                              for alpha in np.linspace(0, 1, steps)]
+        morphed_signals = [model.decoder(latent).cpu().detach().numpy() 
+                          for latent in interpolated_latents]
 
-
-        interpolated_latents = [mean_1 * (1 - alpha) + mean_2 * alpha for alpha in np.linspace(0, 1, steps)]
-        morphed_signals = [model.decoder(latent).cpu().detach().numpy() for latent in interpolated_latents]
-
+    # Setup figure
     num_plots = steps + 2
     fig, axes = plt.subplots(num_plots, 1, figsize=(10, 2 * num_plots))
     axes = axes.flatten()
+    
+    # Get time axis
+    d = get_time_axis()
 
-    # X-axis values (shared across all plots)
-    d_vals = [i / 4096 for i in range(0, 256)]
-    d_vals = [value - (53 / 4096) for value in d_vals]
-
-    # Plot signal_1 (blue)
+    # Plot original signal 1
     y1 = signal_1.cpu().detach().numpy().flatten() * max_value
-    axes[0].plot(d_vals, y1, color="blue")
+    axes[0].plot(d, y1, color="deepskyblue")
     axes[0].set_ylim(-600, 300)
-    axes[0].axvline(x=0, color="black", linestyle="--", alpha=0.5)
+    axes[0].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     axes[0].grid(True)
     axes[0].set_title("Original Signal 1 (Start)")
 
-    # Plot the interpolated signals (red)
+    # Plot interpolated signals
     for i, signal in enumerate(morphed_signals):
         y_interp = signal.flatten() * max_value
-        # y_interp = signal.flatten()
-        axes[i + 1].plot(d_vals, y_interp, color=GENERATED_SIGNAL_COLOUR)
+        axes[i + 1].plot(d, y_interp, color=GENERATED_SIGNAL_COLOUR)
         axes[i + 1].set_ylim(-600, 300)
-        axes[i + 1].axvline(x=0, color="black", linestyle="--", alpha=0.5)
+        axes[i + 1].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         axes[i + 1].grid(True)
         axes[i + 1].set_title(f"Interpolated Signal {i + 1}")
 
-    # Plot signal_2 (blue)
+    # Plot original signal 2
     y2 = signal_2.cpu().detach().numpy().flatten() * max_value
-    axes[-1].plot(d_vals, y2, color="blue")
+    axes[-1].plot(d, y2, color="deepskyblue")
     axes[-1].set_ylim(-600, 300)
-    axes[-1].axvline(x=0, color="black", linestyle="--", alpha=0.5)
+    axes[-1].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     axes[-1].grid(True)
     axes[-1].set_title("Original Signal 2 (End)")
 
-    # Keep all tick labels
+    # Add labels
     fig.supxlabel('time (s)', fontsize=16)
     fig.supylabel('hD (cm)', fontsize=16)
 
     plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
     plt.show()
+    plt.rcdefaults()
+    return fig, axes
 
 def plot_latent_morph_grid(
-    model,
+    model: VAE,
     signal_1: torch.Tensor,
     signal_2: torch.Tensor,
     max_value: float,
-    train_dataset,
-    steps=10
-):
+    train_dataset: torch.utils.data.Dataset,
+    steps: int = 10,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Figure:
+    """Plot a grid showing latent space morphing between two signals with 3D latent visualization.
+    
+    Args:
+        model (VAE): VAE model for encoding/decoding
+        signal_1 (torch.Tensor): Starting signal
+        signal_2 (torch.Tensor): Ending signal
+        max_value (float): Maximum value for scaling
+        train_dataset (Dataset): Dataset for latent space visualization
+        steps (int): Number of interpolation steps
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    latent_scatter_color = LATENT_SPACE_COLOUR
+    signal_color = "deepskyblue"
+    
     model.eval()
     with torch.no_grad():
         # Encode signals
@@ -266,9 +460,8 @@ def plot_latent_morph_grid(
         signal_1_np = signal_1.cpu().detach().numpy().flatten() * max_value
         signal_2_np = signal_2.cpu().detach().numpy().flatten() * max_value
 
-        # X-axis
-        d_vals = [i / 4096 for i in range(0, 256)]
-        d_vals = [d - (53 / 4096) for d in d_vals]
+        # Get time axis
+        d = get_time_axis()
 
         # Posterior means for background latent scatter
         all_means = []
@@ -283,57 +476,66 @@ def plot_latent_morph_grid(
     
     # ----- Row 1: Signals -----
     ax1 = fig.add_subplot(2, 3, 1)
-    ax1.plot(d_vals, signal_1_np, color='blue')
-    ax1.axvline(x=0, linestyle="--", color="black", alpha=0.5)
+    ax1.plot(d, signal_1_np, color=signal_color)
+    ax1.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
     ax1.set_ylim(-600, 300)
     ax1.set_title("Start Signal")
-    ax1.set_ylabel("hD (cm)", fontsize=32)
+    ax1.set_ylabel("hD (cm)", fontsize=16)
     ax1.grid(True)
 
     ax2 = fig.add_subplot(2, 3, 2)
-    ax2.plot(d_vals, signal_mid, color=GENERATED_SIGNAL_COLOUR)
-    ax2.axvline(x=0, linestyle="--", color="black", alpha=0.5)
+    ax2.plot(d, signal_mid, color=GENERATED_SIGNAL_COLOUR)
+    ax2.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
     ax2.set_ylim(-600, 300)
     ax2.set_title("Interpolated Signal")
-    ax2.set_xlabel("time (s)", fontsize=32)
+    ax2.set_xlabel("time (s)", fontsize=16)
     ax2.grid(True)
 
     ax3 = fig.add_subplot(2, 3, 3)
-    ax3.plot(d_vals, signal_2_np, color='blue')
-    ax3.axvline(x=0, linestyle="--", color="black", alpha=0.5)
+    ax3.plot(d, signal_2_np, color=signal_color)
+    ax3.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
     ax3.set_ylim(-600, 300)
     ax3.set_title("End Signal")
-    ax3.set_xlabel("time (s)")
+    ax3.set_xlabel("time (s)", fontsize=16)
     ax3.grid(True)
 
     # ----- Row 2: Latent space -----
     ax4 = fig.add_subplot(2, 3, 4, projection='3d')
-    ax4.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
-    ax4.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), color='blue', label="Start")
+    ax4.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], 
+               alpha=0.1, color=latent_scatter_color)
+    ax4.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), 
+               color=signal_color, label="Start")
     ax4.set_title("Start in Latent Space")
     ax4.set_xlabel('Latent Dim 1')
     ax4.set_ylabel('Latent Dim 2')
     ax4.set_zlabel('Latent Dim 3')
 
     ax5 = fig.add_subplot(2, 3, 5, projection='3d')
-    ax5.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
+    ax5.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], 
+               alpha=0.1, color=latent_scatter_color)
     ax5.plot(
         [mean_1[0].cpu(), mean_2[0].cpu()],
         [mean_1[1].cpu(), mean_2[1].cpu()],
         [mean_1[2].cpu(), mean_2[2].cpu()],
         color=GENERATED_SIGNAL_COLOUR, linestyle='--'
     )
-    ax5.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), color='blue', label="Start", alpha=0.5)
-    ax5.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), mean_mid[2].cpu(), color=GENERATED_SIGNAL_COLOUR, label="Midpoint")
-    ax5.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), color='blue', label="End", alpha=0.5)
+    ax5.scatter(mean_1[0].cpu(), mean_1[1].cpu(), mean_1[2].cpu(), 
+               color=signal_color, label="Start", alpha=0.5)
+    ax5.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), mean_mid[2].cpu(), 
+               color=GENERATED_SIGNAL_COLOUR, label="Midpoint")
+    ax5.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), 
+               color=signal_color, label="End", alpha=0.5)
     ax5.set_title("Latent Space Path")
     ax5.set_xlabel('Latent Dim 1')
     ax5.set_ylabel('Latent Dim 2')
     ax5.set_zlabel('Latent Dim 3')
+    ax5.legend()
 
     ax6 = fig.add_subplot(2, 3, 6, projection='3d')
-    ax6.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], alpha=0.1, color=LATENT_SPACE_COLOUR)
-    ax6.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), color='blue', label="End")
+    ax6.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], 
+               alpha=0.1, color=latent_scatter_color)
+    ax6.scatter(mean_2[0].cpu(), mean_2[1].cpu(), mean_2[2].cpu(), 
+               color=signal_color, label="End")
     ax6.set_title("End in Latent Space")
     ax6.set_xlabel('Latent Dim 1')
     ax6.set_ylabel('Latent Dim 2')
@@ -341,29 +543,62 @@ def plot_latent_morph_grid(
 
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.5)  # Add vertical space between rows
+    
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
     plt.show()
+    plt.rcdefaults()
+    return fig
 
 def animate_latent_morphs(
-    model,  # Assuming model is a VAE instance
+    model: VAE,
     signal_1: torch.Tensor,
     signal_2: torch.Tensor,
     max_value: float, 
-    train_dataset,
-    steps=10,
-    interval=200,
-    save_path=None
-):
+    train_dataset: torch.utils.data.Dataset,
+    steps: int = 10,
+    interval: int = 200,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> animation.Animation:
+    """Create an animation of latent space morphing between two signals.
+    
+    Args:
+        model (VAE): VAE model for encoding/decoding
+        signal_1 (torch.Tensor): Starting signal
+        signal_2 (torch.Tensor): Ending signal
+        max_value (float): Maximum value for scaling
+        train_dataset (Dataset): Dataset for latent space visualization
+        steps (int): Number of interpolation steps
+        interval (int): Animation interval in milliseconds
+        fname (Optional[str]): Filename to save animation
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        animation.Animation: The animation object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    signal_color = "deepskyblue"
+    
     model.eval()
-
     with torch.no_grad():
         mean_1, _ = model.encoder(signal_1)
         mean_2, _ = model.encoder(signal_2)
 
         # Forward and backward interpolation
-        forward_interpolated = [mean_1 * (1 - alpha) + mean_2 * alpha for alpha in np.linspace(0, 1, steps)]
-        backward_interpolated = [mean_2 * (1 - alpha) + mean_1 * alpha for alpha in np.linspace(0, 1, steps)]
+        forward_interpolated = [mean_1 * (1 - alpha) + mean_2 * alpha 
+                              for alpha in np.linspace(0, 1, steps)]
+        backward_interpolated = [mean_2 * (1 - alpha) + mean_1 * alpha 
+                               for alpha in np.linspace(0, 1, steps)]
         interpolated_latents = forward_interpolated + backward_interpolated
-        morphed_signals = [model.decoder(latent).cpu().detach().numpy() for latent in interpolated_latents]
+        morphed_signals = [model.decoder(latent).cpu().detach().numpy() 
+                          for latent in interpolated_latents]
 
         # Compute the posterior distribution
         all_means = []
@@ -373,35 +608,37 @@ def animate_latent_morphs(
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
 
-    fig = plt.figure(figsize=(10, 17))  # Adjust the figure size for vertical stacking
+    # Setup figure
+    fig = plt.figure(figsize=(10, 17))
 
     # Create 3D plot for latent space
-    ax_latent = fig.add_subplot(211, projection='3d')  # First plot (top) in vertical layout
-    ax_latent.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], color=LATENT_SPACE_COLOUR, alpha=0.2, label='Posterior Distribution')
-    ax_latent.scatter(mean_1[0].cpu().numpy(), mean_1[1].cpu().numpy(), mean_1[2].cpu().numpy(), color='blue', s=50, label='Signal 1')
-    ax_latent.scatter(mean_2[0].cpu().numpy(), mean_2[1].cpu().numpy(), mean_2[2].cpu().numpy(), color='green', s=50, label='Signal 2')
+    ax_latent = fig.add_subplot(211, projection='3d')
+    ax_latent.scatter(all_means[:, 0], all_means[:, 1], all_means[:, 2], 
+                     color=LATENT_SPACE_COLOUR, alpha=0.2, label='Posterior Distribution')
+    ax_latent.scatter(mean_1[0].cpu().numpy(), mean_1[1].cpu().numpy(), mean_1[2].cpu().numpy(), 
+                     color=signal_color, s=50, label='Signal 1')
+    ax_latent.scatter(mean_2[0].cpu().numpy(), mean_2[1].cpu().numpy(), mean_2[2].cpu().numpy(), 
+                     color=signal_color, s=50, label='Signal 2')
     ax_latent.plot([mean_1[0].cpu().numpy(), mean_2[0].cpu().numpy()],
                    [mean_1[1].cpu().numpy(), mean_2[1].cpu().numpy()],
-                   [mean_1[2].cpu().numpy(), mean_2[2].cpu().numpy()], color=GENERATED_SIGNAL_COLOUR, linestyle='--', label='Interpolation Path', linewidth=2)
-    moving_point, = ax_latent.plot([], [], [], 'ro', markersize=7, label='Interpolated Point')
-    # ax_latent.set_title('Latent Space Interpolation')
+                   [mean_1[2].cpu().numpy(), mean_2[2].cpu().numpy()], 
+                   color=GENERATED_SIGNAL_COLOUR, linestyle='--', 
+                   label='Interpolation Path', linewidth=2)
+    moving_point, = ax_latent.plot([], [], [], 'ro', markersize=7, 
+                                 label='Interpolated Point')
     ax_latent.set_xlabel('Latent Dim 1')
     ax_latent.set_ylabel('Latent Dim 2')
     ax_latent.set_zlabel('Latent Dim 3')
-    # ax_latent.legend()
 
     # Create plot for signal morphing
-    ax_signal = fig.add_subplot(212)  # Second plot (bottom) in vertical layout
-
-    # X-axis values (shared across all plots)
-    d_vals = [i / 4096 for i in range(0, 256)]
-    d_vals = [value - (53 / 4096) for value in d_vals]
+    ax_signal = fig.add_subplot(212)
+    d = get_time_axis()
 
     # Initialize the plot
     line, = ax_signal.plot([], [], color=GENERATED_SIGNAL_COLOUR)
-    ax_signal.set_xlim(min(d_vals), max(d_vals))
+    ax_signal.set_xlim(min(d), max(d))
     ax_signal.set_ylim(-600, 300)
-    ax_signal.axvline(x=0, color="black", linestyle="--", alpha=0.5)
+    ax_signal.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     ax_signal.grid(True)
     ax_signal.set_xlabel('time (s)', fontsize=16)
     ax_signal.set_ylabel('hD (cm)', fontsize=16)
@@ -414,21 +651,24 @@ def animate_latent_morphs(
 
     def update(frame):
         y_interp = morphed_signals[frame].flatten() * max_value
-        line.set_data(d_vals, y_interp)
-        # ax_signal.set_title(f"Interpolated Signal {frame + 1}")
+        line.set_data(d, y_interp)
 
-        # Update the moving point in the latent space
         latent_point = interpolated_latents[frame].cpu().numpy()
         moving_point.set_data(latent_point[0], latent_point[1])
         moving_point.set_3d_properties(latent_point[2])
         return line, moving_point
 
-    ani = animation.FuncAnimation(fig, update, frames=len(interpolated_latents), init_func=init, blit=True, interval=interval, repeat=True)
+    ani = animation.FuncAnimation(
+        fig, update, frames=len(interpolated_latents),
+        init_func=init, blit=True, interval=interval, repeat=True
+    )
 
-    if save_path:
-        ani.save(save_path, writer='imagemagick', fps=30)
+    if fname:
+        ani.save(fname, writer='imagemagick', fps=30)
 
     plt.show()
+    plt.rcdefaults()
+    return ani
 
 def plot_latent_morph_up_and_down(
     model,
@@ -553,75 +793,65 @@ def plot_latent_morph_up_and_down(
     plt.savefig(fname=fname, dpi=300, bbox_inches='tight', transparent=True)
 
 def plot_signal_distribution(
-    signals: np.ndarray,  # (y_length, num_signals)
-    generated: bool = True,
-    background: str = "black",
+    signals: np.ndarray,
+    generated: bool = False,
+    background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    fname: str = None
-):
-    # set figure size
-    plt.figure(figsize=(6, 6))
-
-    # Set font globally for this plot
-    plt.rcParams.update({
-        'font.family': font_family,
-        f'font.{font_family}': [font_name]
-    })
-
-    # Choose signal colour
+    fname: Optional[str] = None
+) -> plt.Figure:
+    """Plot distribution of signals with percentiles and median.
+    
+    Args:
+        signals (np.ndarray): Array of signals (y_length, num_signals)
+        generated (bool): Whether signals are generated
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        fname (Optional[str]): Filename to save plot
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    median_color = vline_color
+    text_color = vline_color
+    
+    # Set up figure
+    fig = plt.figure(figsize=(6, 6))
     distribution_color = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
 
+    # Calculate statistics
     signals_df = pd.DataFrame(signals)
     median_line = signals_df.median(axis=1)
-
-    # Transform x values
-    d = [i / 4096 for i in range(0, 256)]
-    d = [value - (53 / 4096) for value in d]
-
-    # Theme colors
-    if background == "black":
-        plt.style.use("dark_background")
-        text_color = "white"
-        median_color = "white"
-        vline_color = "white"
-        grid_color = "gray"
-        legend_facecolor = "none"
-        transparent = True
-    else:
-        plt.style.use("default")
-        text_color = "black"
-        median_color = "black"
-        vline_color = "black"
-        grid_color = "lightgray"
-        legend_facecolor = "none"
-        transparent = False
-
-    # === Percentiles with white base + overlay ===
     p2_5 = signals_df.quantile(0.025, axis=1)
     p97_5 = signals_df.quantile(0.975, axis=1)
-    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
-    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
-
     p25 = signals_df.quantile(0.25, axis=1)
     p75 = signals_df.quantile(0.75, axis=1)
+
+    # Get time axis
+    d = get_time_axis()
+
+    # Plot percentiles with white base + overlay
+    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
+    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
     plt.fill_between(d, p25, p75, color="white", alpha=0.4)
     plt.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
 
-    # === Median line ===
+    # Plot median line
     plt.plot(d, median_line.values, color=median_color,
              linestyle=(0, (1, 1)), linewidth=1.5, alpha=1.0)
 
-    # Vertical reference line
-    plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
-
-    # Labels, limits, and grid
+    # Add reference line and styling
+    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
     plt.ylim(-600, 300)
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
     plt.ylabel('hD (cm)', size=16, color=text_color)
+    plt.grid(True)
 
-    # Sample size note
+    # Add sample size note
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     plt.text(
         0.98, 0.02, f"n = {n}",
@@ -630,103 +860,157 @@ def plot_signal_distribution(
         fontsize=12, color=text_color,
         alpha=0.8
     )
-    plt.tick_params(axis='both', which='major', labelsize=12, colors=text_color)
 
-    # === Custom Legend (with true colors) ===
+    # Add legend
     legend_handles = [
-        mpatches.Patch(color=distribution_color, alpha=0.6, label="Central 95%"),
-        mpatches.Patch(color=distribution_color, alpha=1.00, label="Central 50%"),
-        mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)), linewidth=1.5, label="Median of signals")
+        mpatches.Patch(color=distribution_color, alpha=0.6, 
+                      label="Central 95%"),
+        mpatches.Patch(color=distribution_color, alpha=1.00, 
+                      label="Central 50%"),
+        mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)), 
+                     linewidth=1.5, label="Median")
     ]
-    plt.legend(handles=legend_handles,
-               facecolor="none", edgecolor=text_color, labelcolor=text_color, fontsize=12, loc = 'upper right',
-               framealpha=0.0)
+    plt.legend(handles=legend_handles, loc='upper right',
+              facecolor="none", edgecolor=text_color, 
+              labelcolor=text_color, fontsize=12, framealpha=0.0)
 
-    # Save or show
+    plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight",
-                    facecolor="none" if transparent else legend_facecolor,
-                    transparent=transparent)
-    plt.show()
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
 
+    plt.show()
     plt.rcdefaults()
+    return fig
 
 
 def plot_single_signal(
     signal: np.ndarray,
     max_value: float,
-    fname: str = None,  # Added missing comma
-):
-    # Generate x-axis values
-    d = [i / 4096 for i in range(0, 256)]
-    d = [value - (53 / 4096) for value in d]
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
+    generated: bool = False
+) -> plt.Figure:
+    """Plot a single waveform signal.
+    
+    Args:
+        signal (np.ndarray): Signal to plot
+        max_value (float): Maximum value for scaling
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        generated (bool): Whether signal is generated (affects color)
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    signal_color = GENERATED_SIGNAL_COLOUR if generated else "deepskyblue"
 
-    # Process signal for plotting
-    y = signal.flatten()
-    y = y * max_value
+    fig = plt.figure(figsize=(8, 6))
+    d = get_time_axis()
+    y = signal.flatten() * max_value
 
-    # Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(d, y, color='blue')
-    plt.axvline(x=0, color='black', linestyle='dotted', alpha=0.5)
+    plt.plot(d, y, color=signal_color)
+    plt.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     plt.ylim(-600, 300)
-    plt.xlabel('time (s)', size=20)
-    plt.ylabel('hD (cm)', size=20)
+    plt.xlabel('time (s)', size=16)
+    plt.ylabel('hD (cm)', size=16)
     plt.grid(True)
 
-    # Save or show the plot
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight")
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
+    
     plt.show()
+    plt.rcdefaults()
+    return fig
 
 def plot_gradients(
     encoder_gradients: List[float],
     decoder_gradients: List[float],
     q_gradients: List[float],
-    fname: str = None
-):
-    """Plot encoder, decoder, and Q network gradient norms on separate subplots in the same figure."""
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """Plot encoder, decoder, and Q network gradient norms.
+    
+    Args:
+        encoder_gradients (List[float]): Encoder gradient norms
+        decoder_gradients (List[float]): Decoder gradient norms
+        q_gradients (List[float]): Q network gradient norms
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        Tuple[plt.Figure, List[plt.Axes]]: Figure and list of axes
+    """
+    set_plot_style(background, font_family, font_name)
+
     fig, axes = plt.subplots(3, 1, figsize=(10, 18))
+    colors = ["deepskyblue", GENERATED_SIGNAL_COLOUR, "green"]
+    
+    # Plot gradients
+    for ax, grads, title, color in zip(
+        axes,
+        [encoder_gradients, decoder_gradients, q_gradients],
+        ["Encoder", "Decoder", "Q Network"],
+        colors
+    ):
+        ax.plot(grads, label=f'{title} Gradients', color=color)
+        ax.set_title(f'{title} Gradient Norms During Training', fontsize=14)
+        ax.set_xlabel('Training Steps', fontsize=12)
+        ax.set_ylabel('Gradient Norm', fontsize=12)
+        ax.legend(fontsize=10)
+        ax.grid(True)
 
-    # Plot encoder gradients
-    axes[0].plot(encoder_gradients, label='Encoder Gradients', color='blue')
-    axes[0].set_title('Encoder Gradient Norms During Training')
-    axes[0].set_xlabel('Training Steps')
-    axes[0].set_ylabel('Gradient Norm')
-    axes[0].legend()
-
-    # Plot decoder gradients
-    axes[1].plot(decoder_gradients, label='Decoder Gradients', color='orange')
-    axes[1].set_title('Decoder Gradient Norms During Training')
-    axes[1].set_xlabel('Training Steps')
-    axes[1].set_ylabel('Gradient Norm')
-    axes[1].legend()
-
-    # Plot Q network gradients
-    axes[2].plot(q_gradients, label='Q Gradients', color='green')
-    axes[2].set_title('Q Gradient Norms During Training')
-    axes[2].set_xlabel('Training Steps')
-    axes[2].set_ylabel('Gradient Norm')
-    axes[2].legend()
-
-    # Adjust layout
     plt.tight_layout()
-
-    # Save the figure if a filename is provided
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight")
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
 
     plt.show()
+    plt.rcdefaults()
     return fig, axes
 
-def plot_latent_space_3d(model, dataloader):
+def plot_latent_space_3d(
+    model: VAE,
+    dataloader: torch.utils.data.DataLoader,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Figure:
+    """Plot 3D visualization of the latent space.
+    
+    Args:
+        model (VAE): VAE model for encoding
+        dataloader (DataLoader): Dataloader for getting samples
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
     model.eval()
     latent_vectors = []
 
     with torch.no_grad():
         for y, d in dataloader:
-            y = y.to(DEVICE)
-            d = d.to(DEVICE)
+            y = y.to(model.DEVICE)
+            d = d.to(model.DEVICE)
             d = d.view(d.size(0), -1)
             y = y.view(y.size(0), -1)
 
@@ -734,24 +1018,38 @@ def plot_latent_space_3d(model, dataloader):
             latent_vectors.append(mean.cpu().numpy())
 
     latent_vectors = np.concatenate(latent_vectors, axis=0)
-
-    # Use the first 3 latent dimensions directly
-    latent_3d = latent_vectors[:, :3]
+    latent_3d = latent_vectors[:, :3]  # First 3 dimensions
 
     # Plot in 3D
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
 
     scatter = ax.scatter(latent_3d[:, 0], latent_3d[:, 1], latent_3d[:, 2],
-                         c='blue', s=40, alpha=0.7)
+                        color=LATENT_SPACE_COLOUR, s=40, alpha=0.7)
 
-    ax.set_title('Latent Space Representation (3D)', fontsize=20)
-    ax.set_xlabel('Latent Dimension 1')
-    ax.set_ylabel('Latent Dimension 2')
-    ax.set_zlabel('Latent Dimension 3')
+    ax.set_title('Latent Space Representation (3D)', fontsize=16)
+    ax.set_xlabel('Latent Dimension 1', fontsize=12)
+    ax.set_ylabel('Latent Dimension 2', fontsize=12)
+    ax.set_zlabel('Latent Dimension 3', fontsize=12)
     ax.grid(True)
+    
+    n = latent_vectors.shape[0]
+    plt.text(
+        0.98, 0.02, f"n = {n}",
+        ha='right', va='bottom',
+        transform=plt.gca().transAxes,
+        fontsize=12,
+        alpha=0.8
+    )
+
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
 
     plt.show()
+    plt.rcdefaults()
+    return fig
 
 
     import matplotlib.ticker as mtick
@@ -761,184 +1059,192 @@ def plot_signal_grid(
     max_value: float,
     num_cols: int = 2,
     num_rows: int = 4,
-    fname: str = None,
-    font_family: str = "sans-serif",
-    font_name: str = "Avenir",
+    fname: Optional[str] = None,
     background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
     x_y_label_on: bool = True,
-    generated: bool = False,
-):
+    generated: bool = False
+) -> plt.Figure:
+    """Plot a grid of signals.
+    
+    Args:
+        signals (np.ndarray): Array of signals to plot
+        max_value (float): Maximum value for scaling
+        num_cols (int): Number of columns in grid
+        num_rows (int): Number of rows in grid
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        x_y_label_on (bool): Whether to show x and y labels
+        generated (bool): Whether signals are generated
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    signal_color = GENERATED_SIGNAL_COLOUR if generated else "deepskyblue"
+
+    # Create figure
     fig, axes = plt.subplots(
-        num_rows, num_cols, figsize=(5.6, 2,)
+        num_rows, num_cols, figsize=(5.6 * num_cols, 2 * num_rows)
     )
-
-    # Set font globally for this plot
-    plt.rcParams.update({
-        'font.family': font_family,
-        f'font.{font_family}': [font_name]
-    })
-
-    signal_color = "red" if generated else "deepskyblue"
-
-    # Theme colors
-    if background == "black":
-        plt.style.use("dark_background")
-        text_color = "white"
-        vline_color = "white"
-        grid_color = "gray"
-        transparent = True
-    else:
-        plt.style.use("default")
-        text_color = "black"
-        vline_color = "black"
-        grid_color = "lightgray"
-        transparent = False
-
     axes = axes.flatten()
 
+    # Get time axis
+    d = get_time_axis()
+
+    # Plot each signal
     for i, ax in enumerate(axes):
-        d = [j / 4096 for j in range(256)]
-        d = [value - (53 / 4096) for value in d]
-
+        if i >= len(signals):
+            ax.axis('off')
+            continue
+            
         y = signals[i].flatten() * max_value
-        ax.set_ylim(-600, 300)
-        ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_color)
-
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-
-        # Force ticks
-        ax.set_yticks([300, 0, -300, -600])
-        ax.set_xticks([0.00])
-
-        # Format ticks to 2 decimals
-        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter("%.2f"))
-
-        ax.tick_params(axis="both", colors=text_color, labelsize=12)
-
-        # Remove y-axis ticks for right-hand columns
-        if i % num_cols != 0:
-            ax.set_yticklabels([])
-
-        # Remove x-axis ticks for all but bottom row
-        if i < num_cols * (num_rows - 1):
+        ax.grid(True)
+        ax.set_ylim(-600, 300)
+        
+        # Handle axis labels
+        ax.tick_params(axis="both", colors=vline_color, labelsize=12)
+        if not x_y_label_on:
             ax.set_xticklabels([])
-
-        # Spine colors
+            ax.set_yticklabels([])
+        
+        # Style spines
         for spine in ax.spines.values():
-            spine.set_color(text_color)
+            spine.set_color(vline_color)
+
+    # Add overall labels if requested
+    if x_y_label_on:
+        fig.supxlabel('time (s)', fontsize=16)
+        fig.supylabel('hD (cm)', fontsize=16)
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, transparent=transparent, dpi=300, bbox_inches="tight")
-
+        plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                   transparent=(background=="black"))
+    
     plt.show()
     plt.rcdefaults()
+    return fig
 
-def plot_reconstruction(
-    vae,
-    signal,
-    number_of_signals=1000,
-    max_value=None,
-    background="white",
-    distribution_color="red",
-    font_family="sans-serif",
-    font_name="Avenir",
-    fname="plots/ccsn_reconstruction.svg"
-):
+def plot_reconstruction_distribution(
+    vae: VAE,
+    signal: torch.Tensor,
+    max_value: float,
+    num_samples: int = 1000,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Figure:
+    """Plot distribution of multiple reconstructions of a single signal.
+    
+    Args:
+        vae (VAE): VAE model for generating reconstructions
+        signal (torch.Tensor): Signal to reconstruct
+        max_value (float): Maximum value for scaling
+        num_samples (int): Number of reconstructions to generate
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    vline_color = "white" if background == "black" else "black"
+    
+    # Generate reconstructions
     vae.eval()
-    signal = signal.unsqueeze(0)  # Add batch dimension if needed
-
-    # Generate multiple reconstructions using the same signal
+    signal = signal.unsqueeze(0)
     reconstructed_signals = []
+    
     with torch.no_grad():
-        for _ in range(number_of_signals):
+        for _ in range(num_samples):
             reconstruction, _, _ = vae(signal)
-            reconstructed_signals.append(reconstruction.squeeze().cpu().numpy() * max_value)
+            reconstructed_signals.append(
+                reconstruction.squeeze().cpu().numpy() * max_value
+            )
 
-    # Convert to numpy array for plotting
+    # Prepare data
     reconstructed_signals = np.array(reconstructed_signals)
-
-    # Original signal
     signal_np = signal.squeeze().cpu().numpy() * max_value
-
-    # Create a DataFrame for reconstructed signals
     reconstructed_signals_df = pd.DataFrame(reconstructed_signals.T)
+    d = get_time_axis()
 
-    # Transform x values
-    d = [i / 4096 for i in range(0, 256)]
-    d = [value - (53 / 4096) for value in d]
+    # Create figure
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.gca()
 
-    # Theme colors
-    if background == "black":
-        plt.style.use("dark_background")
-        text_color = "white"
-        median_color = "white"
-        vline_color = "white"
-        grid_color = "gray"
-        legend_facecolor = "none"
-        transparent = True
-    else:
-        plt.style.use("default")
-        text_color = "black"
-        median_color = "black"
-        vline_color = "black"
-        grid_color = "lightgray"
-        legend_facecolor = "none"
-        transparent = False
-
-    # Set up the figure
-    plt.figure(figsize=(6, 6))
-
-    # === Percentiles with white base + overlay ===
+    # Plot percentiles
     p2_5 = reconstructed_signals_df.quantile(0.025, axis=1)
     p97_5 = reconstructed_signals_df.quantile(0.975, axis=1)
-    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
-    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
-
     p25 = reconstructed_signals_df.quantile(0.25, axis=1)
     p75 = reconstructed_signals_df.quantile(0.75, axis=1)
-    plt.fill_between(d, p25, p75, color="white", alpha=0.4)
-    plt.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
 
-    # === Median line ===
-    plt.plot(d, signal_np, color=median_color, linewidth=1.5, alpha=1.0)
+    ax.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
+    ax.fill_between(d, p2_5, p97_5, color=GENERATED_SIGNAL_COLOUR, alpha=0.4)
+    ax.fill_between(d, p25, p75, color="white", alpha=0.4)
+    ax.fill_between(d, p25, p75, color=GENERATED_SIGNAL_COLOUR, alpha=0.6)
 
-    # Vertical reference line
-    plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
+    # Plot original signal
+    ax.plot(d, signal_np, color="deepskyblue", 
+            linewidth=2, alpha=0.75, zorder=3)
 
-    # Labels, limits, and grid
-    plt.ylim(-600, 300)
-    plt.xlim(min(d), max(d))
-    plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel('hD (cm)', size=16, color=text_color)
+    # Style the plot
+    ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+    ax.set_ylim(-600, 300)
+    ax.set_xlim(min(d), max(d))
+    ax.grid(True, alpha=0.3)
+    
+    # Style axes and labels
+    ax.tick_params(axis="both", colors=vline_color, labelsize=12)
+    ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
+    ax.set_ylabel("hD (cm)", fontsize=16, color=vline_color)
+    
+    # Style spines
+    for spine in ax.spines.values():
+        spine.set_color(vline_color)
 
-    # Sample size note
-    n = reconstructed_signals_df.shape[1] if reconstructed_signals_df.ndim > 1 else len(reconstructed_signals_df)
+    # Add sample size note
     plt.text(
-        0.98, 0.02, f"n = {n}",
-        ha='right', va='bottom',
-        transform=plt.gca().transAxes,
-        fontsize=12, color=text_color,
+        0.98, 0.02, f"n = {num_samples}",
+        ha="right", va="bottom",
+        transform=ax.transAxes,
+        fontsize=12, color=vline_color,
         alpha=0.8
     )
-    plt.tick_params(axis='both', which='major', labelsize=12, colors=text_color)
 
-    # === Custom Legend (with true colors) ===
+    # Add legend
     legend_handles = [
-        mpatches.Patch(color=distribution_color, alpha=0.6, label="Central 95%"),
-        mpatches.Patch(color=distribution_color, alpha=1.00, label="Central 50%"),
-        mlines.Line2D([], [], color=median_color, linewidth=1.5, label="Original Signal")
+        mpatches.Patch(color=GENERATED_SIGNAL_COLOUR, alpha=0.6, 
+                      label="Central 95%"),
+        mpatches.Patch(color=GENERATED_SIGNAL_COLOUR, alpha=1.0, 
+                      label="Central 50%"),
+        mlines.Line2D([], [], color="deepskyblue", linewidth=2, 
+                     label="Original Signal")
     ]
-    plt.legend(handles=legend_handles,
-               facecolor="none", edgecolor=text_color, labelcolor=text_color, fontsize=12, loc='upper right',
-               framealpha=0.0)
+    ax.legend(
+        handles=legend_handles,
+        loc="upper right",
+        fontsize=12,
+        facecolor="none",
+        edgecolor=vline_color,
+        labelcolor=vline_color,
+        framealpha=0.0
+    )
 
-    # Save or show
+    plt.tight_layout()
     if fname:
         plt.savefig(fname, dpi=300, bbox_inches="tight",
-                    facecolor="none" if transparent else legend_facecolor,
-                    transparent=transparent)
+                   transparent=(background=="black"))
+    
     plt.show()
-
     plt.rcdefaults()
+    return fig
