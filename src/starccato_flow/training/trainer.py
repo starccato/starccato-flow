@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List
+from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,10 +33,10 @@ class Trainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs=256,
-        lr_vae=1e-3,
-        lr_flow=1e-3,
-        checkpoint_interval=16,
+        num_epochs: int = 256,
+        lr_vae: float = 1e-3,
+        lr_flow: float = 1e-3,
+        checkpoint_interval: int = 16,
         outdir: str = "outdir",
         toy: bool = True
     ):
@@ -58,8 +58,8 @@ class Trainer:
             self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # placeholder
-            self.training_dataset = CCSNData()
-            self.validation_dataset = CCSNData()
+            self.training_dataset = CCSNData(num_epochs=self.num_epochs)
+            self.validation_dataset = CCSNData(num_epochs=self.num_epochs)
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
@@ -108,17 +108,8 @@ class Trainer:
             num_rows=4,
         )
 
-    # def _prog_dict(self, loss_g, loss_d, lr_g, lr_d):
-    #     return {
-    #         "Loss(d,g)": f"[{loss_d:.2E}, {loss_g:.2E}]",
-    #         "LR(d,g)": f"[{lr_d:.2E}, {lr_g:.2E}]",
-    #     }
-
     def train(self):
         t0 = time.time()
-
-        train_loader = self.training_dataset.get_loader(self.batch_size)
-        val_loader = self.validation_dataset.get_loader(self.batch_size)
 
         self.avg_total_losses = []
         self.avg_reproduction_losses = []
@@ -126,6 +117,14 @@ class Trainer:
         self.avg_total_losses_val = []
         self.avg_reproduction_losses_val = []
         self.avg_kld_losses_val = []
+        
+        # Initial loaders
+        train_loader = self.training_dataset.get_loader(
+            batch_size=self.batch_size
+        )
+        val_loader = self.validation_dataset.get_loader(
+            batch_size=self.batch_size
+        )
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
             self.vae.train()
@@ -148,6 +147,9 @@ class Trainer:
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
                 total_samples += signal.size(0)
+
+            # Update epoch for curriculum learning
+            train_loader.dataset.set_epoch(epoch)
 
             avg_total_loss = total_loss / total_samples
             avg_reproduction_loss = reproduction_loss / total_samples
@@ -180,6 +182,8 @@ class Trainer:
             self.avg_total_losses_val.append(avg_total_loss_val)
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
             self.avg_kld_losses_val.append(avg_kld_loss_val)
+
+            val_loader.dataset.set_epoch(epoch)
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
@@ -254,32 +258,6 @@ class Trainer:
     def save_models(self):
         torch.save(self.vae.state_dict(), self.save_fname)
         print(f"Saved VAE model to {self.save_fname}")
-
-
-# class TrainMetadata:
-#     def __init__(self):
-#         self.iter: List[int] = []
-#         self.g_loss: List[float] = []
-#         self.d_loss: List[float] = []
-#         self.g_gradient: List[float] = []
-#         self.d_gradient: List[float] = []
-
-#     def append(self, iter, g_loss, d_loss, g_gradient, d_gradient):
-#         self.iter.append(iter)
-#         self.g_loss.append(g_loss)
-#         self.d_loss.append(d_loss)
-#         self.g_gradient.append(g_gradient)
-#         self.d_gradient.append(d_gradient)
-
-#     def plot(self, fname="training_metrics.png"):
-#         fig, axes = plt.subplots(3, 1, figsize=(10, 6))
-#         plot_gradients(
-#             self.d_gradient, "tab:red", "Discriminator", axes=axes[0]
-#         )
-#         plot_gradients(self.g_gradient, "tab:blue", "Generator", axes=axes[1])
-#         plot_loss(self.g_loss, self.d_loss, axes=axes[2])
-#         plt.tight_layout()
-#         plt.savefig(fname)
 
 def _init_weights_vae(m: torch.nn.Module) -> None:
     """This function initialises the weights of the model."""

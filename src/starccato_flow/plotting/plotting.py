@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from ..nn.vae import VAE
 from ..utils.defaults import DEVICE
-from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR
+from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE
 
 def set_plot_style(background: str = "white", font_family: str = "serif", font_name: str = "Times New Roman") -> None:
     """Set consistent matplotlib plot styling.
@@ -39,7 +39,7 @@ def set_plot_style(background: str = "white", font_family: str = "serif", font_n
         'ytick.color': text_color,
         'font.family': font_family,
         f'font.{font_family}': [font_name],
-        'font.size': 12
+        'font.size': DEFAULT_FONT_SIZE
     })
 
 def get_time_axis(length: int = 256) -> np.ndarray:
@@ -466,7 +466,7 @@ def plot_latent_morph_grid(
         # Posterior means for background latent scatter
         all_means = []
         for x, _ in train_dataset:
-            x = torch.tensor(x).to(model.DEVICE)
+            x = torch.tensor(x).to(DEVICE)
             mean, _ = model.encoder(x)
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
@@ -603,7 +603,7 @@ def animate_latent_morphs(
         # Compute the posterior distribution
         all_means = []
         for x, y in train_dataset:
-            x = torch.tensor(x).to(model.DEVICE)
+            x = torch.tensor(x).to(DEVICE)
             mean, _ = model.encoder(x)
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
@@ -1009,8 +1009,8 @@ def plot_latent_space_3d(
 
     with torch.no_grad():
         for y, d in dataloader:
-            y = y.to(model.DEVICE)
-            d = d.to(model.DEVICE)
+            y = y.to(DEVICE)
+            d = d.to(DEVICE)
             d = d.view(d.size(0), -1)
             y = y.view(y.size(0), -1)
 
@@ -1034,10 +1034,12 @@ def plot_latent_space_3d(
     ax.grid(True)
     
     n = latent_vectors.shape[0]
-    plt.text(
-        0.98, 0.02, f"n = {n}",
-        ha='right', va='bottom',
-        transform=plt.gca().transAxes,
+    ax.text2D(
+        0.98, 0.02,
+        s=f"n = {n}",
+        ha='right',
+        va='bottom',
+        transform=ax.transAxes,
         fontsize=12,
         alpha=0.8
     )

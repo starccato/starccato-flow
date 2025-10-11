@@ -15,7 +15,30 @@ from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
 
 class CCSNData(Dataset):
-    def __init__(self, batch_size=BATCH_SIZE, frac=1, train=True, noise=True, indices=None, multi_param=False):
+    def __init__(
+        self,
+        batch_size: int = BATCH_SIZE,
+        num_epochs: int = 256,
+        frac: float = 1.0,
+        train: bool = True,
+        noise: bool = True,
+        snr: Optional[float] = None,
+        indices: Optional[np.ndarray] = None,
+        multi_param: bool = False
+    ):
+        """Initialize the CCSN dataset.
+        
+        Args:
+            batch_size (int): Batch size for data loading
+            frac (float): Fraction of data to use
+            train (bool): Whether this is training data
+            noise (bool): Whether to add noise
+            snr (Optional[float]): Signal-to-noise ratio if using noise
+            indices (Optional[np.ndarray]): Specific indices to use
+            multi_param (bool): Whether to use multiple parameters
+        """
+        self._current_epoch = 0
+        self.num_epochs = num_epochs
         self.parameters = pd.read_csv(PARAMETERS_CSV)
         self.signals = pd.read_csv(SIGNALS_CSV).astype("float32").T
         self.signals.index = [i for i in range(len(self.signals.index))]
@@ -157,7 +180,7 @@ class CCSNData(Dataset):
             pad=1
         ).reshape(1, -1)  # shape (1, 256)
 
-        noise = noise * 1000
+        noise = noise * 1000 * (self._current_epoch/self.num_epochs)
 
         # Mean center the noise
         noise = noise - noise.mean()
@@ -199,30 +222,86 @@ class CCSNData(Dataset):
         parameters = parameters.reshape(1, -1)
 
         if self.noise:
-            aLIGO_signal = self.add_aLIGO_noise(signal)
+            signal = self.add_aLIGO_noise(signal)
 
-        normalised_signal = self.normalise_signals(aLIGO_signal)
+        normalised_signal = self.normalise_signals(signal)
 
         return (
             torch.tensor(normalised_signal, dtype=torch.float32, device=DEVICE),
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
         )
 
-    def get_loader(self, batch_size=32) -> DataLoader:
-        return DataLoader(
-            self, batch_size=batch_size, shuffle=True, num_workers=0
-        )
-
-    def spec_adv(self, frequencies, log=False):
-        """
-        Compute the advanced LIGO power spectral density (PSD).
-
-        Parameters:
-            frequencies (np.ndarray): Array of frequencies.
-            log (bool): Whether to return the logarithm of the PSD.
+    @property
+    def current_epoch(self) -> int:
+        """Get the current epoch number.
 
         Returns:
-            np.ndarray: The PSD values for the given frequencies.
+            int: Current epoch number
+        """
+        return self._current_epoch
+
+    def set_epoch(self, epoch: int) -> None:
+        """Update the current epoch number.
+
+        Args:
+            epoch (int): New epoch number
+        """
+        self._current_epoch = epoch
+    
+    def get_loader(
+        self,
+        batch_size: Optional[int] = None,
+        shuffle: bool = True,
+        snr: Optional[float] = None
+    ) -> DataLoader:
+        """Get data loader with optional noise at specified SNR.
+        
+        Args:
+            batch_size (Optional[int]): Batch size
+            shuffle (bool): Whether to shuffle data
+            snr (Optional[float]): Signal-to-noise ratio
+            
+        Returns:
+            DataLoader: PyTorch data loader
+        """
+        if batch_size is None:
+            batch_size = self.batch_size
+            
+        # Update SNR if provided
+        if snr is not None:
+            self.snr = snr
+            # Reset noise cache for new SNR
+            self.current_noise_profile = None
+            
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=0
+        )
+
+    def generate_aligo_noise(self, length: int = 256) -> np.ndarray:
+        """Generate Advanced LIGO noise using proper PSD.
+        
+        Args:
+            length (int): Length of noise array
+        
+        Returns:
+            np.ndarray: Colored noise array
+        """
+        delta_t = 1.0 / 4096.0  # Time step (sampling rate of 4096 Hz)
+        noise = self.rnoise(length, delta_t)
+        return noise
+
+    def spec_adv(self, frequencies: np.ndarray, log: bool = False) -> np.ndarray:
+        """Compute the Advanced LIGO power spectral density (PSD).
+
+        Args:
+            frequencies (np.ndarray): Array of frequencies
+            log (bool): Whether to return the logarithm of the PSD
+
+        Returns:
+            np.ndarray: The PSD values for the given frequencies
         """
         cutoff = -109.35 + np.log(2e10)
         x = frequencies / 215
@@ -235,19 +314,17 @@ class CCSNData(Dataset):
 
         return log_psd if log else np.exp(log_psd)
 
-    def rnoise(self, N, delta_t, one_sided=True, pad=1):
-        """
-        Generate random noise in the Fourier domain based on a given spectral density.
+    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1) -> np.ndarray:
+        """Generate random noise in the Fourier domain based on aLIGO PSD.
 
-        Parameters:
-            N (int): Number of samples.
-            delta_t (float): Time step.
-            specdens (callable): Spectral density function.
-            one_sided (bool): Whether the spectrum is one-sided.
-            pad (int): Padding factor.
+        Args:
+            N (int): Number of samples
+            delta_t (float): Time step
+            one_sided (bool): Whether the spectrum is one-sided
+            pad (int): Padding factor
 
         Returns:
-            np.ndarray: Time-domain noise.
+            np.ndarray: Time-domain colored noise
         """
         orig_N = N
         N *= pad
