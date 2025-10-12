@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
@@ -201,17 +201,19 @@ def plot_reconstruction(
     return fig, ax
 
 def plot_loss(
-    losses: List[float],
+    train_losses: List[float],
+    val_losses: Optional[List[float]] = None,
     fname: Optional[str] = None,
     axes: Optional[plt.Axes] = None,
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman"
 ) -> plt.Axes:
-    """Plot training loss curve.
+    """Plot training and validation loss curves.
     
     Args:
-        losses (List[float]): List of loss values
+        train_losses (List[float]): List of training loss values
+        val_losses (Optional[List[float]]): List of validation loss values
         fname (Optional[str]): Filename to save plot
         axes (Optional[plt.Axes]): Existing axes to plot on
         background (str): Background color theme
@@ -227,10 +229,21 @@ def plot_loss(
         fig = plt.figure(figsize=(10, 6))
         axes = fig.gca()
     
-    axes.plot(losses, label="Total Training Loss")
+    # Plot training losses with a blue color scheme
+    axes.plot(train_losses, label="Training Loss", color='#3498db', linewidth=2, alpha=0.8)
+    
+    # Plot validation losses with an orange color scheme if provided
+    if val_losses is not None:
+        axes.plot(val_losses, label="Validation Loss", color='#e67e22', linewidth=2, alpha=0.8)
+    
     axes.set_xlabel("Epoch", size=16)
     axes.set_ylabel("Loss", size=16)
     axes.legend(fontsize=12)
+    axes.grid(True, alpha=0.2)
+    
+    # Add minor gridlines for better readability
+    axes.grid(True, which='minor', alpha=0.1)
+    axes.minorticks_on()
     
     plt.tight_layout()
     if fname:
@@ -244,10 +257,11 @@ def plot_individual_loss(
     reconstruction_losses: List[float],
     kld_losses: List[float],
     fname: Optional[str] = None,
+    axes: Optional[plt.Axes] = None,
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman"
-) -> plt.Figure:
+) -> Union[plt.Figure, plt.Axes]:
     """Plot individual components of the loss.
     
     Args:
@@ -255,31 +269,43 @@ def plot_individual_loss(
         reconstruction_losses (List[float]): Reconstruction loss values
         kld_losses (List[float]): KLD loss values
         fname (Optional[str]): Filename to save plot
+        axes (Optional[plt.Axes]): Existing axes to plot on
         background (str): Background color theme
         font_family (str): Font family to use
         font_name (str): Specific font name
     
     Returns:
-        plt.Figure: The figure object
+        Union[plt.Figure, plt.Axes]: The figure or axes object depending on input
     """
     set_plot_style(background, font_family, font_name)
     
-    fig = plt.figure(figsize=(10, 6))
-    axes = fig.gca()
+    if axes is None:
+        fig = plt.figure(figsize=(10, 6))
+        axes = fig.gca()
+        return_fig = True
+    else:
+        return_fig = False
 
-    axes.plot(total_losses, label="Total Loss", color='orange')
-    axes.plot(reconstruction_losses, label="Reconstruction Loss", color='yellow')
-    axes.plot(kld_losses, label="KLD Loss", color='red')
+    # Use a nice color scheme
+    axes.plot(total_losses, label="Total Loss", color='#2ecc71', linewidth=2)  # Green
+    axes.plot(reconstruction_losses, label="Reconstruction Loss", color='#3498db', linewidth=2)  # Blue
+    axes.plot(kld_losses, label="KLD Loss", color='#e74c3c', linewidth=2)  # Red
+    
     axes.set_xlabel("Epoch", size=16)
     axes.set_ylabel("Loss", size=16)
     axes.legend(fontsize=12)
+    
+    # Add grid for better readability
+    axes.grid(True, alpha=0.2)
+    axes.grid(True, which='minor', alpha=0.1)
+    axes.minorticks_on()
     
     plt.tight_layout()
     if fname:
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
     plt.rcdefaults()
-    return fig
+    return fig if return_fig else axes
 
 def plot_training_validation_loss(
     losses: List[float],

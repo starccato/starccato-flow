@@ -22,7 +22,7 @@ class CCSNData(Dataset):
         frac: float = 1.0,
         train: bool = True,
         noise: bool = True,
-        snr: Optional[float] = None,
+        curriculum: bool = True,
         indices: Optional[np.ndarray] = None,
         multi_param: bool = False
     ):
@@ -33,7 +33,7 @@ class CCSNData(Dataset):
             frac (float): Fraction of data to use
             train (bool): Whether this is training data
             noise (bool): Whether to add noise
-            snr (Optional[float]): Signal-to-noise ratio if using noise
+            curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
         """
@@ -43,6 +43,7 @@ class CCSNData(Dataset):
         self.signals = pd.read_csv(SIGNALS_CSV).astype("float32").T
         self.signals.index = [i for i in range(len(self.signals.index))]
         self.noise = noise
+        self.curriculum = curriculum
 
         assert (
             self.signals.shape[0] == self.parameters.shape[0],
@@ -180,7 +181,11 @@ class CCSNData(Dataset):
             pad=1
         ).reshape(1, -1)  # shape (1, 256)
 
-        noise = noise * 1000 * (self._current_epoch/self.num_epochs)
+        if self.curriculum:
+            # Scale noise based on current epoch for curriculum learning
+            noise = noise * 1000 * (self._current_epoch/self.num_epochs)
+        else:
+            noise = noise * 1000
 
         # Mean center the noise
         noise = noise - noise.mean()
@@ -188,7 +193,7 @@ class CCSNData(Dataset):
         signal = signal / 3.086e+22
 
         # Add noise to the signal
-        aLIGO_signal = signal + noise
+        aLIGO_signal = signal + noise 
 
         aLIGO_signal = aLIGO_signal * 3.086e+22
 
@@ -280,17 +285,22 @@ class CCSNData(Dataset):
             num_workers=0
         )
 
-    def generate_aligo_noise(self, length: int = 256) -> np.ndarray:
+    def generate_aligo_noise(self, length: int = 256, log: bool = False) -> np.ndarray:
         """Generate Advanced LIGO noise using proper PSD.
         
         Args:
             length (int): Length of noise array
-        
+            log (bool): Whether to return the logarithm of the noise
+
         Returns:
             np.ndarray: Colored noise array
         """
         delta_t = 1.0 / 4096.0  # Time step (sampling rate of 4096 Hz)
         noise = self.rnoise(length, delta_t)
+
+        if log:
+            noise = np.log1p(noise)
+
         return noise
 
     def spec_adv(self, frequencies: np.ndarray, log: bool = False) -> np.ndarray:

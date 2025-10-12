@@ -38,6 +38,8 @@ class Trainer:
         lr_flow: float = 1e-3,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
+        noise: bool = True,
+        curriculum: bool = True,
         toy: bool = True
     ):
         self.y_length = y_length
@@ -51,6 +53,8 @@ class Trainer:
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
         self.toy = toy
+        self.noise = noise
+        self.curriculum = curriculum
 
         # selector between toy and real data
         if self.toy:
@@ -58,8 +62,8 @@ class Trainer:
             self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # placeholder
-            self.training_dataset = CCSNData(num_epochs=self.num_epochs)
-            self.validation_dataset = CCSNData(num_epochs=self.num_epochs)
+            self.training_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
+            self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
