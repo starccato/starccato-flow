@@ -205,9 +205,9 @@ class CCSNData(Dataset):
         #     noise = noise * scaling
 
         if self.curriculum:
-            noise = noise * (1 + self._current_epoch / self.num_epochs) * 500
+            noise = noise * (1 + self._current_epoch / self.num_epochs) * 300
         else: 
-            noise = noise * 500
+            noise = noise * 300
             
         # Add scaled noise to signal
         aLIGO_signal = signal + noise 
@@ -302,139 +302,58 @@ class CCSNData(Dataset):
             num_workers=0
         )
 
-    def generate_aligo_noise(self, length: int = 256, log: bool = False) -> np.ndarray:
-        """Generate Advanced LIGO noise using proper PSD.
+    def AdvLIGOPsd(self, f):
+        x = f / 215
+        x2 = x * x
+        psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
+        # The upper bound is 2e10 times the minimum value
+        cutoff = np.nanmin(psd) * 2e10
+        psd[(psd > cutoff) | np.isnan(psd)] = cutoff
+        return psd
         
-        Args:
-            length (int): Length of noise array
-            log (bool): Whether to return the logarithm of the noise
-
-        Returns:
-            np.ndarray: Colored noise array
-        """
-        delta_t = 1.0 / 4096.0  # Time step (sampling rate of 4096 Hz)
-        noise = self.rnoise(length, delta_t)
-
-        if log:
-            noise = np.log1p(noise)
-
-        return noise
-
-    def spec_adv(self, frequencies: np.ndarray, log: bool = False) -> np.ndarray:
-        """Compute the Advanced LIGO power spectral density (PSD).
-        
-        Exact Python implementation of the R LALAdvLIGOPsd() function.
-        The minimum is at 228.3 Hz and is bounded above at 2e10 times minimum value.
-
-        Args:
-            frequencies (np.ndarray): Array of frequencies
-            log (bool): Whether to return the logarithm of the PSD
-
-        Returns:
-            np.ndarray: The PSD values for the given frequencies
-        """
-        # Upper bound cutoff calculation (same as R implementation)
-        cutoff = -109.35 + np.log(2e10)
-        
-        # Normalize frequencies by 215 Hz
-        x = frequencies / 215
-        x2 = x * x  # More efficient than x**2
-        
-        # Handle zero frequency case
-        mask_zero = (x == 0)
-        x = np.where(mask_zero, 1e-10, x)  # Replace zeros with small value
-        x2 = np.where(mask_zero, 1e-20, x2)
-        
-        # Calculate components safely
-        seismic = x**(-4.14)
-        thermal = 5/x2
-        quantum = 111*(1-x2+0.5*x2*x2)/(1+0.5*x2)
-        
-        # Calculate log PSD with better numerical stability
-        with np.errstate(divide='ignore', invalid='ignore'):
-            log_psd = np.log(1e-49) + np.log(seismic - thermal + quantum)
-        
-        # Apply cutoff and handle invalid values
-        log_psd = np.where(mask_zero, cutoff, log_psd)  # Set zero freq to cutoff
-        log_psd = np.where((log_psd > cutoff) | (~np.isfinite(log_psd)), cutoff, log_psd)
-        
-        # Return either log or exponential form (matching R behavior)
-        return log_psd if log else np.exp(log_psd)
 
     def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1) -> np.ndarray:
-        """Generate random noise in the Fourier domain based on aLIGO PSD.
-        
-        Exact Python implementation of the R rnoise() function.
-
-        Args:
-            N (int): Number of samples
-            delta_t (float): Time step
-            one_sided (bool): Whether to use one-sided spectrum (like R implementation)
-            pad (int): Padding factor for better frequency resolution
-
-        Returns:
-            np.ndarray: Time-domain colored noise with proper scaling
-        """
-        # Input validation (matching R implementation)
         if pad < 1 or int(pad) != pad:
             raise ValueError("pad must be an integer >= 1")
-            
+
         orig_N = N
         N *= pad
-        
-        # Setup frequency domain (matching R implementation)
         is_even = (N % 2 == 0)
-        half_N = N//2 if is_even else (N-1)//2
+        half_N = N // 2 if is_even else (N - 1) // 2
         delta_f = 1 / (N * delta_t)
         fourier_freq = np.arange(half_N + 1) * delta_f
-        
-        # Setup kappa and lambda factors (exactly as in R)
-        kappa = np.zeros(half_N + 1)
-        kappa[1:] = 1
+
+        # kappa & lambda as in R
+        kappa = np.concatenate(([0], np.ones(half_N)))
         if is_even:
             kappa[-1] = 0
-            
-        lambda_factors = np.ones(half_N + 1)
-        if one_sided:
-            lambda_factors[1:-1] = 2
-            if not is_even:
-                lambda_factors[-1] = 2
-        
-        # Generate random noise in Fourier domain with proper scaling
-        psd = self.spec_adv(fourier_freq, log=False)
-        
-        # Handle improper PSD values (matching R behavior)
+        lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
+
+        psd = self.AdvLIGOPsd(fourier_freq)
         psd[~np.isfinite(psd)] = 0
         psd[psd < 0] = 0
-        
-        # Calculate standard deviations with proper scaling
+
         if one_sided:
             sd_vec = np.sqrt(psd / ((1 + kappa) * lambda_factors))
         else:
             sd_vec = np.sqrt(psd / (1 + kappa))
-            
-        # Generate Fourier coefficients with correct scaling
-        scale = np.sqrt(N / delta_t)  # Matches R implementation scaling
+
         a = np.random.normal(0, sd_vec)
         b = np.random.normal(0, sd_vec) * kappa
-        
-        # Build complex Fourier transform (matching R implementation)
+        scale = np.sqrt(N / delta_t)
         real = scale * a
-        imag = -scale * b  # Note the negative sign as in R implementation
-        
-        # Create full Fourier transform
-        real_full = np.concatenate([real, real[1:-1][::-1] if is_even else real[1:][::-1]])
-        imag_full = np.concatenate([imag, -imag[1:-1][::-1] if is_even else -imag[1:][::-1]])
+        imag = -scale * b
+
+        # Mirror properly
+        mirror_idx = np.where(kappa > 0)[0]
+        real_full = np.concatenate([real, real[mirror_idx[::-1]]])
+        imag_full = np.concatenate([imag, -imag[mirror_idx[::-1]]])
+
         noise_ft = real_full + 1j * imag_full
-        
-        # Transform to time domain with proper normalization
-        noise = np.real(ifft(noise_ft)) / N  # Division by N matches R normalization
-        
-        # Handle padding exactly as in R implementation
+        noise = np.real(ifft(noise_ft)) / N
+
         if pad > 1:
-            start = np.random.randint(0, orig_N * (pad-1))
+            start = np.random.randint(0, orig_N * (pad - 1))
             noise = noise[start:start + orig_N]
-            
-        return noise
 
         return noise
