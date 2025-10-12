@@ -37,6 +37,7 @@ class CCSNData(Dataset):
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
         """
+        self.batch_size = batch_size
         self._current_epoch = 0
         self.num_epochs = num_epochs
         self.parameters = pd.read_csv(PARAMETERS_CSV)
@@ -76,12 +77,12 @@ class CCSNData(Dataset):
         # self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
 
         # Equal frequency binning for beta1_IC_b
-        if "beta1_IC_b" in parameter_set:
-            self.parameters['beta1_IC_b'] = pd.qcut(
-                self.parameters['beta1_IC_b'], q=3, labels=False
-            )
-            beta_bins = pd.get_dummies(self.parameters['beta1_IC_b'], prefix="beta_bin")
-            self.parameters = pd.concat([self.parameters.drop(columns=["beta1_IC_b"]), beta_bins], axis=1)
+        # if "beta1_IC_b" in parameter_set:
+        #     self.parameters['beta1_IC_b'] = pd.qcut(
+        #         self.parameters['beta1_IC_b'], q=3, labels=False
+        #     )
+        #     beta_bins = pd.get_dummies(self.parameters['beta1_IC_b'], prefix="beta_bin")
+        #     self.parameters = pd.concat([self.parameters.drop(columns=["beta1_IC_b"]), beta_bins], axis=1)
 
         if multi_param:
             # one hot encode A(km)
@@ -119,10 +120,6 @@ class CCSNData(Dataset):
                 self.parameters = self.parameters.iloc[indices]
                 self.indices = indices
 
-        self.batch_size = batch_size
-        self.mean = self.signals.mean()
-        self.std = np.std(self.signals, axis=None)
-        self.scaling_factor = 5
         self.max_strain = abs(self.signals).max()
         self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
 
