@@ -13,6 +13,7 @@ from ..plotting.plotting import plot_waveform_grid, plot_signal_grid, plot_laten
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
+from ..nn.vae_parameter import VAE_PARAMETER
 from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
@@ -40,7 +41,8 @@ class Trainer:
         outdir: str = "outdir",
         noise: bool = True,
         curriculum: bool = True,
-        toy: bool = True
+        toy: bool = True,
+        vae_parameter_test: bool = False
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -55,6 +57,7 @@ class Trainer:
         self.toy = toy
         self.noise = noise
         self.curriculum = curriculum
+        self.vae_parameter_test = vae_parameter_test
 
         # selector between toy and real data
         if self.toy:
@@ -71,10 +74,16 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup networks
-        self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-        self.vae.apply(_init_weights_vae)
-        self.flow = FLOW(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-        self.flow.apply(_init_weights_flow)
+
+        if self.vae_parameter_test:
+            self.vae = VAE_PARAMETER(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length, param_dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
+            self.vae.apply(_init_weights_vae)
+        else:
+            self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+            self.vae.apply(_init_weights_vae)
+            
+        # self.flow = FLOW(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        # self.flow.apply(_init_weights_flow)
 
         # setup optimisers
         self.optimizerVAE = optim.Adam(
@@ -88,11 +97,15 @@ class Trainer:
 
         # self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
 
-    def loss_function(x, x_hat, mean, log_var):
+    def loss_function(self, y, y_hat, x, x_hat, mean, log_var):
         # sse loss
-        reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum')
-        reproduction_loss *= 1 * x.shape[1]
-        
+        if self.vae_parameter_test:
+            reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum')
+            reproduction_loss *= 1 * x.shape[1]  # scale this up to match kld loss
+        else:
+            reproduction_loss = nn.functional.mse_loss(y_hat, y, reduction='sum')
+            reproduction_loss *= 1 * y.shape[1]
+
         # KL Divergence loss
         kld_loss = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
 
@@ -143,7 +156,7 @@ class Trainer:
 
                 self.optimizerVAE.zero_grad()
                 recon, mean, log_var = self.vae(signal)
-                loss, rec_loss, kld = Trainer.loss_function(signal, recon, mean, log_var)
+                loss, rec_loss, kld = self.loss_function(signal, recon, params, recon, mean, log_var)
                 loss.backward()
                 self.optimizerVAE.step()
 
@@ -174,7 +187,7 @@ class Trainer:
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
                     recon, mean, log_var = self.vae(val_signal)
-                    v_loss, v_rec_loss, v_kld = Trainer.loss_function(val_signal, recon, mean, log_var)
+                    v_loss, v_rec_loss, v_kld = self.loss_function(val_signal, recon, val_params, recon, mean, log_var)
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
                     val_kld_loss += v_kld.item()
