@@ -7,7 +7,9 @@ import numpy as np
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
+import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
+
 
 from ..plotting.plotting import plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
 
@@ -42,7 +44,8 @@ class Trainer:
         noise: bool = True,
         curriculum: bool = True,
         toy: bool = True,
-        vae_parameter_test: bool = False
+        vae_parameter_test: bool = False,
+        max_grad_norm: float = 1.0  # Maximum gradient norm for clipping
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -58,6 +61,7 @@ class Trainer:
         self.noise = noise
         self.curriculum = curriculum
         self.vae_parameter_test = vae_parameter_test
+        self.max_grad_norm = max_grad_norm
 
         # selector between toy and real data
         if self.toy:
@@ -85,9 +89,14 @@ class Trainer:
         # self.flow = FLOW(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
         # self.flow.apply(_init_weights_flow)
 
-        # setup optimisers
-        self.optimizerVAE = optim.Adam(
-            self.vae.parameters(), lr=self.lr_vae
+        # Setup optimizer and scheduler
+        self.optimizerVAE = optim.Adam(self.vae.parameters(), lr=self.lr_vae)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizerVAE,
+            mode='min',
+            factor=0.5,
+            patience=10,
+            min_lr=1e-6
         )
         # self.optimizerFlow = optim.Adam(
         #     self.flow.parameters(), lr=self.lr_flow
@@ -95,23 +104,47 @@ class Trainer:
 
         self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
 
-        # self.train_metadata: TrainMetadata = TrainMetadata() # what is this?
-
-    def loss_function(self, y, y_hat, x, x_hat, mean, log_var):
+    def loss_function_vae(self, y, y_hat, mean, log_var):
         # sse loss
-        if self.vae_parameter_test:
-            reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum')
-            reproduction_loss *= 1 * x.shape[1]  # scale this up to match kld loss
-        else:
-            reproduction_loss = nn.functional.mse_loss(y_hat, y, reduction='sum')
-            reproduction_loss *= 1 * y.shape[1]
+        reproduction_loss = nn.functional.mse_loss(y_hat, y, reduction='sum')
+        reproduction_loss *= 1 * y.shape[1]
 
         # KL Divergence loss
+        kld_beta = 10
         kld_loss = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
+        kld_loss = kld_loss * kld_beta
 
         # total loss
         total_loss = reproduction_loss + kld_loss
 
+        return total_loss, reproduction_loss, kld_loss
+    
+    def loss_function_vae_parameter(self, x, x_hat, mean, log_var):
+        """VAE loss function optimized for parameter prediction.
+        
+        Args:
+            x: Target parameters
+            x_hat: Predicted parameters
+            mean: Mean of latent distribution
+            log_var: Log variance of latent distribution
+        """
+        # Use balanced weighting factors
+        param_beta = 3000.0   # Parameter reconstruction weight
+        kld_beta = 0.1     # Increased KL weight to prevent collapse
+        
+        # Compute losses normalized by batch size
+        batch_size = x.size(0)
+        param_dim = x.size(1)
+        
+        # MSE loss normalized by batch size and parameter dimension
+        reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum') / (batch_size * param_dim)
+        reproduction_loss *= param_beta
+        
+        # KL Divergence loss normalized by batch size and latent dimension
+        kld_loss = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
+        kld_loss *= kld_beta
+
+        total_loss = reproduction_loss + kld_loss
         return total_loss, reproduction_loss, kld_loss
 
     @property
@@ -156,14 +189,23 @@ class Trainer:
 
                 self.optimizerVAE.zero_grad()
                 recon, mean, log_var = self.vae(signal)
-                loss, rec_loss, kld = self.loss_function(signal, recon, params, recon, mean, log_var)
+                if self.vae_parameter_test:
+                    loss, rec_loss, kld = self.loss_function_vae_parameter(params, recon, mean, log_var)
+                else:
+                    loss, rec_loss, kld = self.loss_function_vae(signal, recon, mean, log_var)
+                
+                # Backward pass with gradient clipping
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
                 self.optimizerVAE.step()
 
                 total_loss += loss.item()
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
                 total_samples += signal.size(0)
+
+            # print(params)
+            # print(recon)
 
             # Update epoch for curriculum learning
             train_loader.dataset.set_epoch(epoch)
@@ -187,7 +229,10 @@ class Trainer:
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
                     recon, mean, log_var = self.vae(val_signal)
-                    v_loss, v_rec_loss, v_kld = self.loss_function(val_signal, recon, val_params, recon, mean, log_var)
+                    if self.vae_parameter_test:
+                        v_loss, v_rec_loss, v_kld = self.loss_function_vae_parameter(val_params, recon, mean, log_var)
+                    else:
+                        v_loss, v_rec_loss, v_kld = self.loss_function_vae(val_signal, recon, mean, log_var)
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
                     val_kld_loss += v_kld.item()
@@ -201,6 +246,9 @@ class Trainer:
             self.avg_kld_losses_val.append(avg_kld_loss_val)
 
             val_loader.dataset.set_epoch(epoch)
+            
+            # Step the learning rate scheduler
+            self.scheduler.step(avg_total_loss_val)
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
@@ -211,15 +259,18 @@ class Trainer:
                     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
                 print(f"Generated signals shape: {generated_signals.shape}")
                 # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-                plot_signal_grid(
-                    signals=generated_signals,
-                    max_value=self.training_dataset.max_strain,
-                    num_cols=3,
-                    num_rows=1,
-                    fname="plots/ccsn_generated_signal_grid.svg",
-                    background="white",
-                    generated=True
-                )
+                if self.vae_parameter_test:
+                    print("Parameter values:", generated_signals)
+                else:
+                    plot_signal_grid(
+                        signals=generated_signals,
+                        max_value=self.training_dataset.max_strain,
+                        num_cols=3,
+                        num_rows=1,
+                        fname="plots/ccsn_generated_signal_grid.svg",
+                        background="white",
+                        generated=True
+                    )
                 plot_latent_space_3d(
                     model=self.vae,
                     dataloader=train_loader
@@ -231,7 +282,7 @@ class Trainer:
         # Optionally: plot final results or save model
         self.save_models()
 
-    def plot_generated_signal_distribution(self, background, font_family, font_name, fname):
+    def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
         number_of_signals = 10000
         noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
 
@@ -277,16 +328,19 @@ class Trainer:
         print(f"Saved VAE model to {self.save_fname}")
 
 def _init_weights_vae(m: torch.nn.Module) -> None:
-    """This function initialises the weights of the model."""
-    if type(m) == torch.nn.Conv1d or type(m) == torch.nn.ConvTranspose1d:
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
-    if type(m) == torch.nn.BatchNorm1d:
-        torch.nn.init.normal_(m.weight, 1.0, 0.02)
-        torch.nn.init.zeros_(m.bias)
-    if type(m) == torch.nn.Linear:
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
-        if m.bias is not None:
-            torch.nn.init.zeros_(m.bias)
+    """Initialize weights with Xavier/Glorot initialization for better gradient flow."""
+    if isinstance(m, nn.Linear):
+        if hasattr(m, 'weight') and m.weight is not None:
+            # Use Xavier uniform initialization for better gradient flow
+            nn.init.xavier_uniform_(m.weight, gain=1.0)
+        if hasattr(m, 'bias') and m.bias is not None:
+            # Initialize biases to small positive values for better gradient flow
+            nn.init.constant_(m.bias, 0.01)
+    elif isinstance(m, nn.BatchNorm1d):
+        if hasattr(m, 'weight') and m.weight is not None:
+            nn.init.constant_(m.weight, 1.0)
+        if hasattr(m, 'bias') and m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
 
 ### TODO: alter this for flows
 def _init_weights_flow(m: torch.nn.Module) -> None:

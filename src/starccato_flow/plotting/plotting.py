@@ -208,7 +208,7 @@ def plot_loss(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman"
-) -> plt.Axes:
+):
     """Plot training and validation loss curves.
     
     Args:
@@ -250,7 +250,6 @@ def plot_loss(
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
     plt.rcdefaults()
-    return axes
 
 def plot_individual_loss(
     total_losses: List[float],
@@ -1169,7 +1168,7 @@ def plot_reconstruction_distribution(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman"
-) -> plt.Figure:
+):
     """Plot distribution of multiple reconstructions of a single signal.
     
     Args:
@@ -1275,4 +1274,3 @@ def plot_reconstruction_distribution(
     
     plt.show()
     plt.rcdefaults()
-    return fig

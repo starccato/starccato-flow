@@ -51,15 +51,21 @@ class CCSNData(Dataset):
             "Signals and parameters must have the same number of rows (the number of signals)",
         )
 
+        # Sample a fraction of the data if requested
         if frac < 1:
             init_shape = self.signals.shape
             n_signals = int(frac * self.signals.shape[0])
-            # keep n_signals random signals columns
-            self.signals = self.signals.sample(n=n_signals, axis=0)
-            self.parameters = self.parameters.iloc[self.signals.index, :]
+            
+            # Use the same random indices for both signals and parameters
+            random_indices = np.random.choice(self.signals.shape[0], n_signals, replace=False)
+            self.signals = self.signals.iloc[random_indices]
+            self.parameters = self.parameters.iloc[random_indices]
+            
+            print(f"Sampled {n_signals} signals out of {init_shape[0]}")
         
-        # remove unusual parameters and corresponding signals
+        # Remove unusual parameters and corresponding signals
         keep_idx = self.parameters["beta1_IC_b"] > 0
+        # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         self.parameters = self.parameters[keep_idx]
 
         # parameter_set = ["beta1_IC_b", "A(km)", "EOS"]
@@ -93,11 +99,20 @@ class CCSNData(Dataset):
             eos = pd.get_dummies(self.parameters["EOS"], prefix="EOS")
             self.parameters = pd.concat([self.parameters.drop(columns=["EOS"]), eos], axis=1)
 
+        # Keep track of original indices
+        signal_indices = np.where(keep_idx)[0]
         self.signals = self.signals[keep_idx]
         self.signals = self.signals.values.T
 
+        # print(f"Processing {self.signals.shape[1]} signals")
+        # print(f"Parameters shape: {self.parameters.shape}")
+        assert self.signals.shape[1] == len(self.parameters), "Signal and parameter counts don't match!"
+
         ### flatten signals and take last 256 timestamps
         temp_data = np.empty(shape=(256, 0)).astype("float32")
+
+        # Store original signal indices for verification
+        self.original_indices = []
 
         for i in range(0, self.signals.shape[1]):
             signal = self.signals[:, i]
@@ -107,8 +122,12 @@ class CCSNData(Dataset):
             temp_data = np.insert(
                 temp_data, temp_data.shape[1], cut_signal, axis=1
             )
+            self.original_indices.append(signal_indices[i])
 
         self.signals = temp_data
+        
+        # Verify alignment
+        assert self.signals.shape[1] == len(self.parameters), "Signal and parameter counts don't match after processing!"
 
         if indices is not None:
             if train:
@@ -231,6 +250,15 @@ class CCSNData(Dataset):
     
     def get_indices(self):
         return self.indices
+
+    def verify_alignment(self):
+        """Verify that signals and parameters are properly aligned."""
+        print("\nVerifying data alignment:")
+        print(f"Number of signals: {self.signals.shape[1]}")
+        print(f"Number of parameter sets: {len(self.parameters)}")
+        print(f"Parameter columns: {self.parameters.columns.tolist()}")
+        print(f"First few parameter values:\n{self.parameters.head()}")
+        return True
 
     def __getitem__(self, idx):
         signal = self.signals[:, idx]
