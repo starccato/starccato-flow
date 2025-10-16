@@ -110,7 +110,7 @@ class Trainer:
         reproduction_loss *= 1 * y.shape[1]
 
         # KL Divergence loss
-        kld_beta = 10
+        kld_beta = 1
         kld_loss = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
         kld_loss = kld_loss * kld_beta
 
@@ -183,12 +183,13 @@ class Trainer:
             kld_loss = 0
             total_samples = 0
 
-            for batch_idx, (signal, params) in enumerate(train_loader):
+            for batch_idx, (signal, noisy_signal, params) in enumerate(train_loader):
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
+                noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
 
                 self.optimizerVAE.zero_grad()
-                recon, mean, log_var = self.vae(signal)
+                recon, mean, log_var = self.vae(noisy_signal)
                 if self.vae_parameter_test:
                     loss, rec_loss, kld = self.loss_function_vae_parameter(params, recon, mean, log_var)
                 else:
@@ -225,7 +226,7 @@ class Trainer:
             val_kld_loss = 0
             val_samples = 0
             with torch.no_grad():
-                for val_signal, val_params in val_loader:
+                for val_signal, val_noisy_signal, val_params in val_loader:
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
                     recon, mean, log_var = self.vae(val_signal)

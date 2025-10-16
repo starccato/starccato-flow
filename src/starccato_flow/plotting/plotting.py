@@ -1033,7 +1033,7 @@ def plot_latent_space_3d(
     latent_vectors = []
 
     with torch.no_grad():
-        for y, d in dataloader:
+        for y, y_noisy, d in dataloader:
             y = y.to(DEVICE)
             d = d.to(DEVICE)
             d = d.view(d.size(0), -1)

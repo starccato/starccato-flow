@@ -269,12 +269,16 @@ class CCSNData(Dataset):
         parameters = parameters.reshape(1, -1)
 
         if self.noise:
-            signal = self.add_aLIGO_noise(signal)
+            noisy_signal = self.add_aLIGO_noise(signal)
+        else: 
+            noisy_signal = signal
 
         normalised_signal = self.normalise_signals(signal)
+        normalised_noisy_signal = self.normalise_signals(noisy_signal)
 
         return (
             torch.tensor(normalised_signal, dtype=torch.float32, device=DEVICE),
+            torch.tensor(normalised_noisy_signal, dtype=torch.float32, device=DEVICE),
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
         )
 
