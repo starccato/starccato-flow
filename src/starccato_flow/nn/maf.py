@@ -33,47 +33,53 @@ class MADE(nn.Module):
         self.natural_ordering = natural_ordering
         self.create_masks()
 
+class MADE(nn.Module):
+    def __init__(self, input_dim, hidden_dims=[512,512], num_outputs_per_dim=2, natural_ordering=True):
+        super().__init__()
+        self.input_dim = input_dim
+        self.hidden_dims = hidden_dims
+        self.num_outputs_per_dim = num_outputs_per_dim
+        
+        # Create network layers
+        hs = [input_dim] + hidden_dims + [input_dim * num_outputs_per_dim]
+        self.net = nn.ModuleList([MaskedLinear(hs[i], hs[i+1]) for i in range(len(hs)-1)])
+        self.natural_ordering = natural_ordering
+        self.create_masks()
+
     def create_masks(self):
-        D = self.input_dim
-        # degrees for layers
-        rng = np.random.RandomState()
-        if self.natural_ordering:
-            degrees = [np.arange(1, D+1)]
-        else:
-            degrees = [rng.permutation(np.arange(1, D+1))]
-        # hidden layer degrees sampled uniformly from {1..D-1}
-        for layer_size in [m.out_features for m in self.net[:-1]]:
-            if layer_size == D:
-                # this is only for input->hidden mapping sizes; but we only need degrees per unit, not per feature count here
-                pass
-        # Build degrees per layer
+        rng = np.random.RandomState(0)
+        
+        # Calculate degrees for each layer
         L = len(self.net)
         degrees = []
-        # input layer degrees: 1..D
-        degrees.append(np.arange(1, D+1))
-        # hidden layers: sample in [1, D-1]
-        for l in range(1, L):
-            out_size = self.net[l-1].out_features
-            # number of hidden units for degree array: for masking we need degree per hidden unit
-            # we'll sample degrees uniformly in [1, D-1]
-            if l < L-1:  # hidden layers
-                degrees.append(rng.randint(1, D, size=out_size))
-            else:
-                # output layer: degrees should be in 1..D (we'll repeat per output)
-                degrees.append(np.arange(1, D+1).repeat(self.num_outputs_per_dim))
-
-        # create masks: mask[i,j] = 1 if deg(out unit) >= deg(in unit)
+        
+        # Input layer degrees
+        degrees.append(np.arange(1, self.input_dim + 1))
+        
+        # Hidden layer degrees
+        for i in range(L - 1):
+            min_prev_degree = min(degrees[-1])
+            max_prev_degree = max(degrees[-1])
+            layer_degrees = rng.randint(min_prev_degree, max_prev_degree + 1, 
+                                      size=self.hidden_dims[i])
+            degrees.append(layer_degrees)
+        
+        # Output layer degrees
+        degrees.append(np.arange(1, self.input_dim + 1).repeat(self.num_outputs_per_dim))
+        
+        # Create masks
         masks = []
         for l in range(L):
             in_degrees = degrees[l]
             out_degrees = degrees[l+1]
-            # if shapes mismatch (out_degrees repeats) make sure shapes align
             mask = (out_degrees[:, None] >= in_degrees[None, :]).astype(np.float32)
-            masks.append(torch.from_numpy(mask))
-
-        # assign masks to MaskedLinear layers
-        for m, mask in zip(self.net, masks):
-            m.set_mask(mask)
+            mask = torch.from_numpy(mask)
+            masks.append(mask)
+            
+        # Set the masks in all MaskedLinear layers
+        layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
+        for l, m in zip(layers, masks):
+            l.set_mask(m)
 
     def forward(self, x):
         h = x
@@ -138,7 +144,7 @@ class MaskedAutoregressiveFlow(nn.Module):
     def __init__(self, dim, n_layers=5, hidden_dims=[512,512], permute=True):
         super().__init__()
         self.layers = nn.ModuleList([MAFLayer(dim, hidden_dims=hidden_dims, permute=permute) for _ in range(n_layers)])
-        # base distribution is standard normal
+        # base distribution is standard normal, we can adjust to our VAE and train at the same time.
         self.register_buffer('base_mu', torch.zeros(dim))
         self.register_buffer('base_var', torch.ones(dim))
 
