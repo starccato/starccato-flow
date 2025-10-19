@@ -25,7 +25,7 @@ class CCSNData(Dataset):
         noise: bool = True,
         curriculum: bool = True,
         indices: Optional[np.ndarray] = None,
-        multi_param: bool = False
+        multi_param: bool = True
     ):
         """Initialize the CCSN dataset.
         
@@ -69,11 +69,11 @@ class CCSNData(Dataset):
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         self.parameters = self.parameters[keep_idx]
 
-        # parameter_set = ["beta1_IC_b", "A(km)", "EOS"]
+        parameter_set = ["beta1_IC_b", "A(km)", "EOS"]
         # parameter_set = ["beta1_IC_b"]
 
         if multi_param:
-            parameter_set = ["beta1_IC_b", "A(km)", "EOS"]
+            parameter_set = ["beta1_IC_b", "A(km)"]
         else: 
             parameter_set = ["beta1_IC_b"]
 
@@ -97,8 +97,8 @@ class CCSNData(Dataset):
             self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
 
             # one hot encode EOS
-            eos = pd.get_dummies(self.parameters["EOS"], prefix="EOS")
-            self.parameters = pd.concat([self.parameters.drop(columns=["EOS"]), eos], axis=1)
+            # eos = pd.get_dummies(self.parameters["EOS"], prefix="EOS")
+            # self.parameters = pd.concat([self.parameters.drop(columns=["EOS"]), eos], axis=1)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]

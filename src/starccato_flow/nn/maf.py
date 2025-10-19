@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+from starccato_flow.utils.defaults import DEVICE
+
 class MaskedLinear(nn.Linear):
     """
     A masked linear layer ensures that each neuron can only depend on certain input dimensions, enforcing the autoregressive property. It turns a normal MLP into an autoregressive network.
@@ -18,20 +20,6 @@ class MaskedLinear(nn.Linear):
     def forward(self, x):
         # weight matrix multiplication acts as a mask
         return F.linear(x, self.weight * self.mask, self.bias)
-
-class MADE(nn.Module):
-    """
-    Simple MADE producing output of size output_dim per input dimension.
-    We'll output 2 values per input dim: mu and log_scale (a).
-    """
-    def __init__(self, input_dim, hidden_dims=[512,512], num_outputs_per_dim=2, natural_ordering=True):
-        super().__init__()
-        self.input_dim = input_dim
-        self.num_outputs_per_dim = num_outputs_per_dim
-        hs = [input_dim] + hidden_dims + [input_dim * num_outputs_per_dim]
-        self.net = nn.ModuleList([MaskedLinear(hs[i], hs[i+1]) for i in range(len(hs)-1)])
-        self.natural_ordering = natural_ordering
-        self.create_masks()
 
 class MADE(nn.Module):
     def __init__(self, input_dim, hidden_dims=[512,512], num_outputs_per_dim=2, natural_ordering=True):
@@ -112,7 +100,7 @@ class MAFLayer(nn.Module):
         mu = params[..., 0]
         log_a = params[..., 1]  # log scale 'a'
         # Stability: clamp log_a
-        log_a = torch.clamp(log_a, min=-10.0, max=10.0)
+        log_a = torch.clamp(log_a, min=-3.0, max=3.0)
         z = (x - mu) * torch.exp(-log_a)
         # log det jacobian: -sum a
         log_det = -torch.sum(log_a, dim=1)
@@ -134,36 +122,39 @@ class MAFLayer(nn.Module):
             params = self.autoreg(x)  # note: MADE uses masked connections so outputs for dims > i may be computed but they don't depend on future x
             mu = params[:, i, 0]
             log_a = params[:, i, 1]
-            log_a = torch.clamp(log_a, min=-10.0, max=10.0)
+            log_a = torch.clamp(log_a, min=-3.0, max=3.0)
             x[:, i] = mu + torch.exp(log_a) * z[:, i]
         if self.permute:
             x = x[:, self.inv_perm]
         return x
 
 class MaskedAutoregressiveFlow(nn.Module):
-    def __init__(self, dim, n_layers=5, hidden_dims=[512,512], permute=True):
+    def __init__(self, dim, n_layers=5, hidden_dims=[4,4]):
         super().__init__()
-        self.layers = nn.ModuleList([MAFLayer(dim, hidden_dims=hidden_dims, permute=permute) for _ in range(n_layers)])
-        # base distribution is standard normal, we can adjust to our VAE and train at the same time.
+        self.layers = nn.ModuleList()
+        for i in range(n_layers):
+            # Alternate permutation: True for even layers, False for odd layers
+            use_permute = (i % 2 == 0)
+            self.layers.append(MAFLayer(dim, hidden_dims=hidden_dims, permute=use_permute))
+
+        # base distribution: standard normal
         self.register_buffer('base_mu', torch.zeros(dim))
         self.register_buffer('base_var', torch.ones(dim))
 
     def forward(self, x):
-        # x -> z and accumulate log_det
         log_det_total = 0.0
         z = x
         for layer in self.layers:
             z, log_det = layer(z)
-            log_det_total = log_det_total + log_det
-        # log p_x = log p_z + log_det_total
+            log_det_total += log_det
+        # log p_x = log p_z + log_det
         log_pz = -0.5 * torch.sum(z**2 + torch.log(2*torch.pi*torch.ones_like(z)), dim=1)
         log_px = log_pz + log_det_total
         return z, log_px
 
-    def sample(self, num_samples, device='cpu'):
+    def sample(self, num_samples, device=DEVICE):
         z = torch.randn(num_samples, self.base_mu.shape[0], device=device)
         x = z
-        # inverse: apply inverses in reverse order
         for layer in reversed(self.layers):
             x = layer.inverse(x)
         return x

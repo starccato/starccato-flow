@@ -72,6 +72,9 @@ class Trainer:
             self.training_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
             self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
 
+        self.training_dataset.verify_alignment()
+        self.validation_dataset.verify_alignment()
+
         self.checkpoint_interval = checkpoint_interval # what is this?
 
         os.makedirs(outdir, exist_ok=True)
@@ -169,10 +172,10 @@ class Trainer:
         self.avg_kld_losses_val = []
         
         # Initial loaders
-        train_loader = self.training_dataset.get_loader(
+        self.train_loader = self.training_dataset.get_loader(
             batch_size=self.batch_size
         )
-        val_loader = self.validation_dataset.get_loader(
+        self.val_loader = self.validation_dataset.get_loader(
             batch_size=self.batch_size
         )
 
