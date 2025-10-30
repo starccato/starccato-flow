@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from starccato_flow.utils.defaults import DEVICE, BATCH_SIZE
 
 def train_flow(epochs=50, batch_size=BATCH_SIZE, lr=1e-3):
-    flow = MaskedAutoregressiveFlow(n_layers=10, dim=2, hidden_dims=[8, 8]).to(DEVICE)
+    flow = MaskedAutoregressiveFlow(n_layers=100, dim=2, hidden_dims=[8, 8]).to(DEVICE)
     opt = torch.optim.Adam(flow.parameters(), lr=lr)
 
     # Generate 2D "two moons" dataset

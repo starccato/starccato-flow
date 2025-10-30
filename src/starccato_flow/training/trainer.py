@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
+from torch.utils.data import SubsetRandomSampler, DataLoader
 import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
@@ -37,6 +38,7 @@ class Trainer:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
+        validation_split: float = 0.1,
         lr_vae: float = 1e-3,
         lr_flow: float = 1e-3,
         checkpoint_interval: int = 16,
@@ -53,6 +55,7 @@ class Trainer:
         self.seed = seed
         self.batch_size = batch_size
         self.num_epochs = num_epochs
+        self.validation_split = validation_split
         self.lr_vae = lr_vae
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
@@ -66,14 +69,32 @@ class Trainer:
         # selector between toy and real data
         if self.toy:
             self.training_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
-            self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
+            # self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # placeholder
             self.training_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
-            self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
+            # self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
 
+        # Use the same underlying dataset object with disjoint samplers
+        # (alternatively, you could create a separate instance with identical preprocessing)
+        self.validation_dataset = self.training_dataset
+    
         self.training_dataset.verify_alignment()
         self.validation_dataset.verify_alignment()
+
+        dataset_size = self.training_dataset.__len__()
+        indices = list(range(dataset_size))
+        split = int(np.floor(self.validation_split * dataset_size))
+        # Deterministic split
+        rng = np.random.RandomState(self.seed)
+        rng.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
+
+        self.training_sampler = SubsetRandomSampler(train_indices)
+        self.validation_sampler = SubsetRandomSampler(val_indices)
+
+        self.train_loader = DataLoader(self.training_dataset, batch_size=self.batch_size, sampler=self.training_sampler)
+        self.val_loader = DataLoader(self.validation_dataset, batch_size=self.batch_size, sampler=self.validation_sampler)
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
@@ -170,14 +191,6 @@ class Trainer:
         self.avg_total_losses_val = []
         self.avg_reproduction_losses_val = []
         self.avg_kld_losses_val = []
-        
-        # Initial loaders
-        self.train_loader = self.training_dataset.get_loader(
-            batch_size=self.batch_size
-        )
-        self.val_loader = self.validation_dataset.get_loader(
-            batch_size=self.batch_size
-        )
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
             self.vae.train()
@@ -186,7 +199,7 @@ class Trainer:
             kld_loss = 0
             total_samples = 0
 
-            for batch_idx, (signal, noisy_signal, params) in enumerate(train_loader):
+            for batch_idx, (signal, noisy_signal, params) in enumerate(self.train_loader):
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
@@ -212,7 +225,7 @@ class Trainer:
             # print(recon)
 
             # Update epoch for curriculum learning
-            train_loader.dataset.set_epoch(epoch)
+            self.train_loader.dataset.set_epoch(epoch)
 
             avg_total_loss = total_loss / total_samples
             avg_reproduction_loss = reproduction_loss / total_samples
@@ -229,10 +242,12 @@ class Trainer:
             val_kld_loss = 0
             val_samples = 0
             with torch.no_grad():
-                for val_signal, val_noisy_signal, val_params in val_loader:
+                for val_signal, val_noisy_signal, val_params in self.val_loader:
+                    # Match training: evaluate VAE on noisy inputs for a fair comparison
+                    val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-                    recon, mean, log_var = self.vae(val_signal)
+                    recon, mean, log_var = self.vae(val_noisy_signal)
                     if self.vae_parameter_test:
                         v_loss, v_rec_loss, v_kld = self.loss_function_vae_parameter(val_params, recon, mean, log_var)
                     else:
@@ -249,7 +264,8 @@ class Trainer:
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
             self.avg_kld_losses_val.append(avg_kld_loss_val)
 
-            val_loader.dataset.set_epoch(epoch)
+            # Do not advance validation epoch-driven curriculum; keep it stable across epochs
+            # self.val_loader.dataset.set_epoch(epoch)
             
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
@@ -277,7 +293,7 @@ class Trainer:
                     )
                 plot_latent_space_3d(
                     model=self.vae,
-                    dataloader=train_loader
+                    dataloader=self.train_loader
                 )
                 
 
