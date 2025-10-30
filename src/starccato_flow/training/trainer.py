@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
 
-from ..plotting.plotting import plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
+from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -89,10 +89,6 @@ class Trainer:
         rng = np.random.RandomState(self.seed)
         rng.shuffle(indices)
         train_indices, val_indices = indices[split:], indices[:split]
-
-        print(f"Total dataset size: {dataset_size}")
-        print(f"Training dataset size: {len(train_indices)}")
-        print(f"Validation dataset size: {len(val_indices)}")
 
         self.training_sampler = SubsetRandomSampler(train_indices)
         self.validation_sampler = SubsetRandomSampler(val_indices)
@@ -335,8 +331,8 @@ class Trainer:
     def plot_reconstruction_distribution(self, index, num_samples, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
         val_idx = self.validation_sampler.indices[index]
         signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
-        plot_signal_distribution(
-            model=self.vae,
+        plot_reconstruction_distribution(
+            vae=self.vae,
             signal=noisy_signal,
             max_value=self.val_loader.dataset.max_strain,
             num_samples=num_samples,
