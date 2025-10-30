@@ -90,11 +90,18 @@ class Trainer:
         rng.shuffle(indices)
         train_indices, val_indices = indices[split:], indices[:split]
 
+        print(f"Total dataset size: {dataset_size}")
+        print(f"Training dataset size: {len(train_indices)}")
+        print(f"Validation dataset size: {len(val_indices)}")
+
         self.training_sampler = SubsetRandomSampler(train_indices)
         self.validation_sampler = SubsetRandomSampler(val_indices)
 
         self.train_loader = DataLoader(self.training_dataset, batch_size=self.batch_size, sampler=self.training_sampler)
         self.val_loader = DataLoader(self.validation_dataset, batch_size=self.batch_size, sampler=self.validation_sampler)
+
+        print(f"Training samples: {len(train_indices)}")
+        print(f"Validation samples: {len(val_indices)}")
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
@@ -324,6 +331,21 @@ class Trainer:
             generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
 
         plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
+
+    def plot_reconstruction_distribution(self, index, num_samples, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
+        val_idx = self.validation_sampler.indices[index]
+        signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
+        plot_signal_distribution(
+            model=self.vae,
+            signal=noisy_signal,
+            max_value=self.val_loader.dataset.max_strain,
+            num_samples=num_samples,
+            generated=False,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            fname=fname
+        )
 
     def display_results(self):
         # Plot training and validation losses
