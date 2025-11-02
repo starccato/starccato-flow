@@ -336,7 +336,6 @@ class Trainer:
             signal=noisy_signal,
             max_value=self.val_loader.dataset.max_strain,
             num_samples=num_samples,
-            generated=False,
             background=background,
             font_family=font_family,
             font_name=font_name,

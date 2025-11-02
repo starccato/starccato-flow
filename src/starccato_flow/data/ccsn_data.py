@@ -69,7 +69,7 @@ class CCSNData(Dataset):
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         self.parameters = self.parameters[keep_idx]
 
-        parameter_set = ["beta1_IC_b", "A(km)", "EOS"]
+        parameter_set = ["beta1_IC_b", "A(km)"]
         # parameter_set = ["beta1_IC_b"]
 
         if multi_param:
@@ -91,10 +91,10 @@ class CCSNData(Dataset):
         #     beta_bins = pd.get_dummies(self.parameters['beta1_IC_b'], prefix="beta_bin")
         #     self.parameters = pd.concat([self.parameters.drop(columns=["beta1_IC_b"]), beta_bins], axis=1)
 
-        if multi_param:
-            # one hot encode A(km)
-            akm = pd.get_dummies(self.parameters["A(km)"], prefix="A")
-            self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
+        # if multi_param:
+            # # one hot encode A(km)
+            # akm = pd.get_dummies(self.parameters["A(km)"], prefix="A")
+            # self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
 
             # one hot encode EOS
             # eos = pd.get_dummies(self.parameters["EOS"], prefix="EOS")
