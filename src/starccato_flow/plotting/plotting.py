@@ -1161,7 +1161,8 @@ def plot_signal_grid(
 
 def plot_reconstruction_distribution(
     vae: VAE,
-    signal: torch.Tensor,
+    noisy_signal: torch.Tensor,
+    true_signal: torch.Tensor,
     max_value: float,
     num_samples: int = 1000,
     fname: Optional[str] = None,
@@ -1189,19 +1190,20 @@ def plot_reconstruction_distribution(
     
     # Generate reconstructions
     vae.eval()
-    signal = signal.unsqueeze(0)
+    noisy_signal = noisy_signal.unsqueeze(0)
     reconstructed_signals = []
     
     with torch.no_grad():
         for _ in range(num_samples):
-            reconstruction, _, _ = vae(signal)
+            reconstruction, _, _ = vae(noisy_signal)
             reconstructed_signals.append(
                 reconstruction.squeeze().cpu().numpy() * max_value
             )
 
     # Prepare data
     reconstructed_signals = np.array(reconstructed_signals)
-    signal_np = signal.squeeze().cpu().numpy() * max_value
+    true_signal_np = true_signal.squeeze().cpu().numpy() * max_value
+    noisy_signal_np = noisy_signal.squeeze().cpu().numpy() * max_value
     reconstructed_signals_df = pd.DataFrame(reconstructed_signals.T)
     d = get_time_axis()
 
@@ -1221,8 +1223,11 @@ def plot_reconstruction_distribution(
     ax.fill_between(d, p25, p75, color=GENERATED_SIGNAL_COLOUR, alpha=0.6)
 
     # Plot original signal
-    ax.plot(d, signal_np, color="deepskyblue", 
-            linewidth=2, alpha=0.75, zorder=3)
+    ax.plot(d, true_signal_np, color="deepskyblue", 
+            linewidth=1, alpha=0.75, zorder=3)
+    # Plot noisy signal
+    ax.plot(d, noisy_signal_np, color="deepskyblue", 
+            linewidth=1, alpha=0.5, zorder=4)
 
     # Style the plot
     ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
