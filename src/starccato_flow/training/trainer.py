@@ -344,7 +344,6 @@ class Trainer:
 
     def display_results(self):
         # Plot training and validation losses
-        fig, axes = plt.subplots(3, 1, figsize=(10, 12))
         plot_individual_loss(
             self.avg_total_losses, self.avg_reproduction_losses, self.avg_kld_losses
         )
@@ -352,8 +351,6 @@ class Trainer:
             self.avg_total_losses_val, self.avg_reproduction_losses_val, self.avg_kld_losses_val
         )
         plot_loss(self.avg_total_losses, self.avg_total_losses_val)
-        plt.tight_layout()
-        plt.show()
         
 
     @property

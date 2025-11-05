@@ -1223,7 +1223,7 @@ def plot_reconstruction_distribution(
     ax.fill_between(d, p25, p75, color=GENERATED_SIGNAL_COLOUR, alpha=0.6)
 
     # Plot original signal
-    ax.plot(d, true_signal_np, color="deepskyblue", 
+    ax.plot(d, true_signal_np, color="black", 
             linewidth=1, alpha=0.75, zorder=3)
     # Plot noisy signal
     ax.plot(d, noisy_signal_np, color="deepskyblue", 

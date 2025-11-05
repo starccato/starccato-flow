@@ -73,7 +73,7 @@ class CCSNData(Dataset):
         # parameter_set = ["beta1_IC_b"]
 
         if multi_param:
-            parameter_set = ["beta1_IC_b", "A(km)"]
+            parameter_set = ["beta1_IC_b", "A(km)", "Ye_c_b", "omega_0(rad|s)"]
         else: 
             parameter_set = ["beta1_IC_b"]
 
