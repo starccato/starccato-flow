@@ -11,6 +11,12 @@ import torch
 from ..nn.vae import VAE
 from ..utils.defaults import DEVICE
 from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE
+import corner
+from nflows.distributions.normal import StandardNormal
+from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
+from nflows.flows import Flow
+
+import math
 
 def set_plot_style(background: str = "white", font_family: str = "serif", font_name: str = "Times New Roman") -> None:
     """Set consistent matplotlib plot styling.
@@ -1279,3 +1285,90 @@ def plot_reconstruction_distribution(
     
     plt.show()
     plt.rcdefaults()
+
+
+def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params):
+    """Plot corner plot of parameter posterior distribution.
+    
+    Args:
+        noisy_signal (torch.Tensor): Noisy input signal
+        params (torch.Tensor): True parameter values
+        fname (Optional[str]): Filename to save plot
+    """
+    vae.eval()
+    flow.eval()
+
+    with torch.no_grad():
+        noisy_signal = noisy_signal.to(DEVICE).float()
+        if noisy_signal.dim() == 2:
+            noisy_signal = noisy_signal.unsqueeze(0)
+        
+        _, mean, log_var = vae(noisy_signal)
+
+        # Sample from flow conditioned on z
+        num_draws = 1000
+
+        context = mean.view(1, -1)
+        samples = flow.sample(num_samples=num_draws, context=context)
+        samples = samples.reshape(num_draws, -1)  # -> [num_draws, 2]
+
+        samples_cpu = samples.detach().cpu()
+        samples_cpu[:, [0, 2, 3]] = torch.exp(samples_cpu[:, [0, 2, 3]])  # Transform back to positive space
+        samples_cpu = samples_cpu.numpy()
+        true_params = params.detach().cpu() if torch.is_tensor(params) else params
+        true_params = true_params.flatten()  # Flatten to [2] from [1, 2]
+        true_params[1] = torch.log(true_params[1] + 1e-8)  # log-transform
+        
+        print("True params:", true_params)
+
+    plt.rcParams['figure.facecolor'] = 'none' # Transparent figure background
+    plt.rcParams['axes.facecolor'] = 'black' # Black subplot backgrounds
+    plt.rcParams['savefig.facecolor'] = 'none' # Also transparent when saving
+    plt.rcParams['text.color'] = 'white'
+    plt.rcParams['axes.labelcolor'] = 'white'
+    plt.rcParams['xtick.color'] = 'white'
+    plt.rcParams['ytick.color'] = 'white'
+
+    print(true_params.detach().cpu().numpy())
+
+    figure = corner.corner(
+        samples_cpu,
+        labels=[
+            r"$\beta_{IC}^b$",
+            r"$log(A)$",
+            r"$ye_{b,c}$",
+            r"$\omega_0$"
+        ],
+        range=[(0, 0.25), (0, math.log(10000)), (0, 0.3), (0, 16)],
+        truths=true_params[:4].numpy(),
+        truth_color=SIGNAL_COLOUR,
+        show_titles=True,
+        title_quantiles=[0.16, 0.5, 0.84],  # ← ADD THIS LINE
+        title_fmt='.4f',
+        bins=100,
+        smooth=3,
+        color=GENERATED_SIGNAL_COLOUR,
+        hist_kwargs={'density': False, 'alpha': 1.0},
+        levels=(0.68, 0.95),
+        fill_contours=True,
+        plot_datapoints=False
+    )
+
+    # Fill hist patches
+    for ax in figure.get_axes():
+        for patch in ax.patches:
+            patch.set_facecolor("white")
+            patch.set_alpha(1.0)
+
+    # **Make axis lines white**
+    for ax in figure.get_axes():
+        for spine in ax.spines.values():
+            spine.set_edgecolor('white')
+
+    # Transparent canvas
+    figure.patch.set_alpha(1.0)
+
+    figure.subplots_adjust(hspace=0.0, wspace=0.0)  # adjust spacing
+    
+    # plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
+    plt.show()

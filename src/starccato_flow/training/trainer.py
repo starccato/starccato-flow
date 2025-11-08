@@ -3,6 +3,7 @@ import time
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
+import math
 import numpy as np
 import torch
 from torch import nn, optim
@@ -12,15 +13,20 @@ import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
 
-from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution
+from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
 from ..nn.vae_parameter import VAE_PARAMETER
-from ..nn.flow import FLOW
+# from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
 from ..data.ccsn_data import CCSNData
+from ..data.ccsn_snr_data import CCSNSNRData
+
+from nflows.distributions.normal import StandardNormal
+from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
+from nflows.flows import Flow
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -37,7 +43,7 @@ class Trainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs: int = 256,
+        num_epochs: int = 16,
         validation_split: float = 0.1,
         lr_vae: float = 1e-3,
         lr_flow: float = 1e-3,
@@ -47,7 +53,8 @@ class Trainer:
         curriculum: bool = True,
         toy: bool = True,
         vae_parameter_test: bool = False,
-        max_grad_norm: float = 1.0  # Maximum gradient norm for clipping
+        max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
+        snr: bool = False
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -65,6 +72,7 @@ class Trainer:
         self.curriculum = curriculum
         self.vae_parameter_test = vae_parameter_test
         self.max_grad_norm = max_grad_norm
+        self.snr = snr
 
         # selector between toy and real data
         if self.toy:
@@ -72,6 +80,9 @@ class Trainer:
             # self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # placeholder
+            # if self.snr:
+                # print("Using SNR-based dataset")
+                # self.training_dataset = CCSNDataSNR(num_epochs=self.num_epochs, noise=self.no
             self.training_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
             # self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
 
@@ -113,8 +124,6 @@ class Trainer:
             self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
             self.vae.apply(_init_weights_vae)
             
-        # self.flow = FLOW(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-        # self.flow.apply(_init_weights_flow)
 
         # Setup optimizer and scheduler
         self.optimizerVAE = optim.Adam(self.vae.parameters(), lr=self.lr_vae)
@@ -125,9 +134,6 @@ class Trainer:
             patience=10,
             min_lr=1e-6
         )
-        # self.optimizerFlow = optim.Adam(
-        #     self.flow.parameters(), lr=self.lr_flow
-        # )
 
         self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
 
@@ -305,6 +311,101 @@ class Trainer:
         # Optionally: plot final results or save model
         self.save_models()
 
+        # train flows
+        self.flow = self.train_npe_with_vae(num_epochs=50, batch_size=32, lr=5e-4)
+
+
+    def train_npe_with_vae(self, num_epochs=100, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
+        """
+        Train a MaskedAutoregressiveFlow to estimate p(params | latent)
+        """
+        self.vae.eval()  # freeze VAE
+        param_dim = 4
+
+        num_layers = 10
+
+        # model starts here
+        base_dist = StandardNormal(shape=[param_dim])
+
+        # composite transform
+        transforms = []
+        for i in range(num_layers):
+            if i % 2 == 0:
+                transforms.append(ReversePermutation(features=param_dim))
+            transforms.append(
+                MaskedAffineAutoregressiveTransform(
+                    features=param_dim,
+                    hidden_features=128,
+                    context_features=Z_DIM,
+                )
+            )
+
+        transform = CompositeTransform(transforms)
+
+        # create flow on CPU first, in float32
+        flow = Flow(transform, base_dist)
+
+        # move to device explicitly, MPS requires float32
+        flow = flow.to(DEVICE, dtype=torch.float32)
+
+        # model ends here
+
+        optimizer = optim.Adam(flow.parameters(), lr=lr)
+
+        # ccsn_loader = DataLoader(
+        #     CCSNData(noise=True, curriculum=False),
+        #     batch_size=batch_size,
+        #     shuffle=True,
+        #     drop_last=True,
+        # )
+
+        for epoch in range(num_epochs):
+            total_loss = 0.0
+
+            for batch_idx, (signal, noisy_signal, params) in enumerate(self.train_loader):
+                signal = signal.to(DEVICE).float()
+                noisy_signal = noisy_signal.to(DEVICE).float()
+                params = params.to(DEVICE).float()
+                # take only the first param
+                # params = params[:, :, 0:1]
+                params = torch.log(params + 1e-8)  # log-transform
+                # params = params[:, :, 0]
+
+                # Encode signal into latent space
+                with torch.no_grad():
+                    _, mean, log_var = self.vae(noisy_signal)
+                    mean = mean.view(mean.size(0), -1)
+                    log_var = log_var.view(log_var.size(0), -1)
+                    # don't sample from latent, use mean only due to stable training
+                    # z_latent = vae.reparameterization(mean, log_var)
+                    # z_latent = z_latent.view(z_latent.size(0), -1)
+
+
+                # p(params | z)
+                params = params.view(params.size(0), -1) 
+
+                optimizer.zero_grad(set_to_none=True)
+
+                log_prob = flow.log_prob(params, context=mean) # this conditions the flow on the latent variable z
+                loss = -log_prob.mean()
+
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+            
+            # validation step can be added here if needed
+
+            print(f"Epoch [{epoch+1}/{num_epochs}] | Flow NLL: {total_loss / len(self.train_loader):.4f}")
+
+        return flow
+    
+    def plot_corner(self, index=0):
+        val_idx = self.validation_sampler.indices[index]
+        signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
+        plot_corner(self.vae, self.flow, signal, noisy_signal, params)
+
+
     def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
         number_of_signals = 10000
         noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
@@ -375,19 +476,6 @@ def _init_weights_vae(m: torch.nn.Module) -> None:
             nn.init.constant_(m.weight, 1.0)
         if hasattr(m, 'bias') and m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
-
-### TODO: alter this for flows
-def _init_weights_flow(m: torch.nn.Module) -> None:
-    """This function initialises the weights of the model."""
-    if type(m) == torch.nn.Conv1d or type(m) == torch.nn.ConvTranspose1d:
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
-    if type(m) == torch.nn.BatchNorm1d:
-        torch.nn.init.normal_(m.weight, 1.0, 0.02)
-        torch.nn.init.zeros_(m.bias)
-    if type(m) == torch.nn.Linear:
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
-        if m.bias is not None:
-            torch.nn.init.zeros_(m.bias)
 
 def train(**kwargs):
     trainer = Trainer(**kwargs)

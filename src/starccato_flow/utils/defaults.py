@@ -16,6 +16,8 @@ Z_DIM = 8
 
 BATCH_SIZE = 32
 
+SAMPLING_RATE = 1/4096
+
 def get_device() -> torch.device:
     try:
         if torch.cuda.is_available():
