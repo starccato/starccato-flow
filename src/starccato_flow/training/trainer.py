@@ -43,7 +43,7 @@ class Trainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs: int = 16,
+        num_epochs: int = 256,
         validation_split: float = 0.1,
         lr_vae: float = 1e-3,
         lr_flow: float = 1e-3,
@@ -152,34 +152,6 @@ class Trainer:
 
         return total_loss, reproduction_loss, kld_loss
     
-    def loss_function_vae_parameter(self, x, x_hat, mean, log_var):
-        """VAE loss function optimized for parameter prediction.
-        
-        Args:
-            x: Target parameters
-            x_hat: Predicted parameters
-            mean: Mean of latent distribution
-            log_var: Log variance of latent distribution
-        """
-        # Use balanced weighting factors
-        param_beta = 3000.0   # Parameter reconstruction weight
-        kld_beta = 0.1     # Increased KL weight to prevent collapse
-        
-        # Compute losses normalized by batch size
-        batch_size = x.size(0)
-        param_dim = x.size(1)
-        
-        # MSE loss normalized by batch size and parameter dimension
-        reproduction_loss = nn.functional.mse_loss(x_hat, x, reduction='sum') / (batch_size * param_dim)
-        reproduction_loss *= param_beta
-        
-        # KL Divergence loss normalized by batch size and latent dimension
-        kld_loss = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
-        kld_loss *= kld_beta
-
-        total_loss = reproduction_loss + kld_loss
-        return total_loss, reproduction_loss, kld_loss
-
     @property
     def plt_kwgs(self):
         return dict(
@@ -208,17 +180,14 @@ class Trainer:
             kld_loss = 0
             total_samples = 0
 
-            for batch_idx, (signal, noisy_signal, params) in enumerate(self.train_loader):
+            for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
 
                 self.optimizerVAE.zero_grad()
                 recon, mean, log_var = self.vae(noisy_signal)
-                if self.vae_parameter_test:
-                    loss, rec_loss, kld = self.loss_function_vae_parameter(params, recon, mean, log_var)
-                else:
-                    loss, rec_loss, kld = self.loss_function_vae(signal, recon, mean, log_var)
+                loss, rec_loss, kld = self.loss_function_vae(signal, recon, mean, log_var)
                 
                 # Backward pass with gradient clipping
                 loss.backward()
@@ -229,9 +198,6 @@ class Trainer:
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
                 total_samples += signal.size(0)
-
-            # print(params)
-            # print(recon)
 
             # Update epoch for curriculum learning
             self.train_loader.dataset.set_epoch(epoch)
@@ -257,14 +223,12 @@ class Trainer:
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
                     recon, mean, log_var = self.vae(val_noisy_signal)
-                    if self.vae_parameter_test:
-                        v_loss, v_rec_loss, v_kld = self.loss_function_vae_parameter(val_params, recon, mean, log_var)
-                    else:
-                        v_loss, v_rec_loss, v_kld = self.loss_function_vae(val_signal, recon, mean, log_var)
+                    v_loss, v_rec_loss, v_kld = self.loss_function_vae(val_signal, recon, mean, log_var)
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
                     val_kld_loss += v_kld.item()
                     val_samples += val_signal.size(0)
+            
             avg_total_loss_val = val_total_loss / val_samples
             avg_reproduction_loss_val = val_reproduction_loss / val_samples
             avg_kld_loss_val = val_kld_loss / val_samples
@@ -273,8 +237,8 @@ class Trainer:
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
             self.avg_kld_losses_val.append(avg_kld_loss_val)
 
-            # Do not advance validation epoch-driven curriculum; keep it stable across epochs
-            # self.val_loader.dataset.set_epoch(epoch)
+            # set validation 
+            self.val_loader.dataset.set_epoch(epoch)
             
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
@@ -312,14 +276,14 @@ class Trainer:
         self.save_models()
 
         # train flows
-        self.flow = self.train_npe_with_vae(num_epochs=50, batch_size=32, lr=5e-4)
+        self.train_npe_with_vae(num_epochs=500, batch_size=32, lr=5e-4)
 
 
-    def train_npe_with_vae(self, num_epochs=100, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
+    def train_npe_with_vae(self, num_epochs=500, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
         """
-        self.vae.eval()  # freeze VAE
+        self.vae.eval()
         param_dim = 4
 
         num_layers = 10
@@ -343,26 +307,20 @@ class Trainer:
         transform = CompositeTransform(transforms)
 
         # create flow on CPU first, in float32
-        flow = Flow(transform, base_dist)
+        self.flow = Flow(transform, base_dist)
 
         # move to device explicitly, MPS requires float32
-        flow = flow.to(DEVICE, dtype=torch.float32)
+        self.flow = flow.to(DEVICE, dtype=torch.float32)
 
         # model ends here
 
-        optimizer = optim.Adam(flow.parameters(), lr=lr)
-
-        # ccsn_loader = DataLoader(
-        #     CCSNData(noise=True, curriculum=False),
-        #     batch_size=batch_size,
-        #     shuffle=True,
-        #     drop_last=True,
-        # )
+        optimizer = optim.Adam(self.flow.parameters(), lr=lr)
 
         for epoch in range(num_epochs):
+            self.flow.train()
             total_loss = 0.0
 
-            for batch_idx, (signal, noisy_signal, params) in enumerate(self.train_loader):
+            for signal, noisy_signal, params in self.train_loader:
                 signal = signal.to(DEVICE).float()
                 noisy_signal = noisy_signal.to(DEVICE).float()
                 params = params.to(DEVICE).float()
@@ -380,13 +338,12 @@ class Trainer:
                     # z_latent = vae.reparameterization(mean, log_var)
                     # z_latent = z_latent.view(z_latent.size(0), -1)
 
-
                 # p(params | z)
                 params = params.view(params.size(0), -1) 
 
                 optimizer.zero_grad(set_to_none=True)
 
-                log_prob = flow.log_prob(params, context=mean) # this conditions the flow on the latent variable z
+                log_prob = self.flow.log_prob(params, context=mean) # this conditions the flow on the latent variable z
                 loss = -log_prob.mean()
 
                 loss.backward()
@@ -394,11 +351,43 @@ class Trainer:
 
                 total_loss += loss.item()
             
-            # validation step can be added here if needed
+            # validation step
+            self.flow.eval()
+            val_total_NLL_loss = 0.0
+            with torch.no_grad():
+                for val_signal, val_noisy_signal, val_params in self.val_loader:
+                    val_signal = val_signal.to(DEVICE).float()
+                    val_noisy_signal = val_noisy_signal.to(DEVICE).float()
+                    val_params = val_params.to(DEVICE).float()
+                    # take only the first param
+                    # params = params[:, :, 0:1]
+                    val_params = torch.log(val_params + 1e-8)  # log-transform
+                    # params = params[:, :, 0]
 
-            print(f"Epoch [{epoch+1}/{num_epochs}] | Flow NLL: {total_loss / len(self.train_loader):.4f}")
+                    # Encode signal into latent space
+                    with torch.no_grad():
+                        _, mean, _ = self.vae(val_noisy_signal)
+                        mean = mean.view(mean.size(0), -1)
+                        # don't sample from latent, use mean only due to stable training
 
-        return flow
+                    # p(params | z)
+                    val_params = val_params.view(val_params.size(0), -1) 
+
+                    optimizer.zero_grad(set_to_none=True)
+
+                    log_prob = self.flow.log_prob(val_params, context=mean) # this conditions the flow on the latent variable z
+                    val_NLL_loss = -log_prob.mean()
+                    val_total_NLL_loss += val_NLL_loss.item()
+
+            # self.avg_total_losses_val.append(avg_total_NLL_loss_val)
+
+            # Do not advance validation epoch-driven curriculum; keep it stable across epochs
+            # self.val_loader.dataset.set_epoch(epoch)
+            
+            # Step the learning rate scheduler
+            # self.scheduler.step(avg_total_NLL_loss_val)
+
+            print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Training NLL: {total_loss / len(self.train_loader):.4f}, | Flow Validation NLL: {val_total_NLL_loss / len(self.val_loader):.4f}") 
     
     def plot_corner(self, index=0):
         val_idx = self.validation_sampler.indices[index]

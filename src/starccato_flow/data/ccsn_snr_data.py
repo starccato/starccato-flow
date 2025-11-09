@@ -200,7 +200,6 @@ class CCSNSNRData(Dataset):
         freqs = np.fft.rfftfreq(N, 1/fs)
         integrand = (np.abs(hf)**2) / Sn
         rho2 = 4 * np.sum(integrand) * df
-
         return np.sqrt(rho2)
 
     def add_aLIGO_noise(self, signal):
@@ -282,7 +281,7 @@ class CCSNSNRData(Dataset):
 
         Sn = self.AdvLIGOPsd(fourier_freq)
 
-        # print(Sn)
+        print(Sn)
 
         if self.snr:
             rho = self.calculate_snr(signal, Sn)
