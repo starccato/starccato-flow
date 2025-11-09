@@ -275,18 +275,22 @@ class Trainer:
         # Optionally: plot final results or save model
         self.save_models()
 
-        # train flows
-        self.train_npe_with_vae(num_epochs=500, batch_size=32, lr=5e-4)
+        # train flows with overfitting prevention
+        print("\n" + "="*60)
+        print("Starting Flow Training")
+        print("="*60)
+        self.train_npe_with_vae(num_epochs=500, batch_size=32, lr=1e-4, patience=50)
 
 
-    def train_npe_with_vae(self, num_epochs=500, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
+    def train_npe_with_vae(self, num_epochs=500, batch_size=32, lr=1e-4, patience=50):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
+        With early stopping and regularization to prevent overfitting.
         """
         self.vae.eval()
         param_dim = 4
 
-        num_layers = 10
+        num_layers = 5  # Reduced from 10 to prevent overfitting
 
         # model starts here
         base_dist = StandardNormal(shape=[param_dim])
@@ -299,7 +303,7 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=128,
+                    hidden_features=64,  # Reduced from 128 to prevent overfitting
                     context_features=Z_DIM,
                 )
             )
@@ -310,11 +314,22 @@ class Trainer:
         self.flow = Flow(transform, base_dist)
 
         # move to device explicitly, MPS requires float32
-        self.flow = flow.to(DEVICE, dtype=torch.float32)
+        self.flow = self.flow.to(DEVICE, dtype=torch.float32)
 
         # model ends here
 
-        optimizer = optim.Adam(self.flow.parameters(), lr=lr)
+        # Add weight decay for regularization
+        optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=1e-5)
+        
+        # Learning rate scheduler to reduce LR on plateau
+        flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=15, min_lr=1e-6
+        )
+        
+        # Early stopping variables
+        best_val_loss = float('inf')
+        patience_counter = 0
+        best_model_state = None
 
         for epoch in range(num_epochs):
             self.flow.train()
@@ -343,10 +358,17 @@ class Trainer:
 
                 optimizer.zero_grad(set_to_none=True)
 
-                log_prob = self.flow.log_prob(params, context=mean) # this conditions the flow on the latent variable z
+                log_prob = self.flow.log_prob(params, context=mean)
                 loss = -log_prob.mean()
+                
+                # Check for NaN/Inf
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(f"Warning: Invalid loss at epoch {epoch+1}, skipping batch")
+                    continue
 
                 loss.backward()
+                # Gradient clipping to prevent exploding gradients
+                torch.nn.utils.clip_grad_norm_(self.flow.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 total_loss += loss.item()
@@ -354,40 +376,53 @@ class Trainer:
             # validation step
             self.flow.eval()
             val_total_NLL_loss = 0.0
+            val_samples = 0
             with torch.no_grad():
                 for val_signal, val_noisy_signal, val_params in self.val_loader:
                     val_signal = val_signal.to(DEVICE).float()
                     val_noisy_signal = val_noisy_signal.to(DEVICE).float()
                     val_params = val_params.to(DEVICE).float()
-                    # take only the first param
-                    # params = params[:, :, 0:1]
-                    val_params = torch.log(val_params + 1e-8)  # log-transform
-                    # params = params[:, :, 0]
+                    val_params = torch.log(val_params + 1e-8)
 
                     # Encode signal into latent space
-                    with torch.no_grad():
-                        _, mean, _ = self.vae(val_noisy_signal)
-                        mean = mean.view(mean.size(0), -1)
-                        # don't sample from latent, use mean only due to stable training
+                    _, mean, _ = self.vae(val_noisy_signal)
+                    mean = mean.view(mean.size(0), -1)
 
                     # p(params | z)
-                    val_params = val_params.view(val_params.size(0), -1) 
+                    val_params = val_params.view(val_params.size(0), -1)
 
-                    optimizer.zero_grad(set_to_none=True)
-
-                    log_prob = self.flow.log_prob(val_params, context=mean) # this conditions the flow on the latent variable z
+                    log_prob = self.flow.log_prob(val_params, context=mean)
                     val_NLL_loss = -log_prob.mean()
                     val_total_NLL_loss += val_NLL_loss.item()
+                    val_samples += val_signal.size(0)
 
-            # self.avg_total_losses_val.append(avg_total_NLL_loss_val)
-
-            # Do not advance validation epoch-driven curriculum; keep it stable across epochs
-            # self.val_loader.dataset.set_epoch(epoch)
+            avg_total_NLL_loss_val = val_total_NLL_loss / val_samples
+            avg_train_NLL = total_loss / len(self.train_loader)
             
             # Step the learning rate scheduler
-            # self.scheduler.step(avg_total_NLL_loss_val)
-
-            print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Training NLL: {total_loss / len(self.train_loader):.4f}, | Flow Validation NLL: {val_total_NLL_loss / len(self.val_loader):.4f}") 
+            flow_scheduler.step(avg_total_NLL_loss_val)
+            
+            # Early stopping check
+            if avg_total_NLL_loss_val < best_val_loss:
+                best_val_loss = avg_total_NLL_loss_val
+                patience_counter = 0
+                best_model_state = self.flow.state_dict()
+                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f} ✓ (Best)")
+            else:
+                patience_counter += 1
+                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f} (Patience: {patience_counter}/{patience})")
+            
+            # Early stopping
+            if patience_counter >= patience:
+                print(f"\n🛑 Early stopping at epoch {epoch+1}")
+                print(f"Best validation NLL: {best_val_loss:.4f}")
+                self.flow.load_state_dict(best_model_state)
+                break
+        
+        # Load best model if training completed without early stopping
+        if best_model_state is not None and patience_counter < patience:
+            print(f"\n✓ Training completed. Loading best model (Val NLL: {best_val_loss:.4f})")
+            self.flow.load_state_dict(best_model_state) 
     
     def plot_corner(self, index=0):
         val_idx = self.validation_sampler.indices[index]
