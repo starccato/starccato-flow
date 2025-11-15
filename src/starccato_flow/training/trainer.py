@@ -54,7 +54,8 @@ class Trainer:
         toy: bool = True,
         vae_parameter_test: bool = False,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
-        snr: bool = False
+        snr: bool = False,
+        noise_realizations: int = 1  # Number of noise realizations per signal
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -73,6 +74,7 @@ class Trainer:
         self.vae_parameter_test = vae_parameter_test
         self.max_grad_norm = max_grad_norm
         self.snr = snr
+        self.noise_realizations = noise_realizations
 
         # selector between toy and real data
         if self.toy:
@@ -83,7 +85,12 @@ class Trainer:
             # if self.snr:
                 # print("Using SNR-based dataset")
                 # self.training_dataset = CCSNDataSNR(num_epochs=self.num_epochs, noise=self.no
-            self.training_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
+            self.training_dataset = CCSNData(
+                num_epochs=self.num_epochs, 
+                noise=self.noise, 
+                curriculum=self.curriculum,
+                noise_realizations=self.noise_realizations
+            )
             # self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
 
         # Use the same underlying dataset object with disjoint samplers

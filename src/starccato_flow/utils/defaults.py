@@ -21,11 +21,14 @@ SAMPLING_RATE = 1/4096
 def get_device() -> torch.device:
     try:
         if torch.cuda.is_available():
+            print("CUDA device found")
             return torch.device("cuda")
         elif torch.mps.is_available():
+            print("MPS device found")
             return torch.device("mps")
     except Exception as e:
         pass
+    print("Using CPU device")
     return torch.device("cpu")
 
 DEVICE = get_device()

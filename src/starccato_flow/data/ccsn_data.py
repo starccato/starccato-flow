@@ -25,7 +25,8 @@ class CCSNData(Dataset):
         noise: bool = True,
         curriculum: bool = True,
         indices: Optional[np.ndarray] = None,
-        multi_param: bool = True
+        multi_param: bool = True,
+        noise_realizations: int = 1
     ):
         """Initialize the CCSN dataset.
         
@@ -37,6 +38,7 @@ class CCSNData(Dataset):
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
+            noise_realizations (int): Number of different noise realizations per signal (multiplies dataset size)
         """
         self.batch_size = batch_size
         self._current_epoch = 0
@@ -46,6 +48,7 @@ class CCSNData(Dataset):
         self.signals.index = [i for i in range(len(self.signals.index))]
         self.noise = noise
         self.curriculum = curriculum
+        self.noise_realizations = noise_realizations
 
         assert (
             self.signals.shape[0] == self.parameters.shape[0],
@@ -185,15 +188,23 @@ class CCSNData(Dataset):
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"
 
-    def add_aLIGO_noise(self, signal):
+    def add_aLIGO_noise(self, signal, seed_offset=0):
         """Add Advanced LIGO noise to the signal.
         
         Args:
             signal (np.ndarray): The gravitational wave signal
+            seed_offset (int): Offset for random seed to ensure different noise realizations
             
         Returns:
             np.ndarray: Signal with properly scaled aLIGO noise added
         """
+        # Use seed_offset to ensure different noise for different realizations
+        # This ensures reproducibility while varying across realizations
+        if seed_offset > 0:
+            random_state = np.random.RandomState(seed_offset + self._current_epoch * 10000)
+            original_state = np.random.get_state()
+            np.random.set_state(random_state.get_state())
+        
         dataDeltaT = 1 / 4096  # Sampling rate: 4096 Hz
         dataSec = 256 / 4096   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
@@ -205,6 +216,10 @@ class CCSNData(Dataset):
             one_sided=True,  # Use one-sided spectrum as in R
             pad=1
         ).reshape(1, -1)  # shape (1, 256)
+
+        # Restore original random state if we changed it
+        if seed_offset > 0:
+            np.random.set_state(original_state)
 
         # The noise is now properly scaled due to correct PSD implementation
         # No need for the 1000x scaling factor anymore
@@ -243,7 +258,8 @@ class CCSNData(Dataset):
 
     ### overloads ###
     def __len__(self):
-        return self.signals.shape[1]
+        # Multiply dataset size by number of noise realizations
+        return self.signals.shape[1] * self.noise_realizations
 
     @property
     def shape(self):
@@ -262,15 +278,25 @@ class CCSNData(Dataset):
         return True
 
     def __getitem__(self, idx):
-        signal = self.signals[:, idx]
+        # Map the augmented index to the original signal index
+        # If noise_realizations=3 and we have 100 signals:
+        # idx 0-99 -> signal 0-99 (realization 0)
+        # idx 100-199 -> signal 0-99 (realization 1)
+        # idx 200-299 -> signal 0-99 (realization 2)
+        original_idx = idx % self.signals.shape[1]
+        noise_realization_idx = idx // self.signals.shape[1]
+        
+        signal = self.signals[:, original_idx]
         signal = signal.reshape(1, -1)
 
-        parameters = self.parameters.iloc[idx].values  # Extract parameter values as a NumPy array
+        parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         parameters = parameters.reshape(1, -1)
 
         if self.noise:
-            noisy_signal = self.add_aLIGO_noise(signal)
+            # Add different noise each time by using a unique seed based on idx
+            # This ensures different realizations get different noise
+            noisy_signal = self.add_aLIGO_noise(signal, seed_offset=noise_realization_idx)
         else: 
             noisy_signal = signal
 
