@@ -243,31 +243,31 @@ class Trainer:
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
 
-            print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
+            # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
-            if (epoch + 1) % self.checkpoint_interval == 0:
-                # gridded plots
-                with torch.no_grad():
-                    generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-                print(f"Generated signals shape: {generated_signals.shape}")
-                # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-                if self.vae_parameter_test:
-                    print("Parameter values:", generated_signals)
-                else:
-                    plot_signal_grid(
-                        signals=generated_signals,
-                        max_value=self.training_dataset.max_strain,
-                        num_cols=3,
-                        num_rows=1,
-                        fname="plots/ccsn_generated_signal_grid.svg",
-                        background="white",
-                        generated=True
-                    )
-                plot_latent_space_3d(
-                    model=self.vae,
-                    dataloader=self.train_loader
-                )
+            # if (epoch + 1) % self.checkpoint_interval == 0:
+            #     # gridded plots
+            #     with torch.no_grad():
+            #         generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+            #     print(f"Generated signals shape: {generated_signals.shape}")
+            #     # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+            #     if self.vae_parameter_test:
+            #         print("Parameter values:", generated_signals)
+            #     else:
+            #         plot_signal_grid(
+            #             signals=generated_signals,
+            #             max_value=self.training_dataset.max_strain,
+            #             num_cols=3,
+            #             num_rows=1,
+            #             fname="plots/ccsn_generated_signal_grid.svg",
+            #             background="white",
+            #             generated=True
+            #         )
+            #     plot_latent_space_3d(
+            #         model=self.vae,
+            #         dataloader=self.train_loader
+            #     )
                 
 
         runtime = (time.time() - t0) / 60
@@ -290,7 +290,7 @@ class Trainer:
         self.vae.eval()
         param_dim = 4
 
-        num_layers = 5  # Reduced from 10 to prevent overfitting
+        num_layers = 10  # Reduced from 10 to prevent overfitting
 
         # model starts here
         base_dist = StandardNormal(shape=[param_dim])
@@ -303,7 +303,7 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=64,  # Reduced from 128 to prevent overfitting
+                    hidden_features=128,  # Reduced from 128 to prevent overfitting
                     context_features=Z_DIM,
                 )
             )
