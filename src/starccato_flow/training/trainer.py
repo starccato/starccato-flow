@@ -380,6 +380,9 @@ class Trainer:
 
                 total_loss += loss.item()
             
+            # Update epoch for curriculum learning (same as VAE training)
+            self.train_loader.dataset.set_epoch(epoch)
+            
             # validation step
             self.flow.eval()
             val_total_NLL_loss = 0.0
@@ -405,6 +408,9 @@ class Trainer:
 
             avg_total_NLL_loss_val = val_total_NLL_loss / val_samples
             avg_train_NLL = total_loss / len(self.train_loader)
+            
+            # Update validation epoch for curriculum learning (same as VAE training)
+            self.val_loader.dataset.set_epoch(epoch)
             
             # Step the learning rate scheduler
             flow_scheduler.step(avg_total_NLL_loss_val)
