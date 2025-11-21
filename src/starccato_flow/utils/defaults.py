@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 Y_LENGTH = 256
 HIDDEN_DIM = 512
-Z_DIM = 8
+Z_DIM = 16
 
 BATCH_SIZE = 32
 

@@ -153,7 +153,7 @@ class CCSNData(Dataset):
         # Collect indices of the signals to plot
         selected_signals = []
         for i in range(n_signals):
-            signal = self.__getitem__(i+100)[0].cpu().numpy().flatten()  # Flatten the signal
+            signal = self.__getitem__(i+100)[1].cpu().numpy().flatten()  # Flatten the signal
             selected_signals.append(signal)
 
         # Convert selected signals to a NumPy array for plotting
@@ -237,9 +237,9 @@ class CCSNData(Dataset):
         #     noise = noise * scaling
 
         if self.curriculum:
-            noise = noise * (1 + self._current_epoch / self.num_epochs) * 300
+            noise = noise * (self._current_epoch / self.num_epochs) * 600
         else: 
-            noise = noise * 300
+            noise = noise * 600
             
         # Add scaled noise to signal
         aLIGO_signal = signal + noise 

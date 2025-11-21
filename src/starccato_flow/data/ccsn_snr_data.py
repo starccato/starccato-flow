@@ -25,6 +25,7 @@ class CCSNSNRData(Dataset):
         noise: bool = True,
         curriculum: bool = True,
         snr: bool = True,
+        rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
         multi_param: bool = True
     ):
@@ -48,6 +49,7 @@ class CCSNSNRData(Dataset):
         self.noise = noise
         self.curriculum = curriculum
         self.snr = snr
+        self.rho_target = rho_target
 
         assert (
             self.signals.shape[0] == self.parameters.shape[0],
@@ -152,7 +154,7 @@ class CCSNSNRData(Dataset):
         # Collect indices of the signals to plot
         selected_signals = []
         for i in range(n_signals):
-            signal = self.__getitem__(i+100)[0].cpu().numpy().flatten()  # Flatten the signal
+            signal = self.__getitem__(i+100)[1].cpu().numpy().flatten()  # Flatten the signal
             selected_signals.append(signal)
 
         # Convert selected signals to a NumPy array for plotting
@@ -187,6 +189,10 @@ class CCSNSNRData(Dataset):
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"
 
+    def update_snr(self, snr):
+        self.rho_target = snr
+
+    @staticmethod
     def calculate_snr(h, Sn, fs=SAMPLING_RATE):
         """
         Args:
@@ -202,7 +208,7 @@ class CCSNSNRData(Dataset):
         rho2 = 4 * np.sum(integrand) * df
         return np.sqrt(rho2)
 
-    def add_aLIGO_noise(self, signal):
+    def aLIGO_noise(self):
         """Add Advanced LIGO noise to the signal.
         
         Args:
@@ -226,16 +232,7 @@ class CCSNSNRData(Dataset):
         # The noise is now properly scaled due to correct PSD implementation
         noise = noise - noise.mean()  # Mean center as in R implementation
 
-        signal = signal / 3.086e+22
-
-        noise = noise = 300
-            
-        # Add scaled noise to signal
-        aLIGO_signal = signal + noise 
-
-        aLIGO_signal = aLIGO_signal * 3.086e+22
-
-        return aLIGO_signal
+        return noise
 
     def normalise_signals(self, signal):
         normalised_signal = signal / self.max_strain
@@ -266,8 +263,8 @@ class CCSNSNRData(Dataset):
         return True
 
     def __getitem__(self, idx):
-        signal = self.signals[:, idx]
-        signal = signal.reshape(1, -1)
+        s = self.signals[:, idx]
+        s = s.reshape(1, -1)
 
         parameters = self.parameters.iloc[idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
@@ -281,25 +278,21 @@ class CCSNSNRData(Dataset):
 
         Sn = self.AdvLIGOPsd(fourier_freq)
 
-        print(Sn)
+        # Ensure signal is a proper numpy array (not lazy object)
+        s_array = np.asarray(s / 3.086e+22).flatten()
+        rho = self.calculate_snr(s_array, Sn)
+        n = self.aLIGO_noise()
+        s = s / 3.086e+22
+        d = s + n * (rho / self.rho_target)
+        s = s * 3.086e+22
+        d = d * 3.086e+22
 
-        if self.snr:
-            rho = self.calculate_snr(signal, Sn)
-            print(rho)
-            signal = signal * (self.rho_target / rho)
-
-        if self.noise:
-            noise = self.add_aLIGO_noise(signal)
-            noisy_signal = signal + noise
-        else: 
-            noisy_signal = signal
-
-        normalised_signal = self.normalise_signals(signal)
-        normalised_noisy_signal = self.normalise_signals(noisy_signal)
+        s_star = self.normalise_signals(s)
+        d_star = self.normalise_signals(d)
 
         return (
-            torch.tensor(normalised_signal, dtype=torch.float32, device=DEVICE),
-            torch.tensor(normalised_noisy_signal, dtype=torch.float32, device=DEVICE),
+            torch.tensor(s_star, dtype=torch.float32, device=DEVICE),
+            torch.tensor(d_star, dtype=torch.float32, device=DEVICE),
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
         )
 
