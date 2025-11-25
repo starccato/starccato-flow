@@ -157,11 +157,11 @@ class CCSNSNRData(Dataset):
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
-    def plot_signal_grid(self, n_signals=3, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+    def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
         # Collect indices of the signals to plot
         selected_signals = []
         for i in range(n_signals):
-            signal = self.__getitem__(i+100)[1].cpu().numpy().flatten()  # Flatten the signal
+            signal = self.__getitem__(i+10)[1].cpu().numpy().flatten()  # Flatten the signal
             selected_signals.append(signal)
 
         # Convert selected signals to a NumPy array for plotting
@@ -170,11 +170,13 @@ class CCSNSNRData(Dataset):
         plot_signal_grid(
             signals=selected_signals,
             max_value=self.max_strain,
-            num_cols=3,
+            num_cols=1,
             num_rows=1,
             fname=fname,
             background=background,
-            generated=False
+            generated=False,
+            font_family=font_family,
+            font_name=font_name
         )
  
     def __str__(self):
@@ -325,6 +327,9 @@ class CCSNSNRData(Dataset):
             torch.tensor(d_star, dtype=torch.float32, device=DEVICE),
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
         )
+    
+    def set_snr(self, snr):
+        self.rho_target = snr
 
     @property
     def current_epoch(self) -> int:

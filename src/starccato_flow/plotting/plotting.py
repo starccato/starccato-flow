@@ -1122,9 +1122,16 @@ def plot_signal_grid(
 
     # Create figure
     fig, axes = plt.subplots(
-        num_rows, num_cols, figsize=(5.6 * num_cols, 2 * num_rows)
+        num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows)
     )
-    axes = axes.flatten()
+    # Ensure axes is always a flat 1D array
+    if num_rows == 1 and num_cols == 1:
+        axes = np.array([axes])
+    elif num_rows == 1 or num_cols == 1:
+        # Already a 1D array, no need to flatten
+        axes = np.atleast_1d(axes)
+    else:
+        axes = axes.flatten()
 
     # Get time axis
     d = get_time_axis()
@@ -1138,7 +1145,7 @@ def plot_signal_grid(
         y = signals[i].flatten() * max_value
         ax.plot(d, y, color=signal_color)
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-        ax.grid(True)
+        ax.grid(False)
         ax.set_ylim(-600, 300)
         
         # Handle axis labels
@@ -1162,7 +1169,6 @@ def plot_signal_grid(
                    transparent=(background=="black"))
     
     plt.show()
-    plt.rcdefaults()
     return fig
 
 def plot_reconstruction_distribution(
