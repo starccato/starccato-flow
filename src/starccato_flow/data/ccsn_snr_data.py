@@ -25,9 +25,12 @@ class CCSNSNRData(Dataset):
         noise: bool = True,
         curriculum: bool = True,
         snr: bool = True,
+        start_snr: int = 100,
+        end_snr: int = 10,
         rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
-        multi_param: bool = True
+        multi_param: bool = True,
+        noise_realizations: int = 1
     ):
         """Initialize the CCSN dataset.
         
@@ -39,6 +42,7 @@ class CCSNSNRData(Dataset):
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
+            noise_realizations (int): Number of different noise realizations per signal (multiplies dataset size)
         """
         self.batch_size = batch_size
         self._current_epoch = 0
@@ -49,7 +53,10 @@ class CCSNSNRData(Dataset):
         self.noise = noise
         self.curriculum = curriculum
         self.snr = snr
+        self.start_snr = start_snr
+        self.end_snr = end_snr
         self.rho_target = rho_target
+        self.noise_realizations = noise_realizations
 
         assert (
             self.signals.shape[0] == self.parameters.shape[0],
@@ -208,15 +215,22 @@ class CCSNSNRData(Dataset):
         rho2 = 4 * np.sum(integrand) * df
         return np.sqrt(rho2)
 
-    def aLIGO_noise(self):
+    def aLIGO_noise(self, seed_offset=0):
         """Add Advanced LIGO noise to the signal.
         
         Args:
-            signal (np.ndarray): The gravitational wave signal
+            seed_offset (int): Offset for random seed to ensure different noise realizations
             
         Returns:
             np.ndarray: Signal with properly scaled aLIGO noise added
         """
+        # Use seed_offset to ensure different noise for different realizations
+        # This ensures reproducibility while varying across realizations
+        if seed_offset > 0:
+            random_state = np.random.RandomState(seed_offset + self._current_epoch * 10000)
+            original_state = np.random.get_state()
+            np.random.set_state(random_state.get_state())
+        
         dataDeltaT = 1 / 4096  # Sampling rate: 4096 Hz
         dataSec = 256 / 4096   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
@@ -228,6 +242,10 @@ class CCSNSNRData(Dataset):
             one_sided=True,  # Use one-sided spectrum as in R
             pad=1
         ).reshape(1, -1)  # shape (1, 256)
+
+        # Restore original random state if we changed it
+        if seed_offset > 0:
+            np.random.set_state(original_state)
 
         # The noise is now properly scaled due to correct PSD implementation
         noise = noise - noise.mean()  # Mean center as in R implementation
@@ -244,7 +262,8 @@ class CCSNSNRData(Dataset):
 
     ### overloads ###
     def __len__(self):
-        return self.signals.shape[1]
+        # Multiply dataset size by number of noise realizations
+        return self.signals.shape[1] * self.noise_realizations
 
     @property
     def shape(self):
@@ -263,10 +282,18 @@ class CCSNSNRData(Dataset):
         return True
 
     def __getitem__(self, idx):
-        s = self.signals[:, idx]
+        # Map the augmented index to the original signal index
+        # If noise_realizations=3 and we have 100 signals:
+        # idx 0-99 -> signal 0-99 (realization 0)
+        # idx 100-199 -> signal 0-99 (realization 1)
+        # idx 200-299 -> signal 0-99 (realization 2)
+        original_idx = idx % self.signals.shape[1]
+        noise_realization_idx = idx // self.signals.shape[1]
+        
+        s = self.signals[:, original_idx]
         s = s.reshape(1, -1)
 
-        parameters = self.parameters.iloc[idx].values  # Extract parameter values as a NumPy array
+        parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         parameters = parameters.reshape(1, -1)
 
@@ -281,9 +308,12 @@ class CCSNSNRData(Dataset):
         # Ensure signal is a proper numpy array (not lazy object)
         s_array = np.asarray(s / 3.086e+22).flatten()
         rho = self.calculate_snr(s_array, Sn)
-        n = self.aLIGO_noise()
+        
+        # Add different noise each time by using a unique seed based on noise_realization_idx
+        n = self.aLIGO_noise(seed_offset=noise_realization_idx)
+        
         s = s / 3.086e+22
-        d = s + n * (rho / self.rho_target)
+        d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
         s = s * 3.086e+22
         d = d * 3.086e+22
 
@@ -312,6 +342,7 @@ class CCSNSNRData(Dataset):
             epoch (int): New epoch number
         """
         self._current_epoch = epoch
+        self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
     
     def get_loader(
         self,

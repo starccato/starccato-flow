@@ -54,7 +54,8 @@ class Trainer:
         toy: bool = True,
         vae_parameter_test: bool = False,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
-        snr: bool = False,
+        start_snr: int = 100,
+        end_snr: int = 10,
         noise_realizations: int = 1  # Number of noise realizations per signal
     ):
         self.y_length = y_length
@@ -73,7 +74,8 @@ class Trainer:
         self.curriculum = curriculum
         self.vae_parameter_test = vae_parameter_test
         self.max_grad_norm = max_grad_norm
-        self.snr = snr
+        self.start_snr = start_snr
+        self.end_snr = end_snr
         self.noise_realizations = noise_realizations
 
         # selector between toy and real data
@@ -85,8 +87,10 @@ class Trainer:
             # if self.snr:
                 # print("Using SNR-based dataset")
                 # self.training_dataset = CCSNDataSNR(num_epochs=self.num_epochs, noise=self.no
-            self.training_dataset = CCSNData(
-                num_epochs=self.num_epochs, 
+            self.training_dataset = CCSNSNRData(
+                num_epochs=self.num_epochs,
+                start_snr=start_snr,
+                end_snr=end_snr,
                 noise=self.noise, 
                 curriculum=self.curriculum,
                 noise_realizations=self.noise_realizations
@@ -123,14 +127,8 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup networks
-
-        if self.vae_parameter_test:
-            self.vae = VAE_PARAMETER(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length, param_dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
-            self.vae.apply(_init_weights_vae)
-        else:
-            self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-            self.vae.apply(_init_weights_vae)
-            
+        self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        self.vae.apply(_init_weights_vae)
 
         # Setup optimizer and scheduler
         self.optimizerVAE = optim.Adam(self.vae.parameters(), lr=self.lr_vae)
@@ -253,28 +251,28 @@ class Trainer:
             # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
-            # if (epoch + 1) % self.checkpoint_interval == 0:
-            #     # gridded plots
-            #     with torch.no_grad():
-            #         generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-            #     print(f"Generated signals shape: {generated_signals.shape}")
-            #     # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-            #     if self.vae_parameter_test:
-            #         print("Parameter values:", generated_signals)
-            #     else:
-            #         plot_signal_grid(
-            #             signals=generated_signals,
-            #             max_value=self.training_dataset.max_strain,
-            #             num_cols=3,
-            #             num_rows=1,
-            #             fname="plots/ccsn_generated_signal_grid.svg",
-            #             background="white",
-            #             generated=True
-            #         )
-            #     plot_latent_space_3d(
-            #         model=self.vae,
-            #         dataloader=self.train_loader
-            #     )
+            if (epoch + 1) % self.checkpoint_interval == 0:
+                # gridded plots
+                with torch.no_grad():
+                    generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+                print(f"Generated signals shape: {generated_signals.shape}")
+                # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+                if self.vae_parameter_test:
+                    print("Parameter values:", generated_signals)
+                else:
+                    plot_signal_grid(
+                        signals=generated_signals,
+                        max_value=self.training_dataset.max_strain,
+                        num_cols=3,
+                        num_rows=1,
+                        fname="plots/ccsn_generated_signal_grid.svg",
+                        background="white",
+                        generated=True
+                    )
+                plot_latent_space_3d(
+                    model=self.vae,
+                    dataloader=self.train_loader
+                )
                 
 
         runtime = (time.time() - t0) / 60
@@ -332,6 +330,10 @@ class Trainer:
         flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=15, min_lr=1e-6
         )
+        
+        # Initialize loss tracking lists (like VAE training)
+        self.flow_train_nll_losses = []
+        self.flow_val_nll_losses = []
         
         # Early stopping variables
         best_val_loss = float('inf')
@@ -409,6 +411,10 @@ class Trainer:
             avg_total_NLL_loss_val = val_total_NLL_loss / val_samples
             avg_train_NLL = total_loss / len(self.train_loader)
             
+            # Track losses (like VAE training)
+            self.flow_train_nll_losses.append(avg_train_NLL)
+            self.flow_val_nll_losses.append(avg_total_NLL_loss_val)
+            
             # Update validation epoch for curriculum learning (same as VAE training)
             self.val_loader.dataset.set_epoch(epoch)
             
@@ -481,7 +487,7 @@ class Trainer:
         )
 
     def display_results(self):
-        # Plot training and validation losses
+        # Plot VAE training and validation losses
         plot_individual_loss(
             self.avg_total_losses, self.avg_reproduction_losses, self.avg_kld_losses
         )
@@ -489,6 +495,15 @@ class Trainer:
             self.avg_total_losses_val, self.avg_reproduction_losses_val, self.avg_kld_losses_val
         )
         plot_loss(self.avg_total_losses, self.avg_total_losses_val)
+        
+        # Plot Flow NLL losses if available
+        if hasattr(self, 'flow_train_nll_losses') and hasattr(self, 'flow_val_nll_losses'):
+            if len(self.flow_train_nll_losses) > 0:
+                print("\nPlotting Flow NLL Losses...")
+                plot_loss(
+                    self.flow_train_nll_losses, 
+                    self.flow_val_nll_losses
+                )
         
 
     @property
