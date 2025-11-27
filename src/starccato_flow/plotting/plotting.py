@@ -880,7 +880,7 @@ def plot_signal_distribution(
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
     plt.ylabel('hD (cm)', size=16, color=text_color)
-    plt.grid(True)
+    plt.grid(False)
 
     # Add sample size note
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
@@ -1122,7 +1122,7 @@ def plot_signal_grid(
 
     # Create figure
     fig, axes = plt.subplots(
-        num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows)
+        num_rows, num_cols, figsize=(6 * num_cols, 6 * num_rows)
     )
     # Ensure axes is always a flat 1D array
     if num_rows == 1 and num_cols == 1:
@@ -1146,6 +1146,7 @@ def plot_signal_grid(
         ax.plot(d, y, color=signal_color)
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         ax.grid(False)
+        ax.set_xlim(min(d), max(d))
         ax.set_ylim(-600, 300)
         
         # Handle axis labels

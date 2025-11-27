@@ -295,7 +295,7 @@ class Trainer:
         self.vae.eval()
         param_dim = 4
 
-        num_layers = 10  # Reduced from 10 to prevent overfitting
+        num_layers = 5  # Reduced from 10 to prevent overfitting
 
         # model starts here
         base_dist = StandardNormal(shape=[param_dim])
@@ -308,7 +308,7 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=128,  # Reduced from 128 to prevent overfitting
+                    hidden_features=32,  # Reduced from 64 to prevent overfitting
                     context_features=Z_DIM,
                 )
             )
@@ -323,8 +323,20 @@ class Trainer:
 
         # model ends here
 
-        # Add weight decay for regularization
-        optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=1e-5)
+        # Create separate DataLoader with smaller batch size for flow training
+        flow_train_loader = DataLoader(
+            self.training_dataset, 
+            batch_size=batch_size,  # Use the passed batch_size parameter
+            sampler=self.training_sampler
+        )
+        flow_val_loader = DataLoader(
+            self.validation_dataset,
+            batch_size=batch_size,
+            sampler=self.validation_sampler
+        )
+        
+        # Add stronger weight decay for regularization
+        optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=1e-4)
         
         # Learning rate scheduler to reduce LR on plateau
         flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -344,7 +356,7 @@ class Trainer:
             self.flow.train()
             total_loss = 0.0
 
-            for signal, noisy_signal, params in self.train_loader:
+            for signal, noisy_signal, params in flow_train_loader:  # Use flow-specific DataLoader
                 signal = signal.to(DEVICE).float()
                 noisy_signal = noisy_signal.to(DEVICE).float()
                 params = params.to(DEVICE).float()
@@ -359,15 +371,15 @@ class Trainer:
                     mean = mean.view(mean.size(0), -1)
                     log_var = log_var.view(log_var.size(0), -1)
                     # don't sample from latent, use mean only due to stable training
-                    # z_latent = vae.reparameterization(mean, log_var)
-                    # z_latent = z_latent.view(z_latent.size(0), -1)
+                    z_latent = self.vae.reparameterization(mean, log_var)
+                    z_latent = z_latent.view(z_latent.size(0), -1)
 
                 # p(params | z)
                 params = params.view(params.size(0), -1) 
 
                 optimizer.zero_grad(set_to_none=True)
 
-                log_prob = self.flow.log_prob(params, context=mean)
+                log_prob = self.flow.log_prob(params, context=z_latent)
                 loss = -log_prob.mean()
                 
                 # Check for NaN/Inf
@@ -383,14 +395,14 @@ class Trainer:
                 total_loss += loss.item()
             
             # Update epoch for curriculum learning (same as VAE training)
-            self.train_loader.dataset.set_epoch(epoch)
+            flow_train_loader.dataset.set_epoch(epoch)
             
             # validation step
             self.flow.eval()
             val_total_NLL_loss = 0.0
             val_samples = 0
             with torch.no_grad():
-                for val_signal, val_noisy_signal, val_params in self.val_loader:
+                for val_signal, val_noisy_signal, val_params in flow_val_loader:
                     val_signal = val_signal.to(DEVICE).float()
                     val_noisy_signal = val_noisy_signal.to(DEVICE).float()
                     val_params = val_params.to(DEVICE).float()
@@ -409,14 +421,14 @@ class Trainer:
                     val_samples += val_signal.size(0)
 
             avg_total_NLL_loss_val = val_total_NLL_loss / val_samples
-            avg_train_NLL = total_loss / len(self.train_loader)
+            avg_train_NLL = total_loss / len(flow_train_loader)
             
             # Track losses (like VAE training)
             self.flow_train_nll_losses.append(avg_train_NLL)
             self.flow_val_nll_losses.append(avg_total_NLL_loss_val)
             
             # Update validation epoch for curriculum learning (same as VAE training)
-            self.val_loader.dataset.set_epoch(epoch)
+            flow_val_loader.dataset.set_epoch(epoch)
             
             # Step the learning rate scheduler
             flow_scheduler.step(avg_total_NLL_loss_val)

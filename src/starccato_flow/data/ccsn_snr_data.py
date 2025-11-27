@@ -161,7 +161,7 @@ class CCSNSNRData(Dataset):
         # Collect indices of the signals to plot
         selected_signals = []
         for i in range(n_signals):
-            signal = self.__getitem__(i+10)[1].cpu().numpy().flatten()  # Flatten the signal
+            signal = self.__getitem__(i+110)[1].cpu().numpy().flatten()  # Flatten the signal
             selected_signals.append(signal)
 
         # Convert selected signals to a NumPy array for plotting
@@ -382,6 +382,8 @@ class CCSNSNRData(Dataset):
         )
 
     def AdvLIGOPsd(self, f):
+        # Avoid division by zero at f=0 by clipping to a small positive value
+        f = np.clip(f, 1e-10, None)
         x = f / 215
         x2 = x * x
         psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
