@@ -177,6 +177,7 @@ class Trainer:
         self.avg_total_losses_val = []
         self.avg_reproduction_losses_val = []
         self.avg_kld_losses_val = []
+        self.vae_gradient_norms = []
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
             self.vae.train()
@@ -184,6 +185,7 @@ class Trainer:
             reproduction_loss = 0
             kld_loss = 0
             total_samples = 0
+            epoch_grad_norms = []
 
             for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
@@ -196,7 +198,8 @@ class Trainer:
                 
                 # Backward pass with gradient clipping
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
+                epoch_grad_norms.append(grad_norm.item())
                 self.optimizerVAE.step()
 
                 total_loss += loss.item()
@@ -214,6 +217,11 @@ class Trainer:
             self.avg_total_losses.append(avg_total_loss)
             self.avg_reproduction_losses.append(avg_reproduction_loss)
             self.avg_kld_losses.append(avg_kld_loss)
+            
+            # Track average gradient norm for this epoch
+            if epoch_grad_norms:
+                avg_grad_norm = np.mean(epoch_grad_norms)
+                self.vae_gradient_norms.append(avg_grad_norm)
 
             # Validation
             self.vae.eval()
@@ -284,10 +292,10 @@ class Trainer:
         print("\n" + "="*60)
         print("Starting Flow Training")
         print("="*60)
-        self.train_npe_with_vae(num_epochs=500, batch_size=32, lr=1e-4, patience=50)
+        self.train_npe_with_vae(num_epochs=500, batch_size=BATCH_SIZE)
 
 
-    def train_npe_with_vae(self, num_epochs=500, batch_size=32, lr=1e-4, patience=50):
+    def train_npe_with_vae(self, num_epochs=500, batch_size=BATCH_SIZE, lr=5e-5, patience=20):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
         With early stopping and regularization to prevent overfitting.
@@ -295,7 +303,7 @@ class Trainer:
         self.vae.eval()
         param_dim = 4
 
-        num_layers = 5  # Reduced from 10 to prevent overfitting
+        num_layers = 3  # Further reduced from 5 to prevent overfitting
 
         # model starts here
         base_dist = StandardNormal(shape=[param_dim])
@@ -308,7 +316,7 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=32,  # Reduced from 64 to prevent overfitting
+                    hidden_features=24,  # Further reduced from 32 to prevent overfitting
                     context_features=Z_DIM,
                 )
             )
@@ -336,16 +344,19 @@ class Trainer:
         )
         
         # Add stronger weight decay for regularization
-        optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=1e-4)
+        optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=5e-4)  # Increased from 1e-4
         
         # Learning rate scheduler to reduce LR on plateau
         flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=15, min_lr=1e-6
+            optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-7  # Reduced patience from 15
         )
         
         # Initialize loss tracking lists (like VAE training)
         self.flow_train_nll_losses = []
         self.flow_val_nll_losses = []
+        
+        # Initialize gradient tracking
+        self.flow_gradient_norms = []
         
         # Early stopping variables
         best_val_loss = float('inf')
@@ -355,6 +366,7 @@ class Trainer:
         for epoch in range(num_epochs):
             self.flow.train()
             total_loss = 0.0
+            epoch_grad_norms = []
 
             for signal, noisy_signal, params in flow_train_loader:  # Use flow-specific DataLoader
                 signal = signal.to(DEVICE).float()
@@ -389,10 +401,16 @@ class Trainer:
 
                 loss.backward()
                 # Gradient clipping to prevent exploding gradients
-                torch.nn.utils.clip_grad_norm_(self.flow.parameters(), max_norm=1.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.flow.parameters(), max_norm=1.0)
+                epoch_grad_norms.append(grad_norm.item())
                 optimizer.step()
 
                 total_loss += loss.item()
+            
+            # Track average gradient norm for this epoch
+            if epoch_grad_norms:
+                avg_grad_norm = np.mean(epoch_grad_norms)
+                self.flow_gradient_norms.append(avg_grad_norm)
             
             # Update epoch for curriculum learning (same as VAE training)
             flow_train_loader.dataset.set_epoch(epoch)
@@ -408,14 +426,17 @@ class Trainer:
                     val_params = val_params.to(DEVICE).float()
                     val_params = torch.log(val_params + 1e-8)
 
-                    # Encode signal into latent space
-                    _, mean, _ = self.vae(val_noisy_signal)
+                    # Encode signal into latent space - use mean for validation (consistent with inference)
+                    _, mean, log_var = self.vae(val_noisy_signal)
                     mean = mean.view(mean.size(0), -1)
+                    log_var = log_var.view(log_var.size(0), -1)
+                    # Use mean only for validation to be consistent with inference
+                    z_latent_val = mean  # Or sample: z_latent_val = self.vae.reparameterization(mean, log_var)
 
                     # p(params | z)
                     val_params = val_params.view(val_params.size(0), -1)
 
-                    log_prob = self.flow.log_prob(val_params, context=mean)
+                    log_prob = self.flow.log_prob(val_params, context=z_latent_val)
                     val_NLL_loss = -log_prob.mean()
                     val_total_NLL_loss += val_NLL_loss.item()
                     val_samples += val_signal.size(0)
@@ -438,10 +459,12 @@ class Trainer:
                 best_val_loss = avg_total_NLL_loss_val
                 patience_counter = 0
                 best_model_state = self.flow.state_dict()
-                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f} ✓ (Best)")
+                grad_info = f" | Grad Norm: {avg_grad_norm:.4f}" if epoch_grad_norms else ""
+                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f}{grad_info} ✓ (Best)")
             else:
                 patience_counter += 1
-                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f} (Patience: {patience_counter}/{patience})")
+                grad_info = f" | Grad Norm: {avg_grad_norm:.4f}" if epoch_grad_norms else ""
+                print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Train NLL: {avg_train_NLL:.4f} | Val NLL: {avg_total_NLL_loss_val:.4f}{grad_info} (Patience: {patience_counter}/{patience})")
             
             # Early stopping
             if patience_counter >= patience:
@@ -508,6 +531,22 @@ class Trainer:
         )
         plot_loss(self.avg_total_losses, self.avg_total_losses_val)
         
+        # Plot VAE gradient norms if available
+        if hasattr(self, 'vae_gradient_norms'):
+            if len(self.vae_gradient_norms) > 0:
+                print("\nPlotting VAE Gradient Norms...")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.plot(self.vae_gradient_norms, label='VAE Gradient Norm', color='#3498db', linewidth=2)
+                ax.set_xlabel('Epoch', size=16)
+                ax.set_ylabel('Gradient Norm', size=16)
+                ax.set_title('VAE Gradient Norms During Training', size=18)
+                ax.legend(fontsize=12)
+                ax.grid(True, alpha=0.3)
+                ax.axhline(y=self.max_grad_norm, color='red', linestyle='--', alpha=0.5, label=f'Clipping Threshold ({self.max_grad_norm})')
+                ax.legend(fontsize=12)
+                plt.tight_layout()
+                plt.show()
+        
         # Plot Flow NLL losses if available
         if hasattr(self, 'flow_train_nll_losses') and hasattr(self, 'flow_val_nll_losses'):
             if len(self.flow_train_nll_losses) > 0:
@@ -516,6 +555,21 @@ class Trainer:
                     self.flow_train_nll_losses, 
                     self.flow_val_nll_losses
                 )
+        
+        # Plot Flow gradient norms if available
+        if hasattr(self, 'flow_gradient_norms'):
+            if len(self.flow_gradient_norms) > 0:
+                print("\nPlotting Flow Gradient Norms...")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
+                ax.set_xlabel('Epoch', size=16)
+                ax.set_ylabel('Gradient Norm', size=16)
+                ax.set_title('Flow Gradient Norms During Training', size=18)
+                ax.legend(fontsize=12)
+                ax.grid(True, alpha=0.3)
+                ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
+                plt.tight_layout()
+                plt.show()
         
 
     @property
