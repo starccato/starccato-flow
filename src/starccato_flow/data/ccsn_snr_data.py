@@ -153,6 +153,18 @@ class CCSNSNRData(Dataset):
 
         self.max_strain = abs(self.signals).max()
         self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
+        
+        # Convert to PyTorch tensors for faster access (store on device)
+        self.signals_tensor = torch.from_numpy(self.signals).float().to(DEVICE)
+        self.parameters_tensor = torch.from_numpy(self.parameters.values).float().to(DEVICE)
+        
+        # Precompute PSD values for all frequencies we'll use
+        is_even = (Y_LENGTH % 2 == 0)
+        half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
+        delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
+        fourier_freq = np.arange(half_N + 1) * delta_f
+        psd_values = self.AdvLIGOPsd(fourier_freq)
+        self._psd_cache = torch.from_numpy(psd_values).float().to(DEVICE)
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)

@@ -1173,7 +1173,7 @@ def plot_signal_grid(
     return fig
 
 def plot_reconstruction_distribution(
-    vae: VAE,
+    reconstructed_signals: List[np.ndarray],
     noisy_signal: torch.Tensor,
     true_signal: torch.Tensor,
     max_value: float,
@@ -1200,18 +1200,6 @@ def plot_reconstruction_distribution(
     """
     set_plot_style(background, font_family, font_name)
     vline_color = "white" if background == "black" else "black"
-    
-    # Generate reconstructions
-    vae.eval()
-    noisy_signal = noisy_signal.unsqueeze(0)
-    reconstructed_signals = []
-    
-    with torch.no_grad():
-        for _ in range(num_samples):
-            reconstruction, _, _ = vae(noisy_signal)
-            reconstructed_signals.append(
-                reconstruction.squeeze().cpu().numpy() * max_value
-            )
 
     # Prepare data
     reconstructed_signals = np.array(reconstructed_signals)

@@ -28,6 +28,8 @@ from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
 from nflows.flows import Flow
 
+from starccato_flow.nn import vae
+
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
     np.random.seed(seed)
@@ -507,11 +509,24 @@ class Trainer:
 
         plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
-    def plot_reconstruction_distribution(self, index, num_samples, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
+    def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
         val_idx = self.validation_sampler.indices[index]
         signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
+
+        # Generate reconstructions
+        self.vae.eval()
+        noisy_signal = noisy_signal.unsqueeze(0)
+        reconstructed_signals = []
+        
+        with torch.no_grad():
+            for _ in range(num_samples):
+                reconstruction, _, _ = self.vae(noisy_signal)
+                reconstructed_signals.append(
+                    reconstruction.squeeze().cpu().numpy() * self.training_dataset.max_strain
+                )
+
         plot_reconstruction_distribution(
-            vae=self.vae,
+            reconstructed_signals=reconstructed_signals,
             signal=noisy_signal,
             max_value=self.val_loader.dataset.max_strain,
             num_samples=num_samples,

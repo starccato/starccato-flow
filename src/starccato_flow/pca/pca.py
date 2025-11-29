@@ -80,11 +80,34 @@ def FourierArray(signal):
     FA = np.concatenate([FT.real, FT.imag[k == 1]])
     return FA
 
-def BayesianPCR(X, y_train = signal_Tran, t = times, n = 20, n_samples = 10000):
-    # Select the first 20 principal components
+def BayesianPCR(X, y_train, t, n=20, n_samples=10000, return_samples=False):
+    """
+    Bayesian Principal Component Regression for signal reconstruction.
+    
+    Args:
+        X: DataFrame with noisy signal(s) to reconstruct (columns are signals)
+        y_train: Training signals matrix (n_signals, signal_length)
+        t: Time array for the signals
+        n: Number of principal components to use
+        n_samples: Number of posterior samples to draw
+        return_samples: If True, return all samples. If False, return mean only.
+        
+    Returns:
+        If return_samples=False: Mean reconstructed signal(s)
+        If return_samples=True: Array of shape (n_input_signals, n_samples, signal_length)
+    """
+    # Select the first n principal components
     pca = PCA(n_components = n)
-    # Generate principal component matrix based on signals (y_train)
-    PCx = pd.DataFrame(pca.fit_transform(y_train), columns = [f'PC{i + 1}' for i in range (n)])
+    pca.fit(y_train)
+    
+    # Get the principal components (eigenvectors) - these are the basis signals
+    # Shape: (n_components, signal_length) = (20, 256)
+    components = pca.components_  # Shape: (20, 256)
+    
+    # Create DataFrame with principal components as columns
+    # Transpose so each column is one PC time series
+    PCx = pd.DataFrame(components.T, columns = [f'PC{i + 1}' for i in range (n)])
+    
     # Generate Fourier array for principal component matrix
     PCx_FT = PCx.apply(FourierArray)
     # Generate Fourier array for signals with noise
@@ -101,15 +124,35 @@ def BayesianPCR(X, y_train = signal_Tran, t = times, n = 20, n_samples = 10000):
     Sigma = np.linalg.pinv(PCx_FT.T @ Dinv @ PCx_FT)
     # Posterior mean regression coefficients
     Mu = Sigma @ PCx_FT.T @ Dinv @ X_FT
-    # Reconstruct signal
-    def Reconstruction(Mu, Sigma = Sigma):
-        # Direct Sampling from posterior distribution (N * 20)
-        Post_samples = np.random.multivariate_normal(mean = Mu, cov = Sigma, size = n_samples)
-        # 10000 samples for each time point (256 * N)
-        Sign_samples = np.dot(PCx, Post_samples.T)
-        # Return the mean of each time point (256)
-        return np.mean(Sign_samples, axis = 1)
-    # Return the signal (y_pred)
-    Recon_signal = Mu.apply(Reconstruction)
-    Recon_signal.index = t['time'].to_numpy()
-    return Recon_signal
+    
+    if return_samples:
+        # When returning samples, we need to handle reconstruction differently
+        # to avoid issues with pandas apply on 2D arrays
+        all_reconstructions = []
+        
+        for col_idx in range(len(Mu.columns)):
+            mu_vec = Mu.iloc[:, col_idx].values
+            # Direct Sampling from posterior distribution (n_samples, 20)
+            Post_samples = np.random.multivariate_normal(mean = mu_vec, cov = Sigma, size = n_samples)
+            # Reconstruct samples for each time point (256, n_samples)
+            Sign_samples = np.dot(PCx.values, Post_samples.T)
+            # Store as (n_samples, 256)
+            all_reconstructions.append(Sign_samples.T)
+        
+        # Return as (n_input_signals, n_samples, signal_length)
+        return np.array(all_reconstructions)
+    else:
+        # Original behavior: compute mean reconstruction
+        def Reconstruction(Mu_vec):
+            # Direct Sampling from posterior distribution
+            Post_samples = np.random.multivariate_normal(mean = Mu_vec, cov = Sigma, size = n_samples)
+            # samples for each time point
+            Sign_samples = np.dot(PCx.values, Post_samples.T)
+            # Return the mean of each time point (256,)
+            return np.mean(Sign_samples, axis = 1)
+        
+        # Apply reconstruction to each input signal
+        Recon_signal = Mu.apply(Reconstruction)
+        Recon_signal.index = t
+        return Recon_signal
+
