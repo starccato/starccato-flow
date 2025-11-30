@@ -305,7 +305,7 @@ class Trainer:
         self.vae.eval()
         param_dim = 4
 
-        num_layers = 3  # Further reduced from 5 to prevent overfitting
+        num_layers = 5  # Further reduced from 5 to prevent overfitting
 
         # model starts here
         base_dist = StandardNormal(shape=[param_dim])
@@ -318,8 +318,9 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=24,  # Further reduced from 32 to prevent overfitting
+                    hidden_features=32,  # Further reduced from 32 to prevent overfitting
                     context_features=Z_DIM,
+                    dropout_probability=0.2  # Added dropout for regularization
                 )
             )
 
