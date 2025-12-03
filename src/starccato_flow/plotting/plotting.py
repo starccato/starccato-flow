@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from ..nn.vae import VAE
 from ..utils.defaults import DEVICE
-from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE
+from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT
 import corner
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
@@ -61,14 +61,88 @@ def get_time_axis(length: int = 256) -> np.ndarray:
 
 def plot_waveform_grid(
     signals: np.ndarray,
+    noisy_signals: np.ndarray,
     max_value: float,
     num_cols: int = 2,
     num_rows: int = 4,
     fname: Optional[str] = None,
     generated: bool = False,
     background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_family: str = DEFAULT_FONT_FAMILY,
+    font_name: str = DEFAULT_FONT
+) -> Tuple[plt.Figure, plt.Axes]:
+    """Plot a grid of waveform signals.
+    
+    Args:
+        signals (np.ndarray): Array of signals to plot
+        max_value (float): Maximum value for scaling
+        num_cols (int): Number of columns in grid
+        num_rows (int): Number of rows in grid
+        fname (Optional[str]): Filename to save plot
+        generated (bool): Whether signals are generated (affects color)
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+    
+    Returns:
+        Tuple[plt.Figure, plt.Axes]: Figure and axes objects
+    """
+    # Set consistent styling
+    set_plot_style(background, font_family, font_name)
+    
+    # Set colors based on background and generated status
+    signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
+    vline_color = "white" if background == "black" else "black"
+
+    # Create figure and axes
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 15))
+    axes = axes.flatten()
+
+    # Get time axis
+    d = get_time_axis()
+
+    # Plot each signal
+    for i, ax in enumerate(axes):
+        if i >= len(signals):  # Handle case where fewer signals than slots
+            ax.axis('off')
+            continue
+            
+        y = signals[i].flatten() * max_value
+        ax.set_ylim(-600, 300)
+        ax.plot(d, y, color=signal_colour)
+        
+        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+        ax.grid(True)
+        
+        # Handle axis labels
+        if i % num_cols == num_cols - 1:
+            ax.yaxis.set_ticklabels([])
+        if i < num_cols * (num_rows - 1):
+            ax.xaxis.set_ticklabels([])
+
+    # Add overall labels
+    fig.supxlabel('time (s)', fontsize=16)
+    fig.supylabel('hD (cm)', fontsize=16)
+
+    # Finalize and save
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
+    plt.show()
+    plt.rcdefaults()  # Reset to default style
+    return fig, axes
+
+
+def plot_individual_signal(
+    signals: np.ndarray,
+    noisy_signals: np.ndarray,
+    max_value: float,
+    fname: Optional[str] = None,
+    generated: bool = False,
+    background: str = "white",
+    font_family: str = DEFAULT_FONT_FAMILY,
+    font_name: str = DEFAULT_FONT
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot a grid of waveform signals.
     
@@ -138,8 +212,8 @@ def plot_reconstruction(
     max_value: float,
     fname: Optional[str] = None,
     background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_family: str = DEFAULT_FONT_FAMILY,
+    font_name: str = DEFAULT_FONT
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot original and reconstructed signals for comparison.
     

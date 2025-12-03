@@ -341,10 +341,121 @@ class Trainer:
         print("\n" + "="*60)
         print("Starting Flow Training")
         print("="*60)
-        self.train_npe_with_vae(num_epochs=500, batch_size=BATCH_SIZE)
+        self.train_npe_with_vae_standard(num_epochs=256, batch_size=BATCH_SIZE)
+    
+    def train_npe_with_vae_standard(self, num_epochs=256, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
+        """
+        Train a MaskedAutoregressiveFlow to estimate p(params | latent)
+        """
+        self.vae.eval()
+        param_dim = 4
+
+        num_layers = 10
+
+        # model starts here
+        base_dist = StandardNormal(shape=[param_dim])
+
+        # composite transform
+        transforms = []
+        for i in range(num_layers):
+            if i % 2 == 0:
+                transforms.append(ReversePermutation(features=param_dim))
+            transforms.append(
+                MaskedAffineAutoregressiveTransform(
+                    features=param_dim,
+                    hidden_features=128,
+                    context_features=Z_DIM,
+                )
+            )
+
+        transform = CompositeTransform(transforms)
+
+        # create flow on CPU first, in float32
+        self.flow = Flow(transform, base_dist)
+
+        # move to device explicitly, MPS requires float32
+        self.flow = flow.to(DEVICE, dtype=torch.float32)
+
+        # model ends here
+
+        optimizer = optim.Adam(self.flow.parameters(), lr=lr)
+
+        for epoch in range(num_epochs):
+            self.flow.train()
+            total_loss = 0.0
+
+            self.train_loader.dataset.set_epoch(epoch)
+            self.val_loader.dataset.set_epoch(epoch)
+
+            for signal, noisy_signal, params in self.train_loader:
+                signal = signal.to(DEVICE).float()
+                noisy_signal = noisy_signal.to(DEVICE).float()
+                params = params.to(DEVICE).float()
+                # take only the first param
+                params = torch.log(params + 1e-8)  # log-transform
+
+                # Encode signal into latent space
+                with torch.no_grad():
+                    _, mean, log_var = self.vae(noisy_signal)
+                    mean = mean.view(mean.size(0), -1)
+                    log_var = log_var.view(log_var.size(0), -1)
+                    # don't sample from latent, use mean only due to stable training
+                    # z_latent = vae.reparameterization(mean, log_var)
+                    # z_latent = z_latent.view(z_latent.size(0), -1)
+
+                # p(params | z)
+                params = params.view(params.size(0), -1) 
+
+                optimizer.zero_grad(set_to_none=True)
+
+                log_prob = self.flow.log_prob(params, context=mean)
+                loss = -log_prob.mean()
+
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+            
+            # validation step
+            self.flow.eval()
+            val_total_NLL_loss = 0.0
+            with torch.no_grad():
+                for val_signal, val_noisy_signal, val_params in self.val_loader:
+                    val_signal = val_signal.to(DEVICE).float()
+                    val_noisy_signal = val_noisy_signal.to(DEVICE).float()
+                    val_params = val_params.to(DEVICE).float()
+                    # take only the first param
+                    # params = params[:, :, 0:1]
+                    val_params = torch.log(val_params + 1e-8)  # log-transform
+                    # params = params[:, :, 0]
+
+                    # Encode signal into latent space
+                    with torch.no_grad():
+                        _, mean, _ = self.vae(val_noisy_signal)
+                        mean = mean.view(mean.size(0), -1)
+                        # don't sample from latent, use mean only due to stable training
+
+                    # p(params | z)
+                    val_params = val_params.view(val_params.size(0), -1) 
+
+                    optimizer.zero_grad(set_to_none=True)
+
+                    log_prob = self.flow.log_prob(val_params, context=mean) # this conditions the flow on the latent variable z
+                    val_NLL_loss = -log_prob.mean()
+                    val_total_NLL_loss += val_NLL_loss.item()
+
+            # self.avg_total_losses_val.append(avg_total_NLL_loss_val)
+
+            # Do not advance validation epoch-driven curriculum; keep it stable across epochs
+            # self.val_loader.dataset.set_epoch(epoch)
+            
+            # Step the learning rate scheduler
+            # self.scheduler.step(avg_total_NLL_loss_val)
+
+            print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Training NLL: {total_loss / len(self.train_loader):.4f}, | Flow Validation NLL: {val_total_NLL_loss / len(self.val_loader):.4f}") 
 
 
-    def train_npe_with_vae(self, num_epochs=500, batch_size=BATCH_SIZE, lr=5e-5, patience=20):
+    def train_npe_with_vae_improved(self, num_epochs=500, batch_size=BATCH_SIZE, lr=5e-5, patience=20):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
         With early stopping and regularization to prevent overfitting.
