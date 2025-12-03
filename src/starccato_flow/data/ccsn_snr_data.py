@@ -15,6 +15,12 @@ from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
 
+
+is_even = (Y_LENGTH % 2 == 0)
+half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
+delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
+fourier_freq = np.arange(half_N + 1) * delta_f
+
 class CCSNSNRData(Dataset):
     def __init__(
         self,
@@ -63,25 +69,10 @@ class CCSNSNRData(Dataset):
             "Signals and parameters must have the same number of rows (the number of signals)",
         )
 
-        # Sample a fraction of the data if requested
-        if frac < 1:
-            init_shape = self.signals.shape
-            n_signals = int(frac * self.signals.shape[0])
-            
-            # Use the same random indices for both signals and parameters
-            random_indices = np.random.choice(self.signals.shape[0], n_signals, replace=False)
-            self.signals = self.signals.iloc[random_indices]
-            self.parameters = self.parameters.iloc[random_indices]
-            
-            print(f"Sampled {n_signals} signals out of {init_shape[0]}")
-        
         # Remove unusual parameters and corresponding signals
         keep_idx = self.parameters["beta1_IC_b"] > 0
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         self.parameters = self.parameters[keep_idx]
-
-        parameter_set = ["beta1_IC_b", "A(km)"]
-        # parameter_set = ["beta1_IC_b"]
 
         if multi_param:
             parameter_set = ["beta1_IC_b", "A(km)", "Ye_c_b", "omega_0(rad|s)"]
@@ -90,26 +81,6 @@ class CCSNSNRData(Dataset):
 
         # keep only the parameters we want
         self.parameters = self.parameters[parameter_set]
-
-        # akm = pd.get_dummies(self.parameters["A(km)"], prefix="A")
-        # self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
-
-        # Equal frequency binning for beta1_IC_b
-        # if "beta1_IC_b" in parameter_set:
-        #     self.parameters['beta1_IC_b'] = pd.qcut(
-        #         self.parameters['beta1_IC_b'], q=3, labels=False
-        #     )
-        #     beta_bins = pd.get_dummies(self.parameters['beta1_IC_b'], prefix="beta_bin")
-        #     self.parameters = pd.concat([self.parameters.drop(columns=["beta1_IC_b"]), beta_bins], axis=1)
-
-        # if multi_param:
-            # # one hot encode A(km)
-            # akm = pd.get_dummies(self.parameters["A(km)"], prefix="A")
-            # self.parameters = pd.concat([self.parameters.drop(columns=["A(km)"]), akm], axis=1)
-
-            # one hot encode EOS
-            # eos = pd.get_dummies(self.parameters["EOS"], prefix="EOS")
-            # self.parameters = pd.concat([self.parameters.drop(columns=["EOS"]), eos], axis=1)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]
@@ -152,19 +123,7 @@ class CCSNSNRData(Dataset):
                 self.indices = indices
 
         self.max_strain = abs(self.signals).max()
-        self.ylim_signal = (self.signals[:, :].min(), self.signals[:, :].max())
-        
-        # Convert to PyTorch tensors for faster access (store on device)
-        self.signals_tensor = torch.from_numpy(self.signals).float().to(DEVICE)
-        self.parameters_tensor = torch.from_numpy(self.parameters.values).float().to(DEVICE)
-        
-        # Precompute PSD values for all frequencies we'll use
-        is_even = (Y_LENGTH % 2 == 0)
-        half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-        delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
-        fourier_freq = np.arange(half_N + 1) * delta_f
-        psd_values = self.AdvLIGOPsd(fourier_freq)
-        self._psd_cache = torch.from_numpy(psd_values).float().to(DEVICE)
+
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
@@ -245,8 +204,8 @@ class CCSNSNRData(Dataset):
             original_state = np.random.get_state()
             np.random.set_state(random_state.get_state())
         
-        dataDeltaT = 1 / 4096  # Sampling rate: 4096 Hz
-        dataSec = 256 / 4096   # Duration: 256 samples at 4096 Hz
+        dataDeltaT = SAMPLING_RATE  # Sampling rate: 4096 Hz
+        dataSec = 256 * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
         
         # Generate noise with proper PSD scaling
@@ -270,10 +229,6 @@ class CCSNSNRData(Dataset):
         normalised_signal = signal / self.max_strain
         return normalised_signal
     
-    def normalise_parameters(self, parameters):
-        normalised_parameters = parameters / self.max_parameter_value
-        return normalised_parameters
-
     ### overloads ###
     def __len__(self):
         # Multiply dataset size by number of noise realizations
@@ -310,12 +265,6 @@ class CCSNSNRData(Dataset):
         parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         parameters = parameters.reshape(1, -1)
-
-
-        is_even = (Y_LENGTH % 2 == 0)
-        half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-        delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
-        fourier_freq = np.arange(half_N + 1) * delta_f
 
         Sn = self.AdvLIGOPsd(fourier_freq)
 

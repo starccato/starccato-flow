@@ -83,52 +83,102 @@ class Trainer:
         # selector between toy and real data
         if self.toy:
             self.training_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
-            # self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
+            self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
-            # placeholder
-            # if self.snr:
-                # print("Using SNR-based dataset")
-                # self.training_dataset = CCSNDataSNR(num_epochs=self.num_epochs, noise=self.no
+            # Create a temporary dataset to get the number of base signals (before augmentation)
+            temp_dataset = CCSNSNRData(
+                num_epochs=self.num_epochs,
+                start_snr=start_snr,
+                end_snr=end_snr,
+                noise=self.noise,
+                curriculum=False,  # Temporarily disable to get base count
+                noise_realizations=1  # Single realization to get base signal count
+            )
+            num_base_signals = temp_dataset.signals.shape[1]
+            
+            # Split on BASE signal indices (before augmentation)
+            base_indices = list(range(num_base_signals))
+            split = int(np.floor(self.validation_split * num_base_signals))
+            
+            # Deterministic split with fixed seed
+            rng = np.random.RandomState(self.seed)
+            rng.shuffle(base_indices)
+            train_base_indices = np.array(base_indices[split:])
+            val_base_indices = np.array(base_indices[:split])
+            
+            print(f"\n=== Data Split (on base signals) ===")
+            print(f"Total base signals: {num_base_signals}")
+            print(f"Training base signals: {len(train_base_indices)}")
+            print(f"Validation base signals: {len(val_base_indices)}")
+            print(f"First 5 training indices: {train_base_indices[:5]}")
+            print(f"First 5 validation indices: {val_base_indices[:5]}")
+            
+            # VERIFY: No overlap between train and validation base indices
+            train_set = set(train_base_indices)
+            val_set = set(val_base_indices)
+            overlap = train_set.intersection(val_set)
+            
+            if len(overlap) > 0:
+                raise ValueError(
+                    f"❌ DATA LEAKAGE DETECTED! {len(overlap)} signals appear in both "
+                    f"train and validation sets: {sorted(list(overlap))[:10]}"
+                )
+            else:
+                print(f"✓ Verification PASSED: No overlap between train and validation sets")
+                print(f"  Train signals: {len(train_set)} unique indices")
+                print(f"  Val signals: {len(val_set)} unique indices")
+                print(f"  Total coverage: {len(train_set) + len(val_set)} / {num_base_signals}")
+            
+            # Create SEPARATE dataset instances with disjoint base indices
+            # Training: with curriculum and multiple noise realizations
             self.training_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
-                noise=self.noise, 
+                noise=self.noise,
                 curriculum=self.curriculum,
-                noise_realizations=self.noise_realizations
+                noise_realizations=self.noise_realizations,
+                indices=train_base_indices
             )
-            # self.validation_dataset = CCSNData(num_epochs=self.num_epochs, noise=self.noise, curriculum=self.curriculum)
-
-        # Use the same underlying dataset object with disjoint samplers
-        # (alternatively, you could create a separate instance with identical preprocessing)
-        self.validation_dataset = self.training_dataset
+            
+            # Validation: FIXED SNR (no curriculum) with single noise realization
+            self.validation_dataset = CCSNSNRData(
+                num_epochs=self.num_epochs,
+                start_snr=end_snr,  # Fixed SNR at final difficulty
+                end_snr=end_snr,    # Same start and end = no curriculum
+                noise=self.noise,
+                curriculum=False,   # CRITICAL: No curriculum for validation!
+                noise_realizations=1,  # CRITICAL: Single noise realization for consistency!
+                indices=val_base_indices
+            )
     
         self.training_dataset.verify_alignment()
         self.validation_dataset.verify_alignment()
 
-        dataset_size = self.training_dataset.__len__()
-        indices = list(range(dataset_size))
-        split = int(np.floor(self.validation_split * dataset_size))
-        # Deterministic split
-        rng = np.random.RandomState(self.seed)
-        rng.shuffle(indices)
-        train_indices, val_indices = indices[split:], indices[:split]
+        # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
+        self.train_loader = DataLoader(
+            self.training_dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True
+        )
+        self.val_loader = DataLoader(
+            self.validation_dataset, 
+            batch_size=self.batch_size, 
+            shuffle=False  # Don't shuffle validation for consistency
+        )
 
-        self.training_sampler = SubsetRandomSampler(train_indices)
-        self.validation_sampler = SubsetRandomSampler(val_indices)
-
-        self.train_loader = DataLoader(self.training_dataset, batch_size=self.batch_size, sampler=self.training_sampler)
-        self.val_loader = DataLoader(self.validation_dataset, batch_size=self.batch_size, sampler=self.validation_sampler)
-
-        print(f"Training samples: {len(train_indices)}")
-        print(f"Validation samples: {len(val_indices)}")
+        print(f"\n=== Dataset Sizes (after augmentation) ===")
+        print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
+        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1 realization)")
+        print(f"Validation: FIXED SNR = {end_snr}, NO curriculum learning")
+        print("=" * 50)
 
         self.checkpoint_interval = checkpoint_interval # what is this?
 
         os.makedirs(outdir, exist_ok=True)
         _set_seed(self.seed)
 
-        # setup networks
+        # setup VAE
         self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
         self.vae.apply(_init_weights_vae)
 
@@ -189,6 +239,9 @@ class Trainer:
             total_samples = 0
             epoch_grad_norms = []
 
+            # Update epoch for training dataset only (curriculum learning)
+            self.train_loader.dataset.set_epoch(epoch)
+
             for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
@@ -208,9 +261,6 @@ class Trainer:
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
                 total_samples += signal.size(0)
-
-            # Update epoch for curriculum learning
-            self.train_loader.dataset.set_epoch(epoch)
 
             avg_total_loss = total_loss / total_samples
             avg_reproduction_loss = reproduction_loss / total_samples
@@ -252,9 +302,6 @@ class Trainer:
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
             self.avg_kld_losses_val.append(avg_kld_loss_val)
 
-            # set validation 
-            self.val_loader.dataset.set_epoch(epoch)
-            
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
 
@@ -318,9 +365,9 @@ class Trainer:
             transforms.append(
                 MaskedAffineAutoregressiveTransform(
                     features=param_dim,
-                    hidden_features=32,  # Further reduced from 32 to prevent overfitting
+                    hidden_features=128,
                     context_features=Z_DIM,
-                    dropout_probability=0.2  # Added dropout for regularization
+                    dropout_probability=0.1  # Added dropout for regularization
                 )
             )
 
@@ -333,24 +380,12 @@ class Trainer:
         self.flow = self.flow.to(DEVICE, dtype=torch.float32)
 
         # model ends here
-
-        # Create separate DataLoader with smaller batch size for flow training
-        flow_train_loader = DataLoader(
-            self.training_dataset, 
-            batch_size=batch_size,  # Use the passed batch_size parameter
-            sampler=self.training_sampler
-        )
-        flow_val_loader = DataLoader(
-            self.validation_dataset,
-            batch_size=batch_size,
-            sampler=self.validation_sampler
-        )
         
         # Add stronger weight decay for regularization
         optimizer = optim.Adam(self.flow.parameters(), lr=lr, weight_decay=5e-4)  # Increased from 1e-4
         
         # Learning rate scheduler to reduce LR on plateau
-        flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        self.flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-7  # Reduced patience from 15
         )
         
@@ -371,7 +406,11 @@ class Trainer:
             total_loss = 0.0
             epoch_grad_norms = []
 
-            for signal, noisy_signal, params in flow_train_loader:  # Use flow-specific DataLoader
+            # Update epoch for training dataset only (curriculum learning)
+            self.train_loader.dataset.set_epoch(epoch)
+
+            train_samples = 0
+            for signal, noisy_signal, params in self.train_loader:
                 signal = signal.to(DEVICE).float()
                 noisy_signal = noisy_signal.to(DEVICE).float()
                 params = params.to(DEVICE).float()
@@ -382,19 +421,15 @@ class Trainer:
 
                 # Encode signal into latent space
                 with torch.no_grad():
-                    _, mean, log_var = self.vae(noisy_signal)
+                    _, mean, _ = self.vae(noisy_signal)
                     mean = mean.view(mean.size(0), -1)
-                    log_var = log_var.view(log_var.size(0), -1)
-                    # don't sample from latent, use mean only due to stable training
-                    z_latent = self.vae.reparameterization(mean, log_var)
-                    z_latent = z_latent.view(z_latent.size(0), -1)
 
                 # p(params | z)
                 params = params.view(params.size(0), -1) 
 
                 optimizer.zero_grad(set_to_none=True)
 
-                log_prob = self.flow.log_prob(params, context=z_latent)
+                log_prob = self.flow.log_prob(params, context=mean)
                 loss = -log_prob.mean()
                 
                 # Check for NaN/Inf
@@ -409,53 +444,46 @@ class Trainer:
                 optimizer.step()
 
                 total_loss += loss.item()
+                train_samples += signal.size(0)
+
             
             # Track average gradient norm for this epoch
             if epoch_grad_norms:
                 avg_grad_norm = np.mean(epoch_grad_norms)
                 self.flow_gradient_norms.append(avg_grad_norm)
-            
-            # Update epoch for curriculum learning (same as VAE training)
-            flow_train_loader.dataset.set_epoch(epoch)
-            
+                        
             # validation step
             self.flow.eval()
             val_total_NLL_loss = 0.0
             val_samples = 0
             with torch.no_grad():
-                for val_signal, val_noisy_signal, val_params in flow_val_loader:
+                for val_signal, val_noisy_signal, val_params in self.val_loader:
                     val_signal = val_signal.to(DEVICE).float()
                     val_noisy_signal = val_noisy_signal.to(DEVICE).float()
                     val_params = val_params.to(DEVICE).float()
                     val_params = torch.log(val_params + 1e-8)
 
                     # Encode signal into latent space - use mean for validation (consistent with inference)
-                    _, mean, log_var = self.vae(val_noisy_signal)
+                    _, mean, _ = self.vae(val_noisy_signal)
                     mean = mean.view(mean.size(0), -1)
-                    log_var = log_var.view(log_var.size(0), -1)
-                    # Use mean only for validation to be consistent with inference
-                    z_latent_val = mean  # Or sample: z_latent_val = self.vae.reparameterization(mean, log_var)
 
                     # p(params | z)
                     val_params = val_params.view(val_params.size(0), -1)
 
-                    log_prob = self.flow.log_prob(val_params, context=z_latent_val)
+                    log_prob = self.flow.log_prob(val_params, context=mean)
                     val_NLL_loss = -log_prob.mean()
                     val_total_NLL_loss += val_NLL_loss.item()
                     val_samples += val_signal.size(0)
 
             avg_total_NLL_loss_val = val_total_NLL_loss / val_samples
-            avg_train_NLL = total_loss / len(flow_train_loader)
+            avg_train_NLL = total_loss / train_samples
             
             # Track losses (like VAE training)
             self.flow_train_nll_losses.append(avg_train_NLL)
             self.flow_val_nll_losses.append(avg_total_NLL_loss_val)
-            
-            # Update validation epoch for curriculum learning (same as VAE training)
-            flow_val_loader.dataset.set_epoch(epoch)
-            
+                        
             # Step the learning rate scheduler
-            flow_scheduler.step(avg_total_NLL_loss_val)
+            self.flow_scheduler.step(avg_total_NLL_loss_val)
             
             # Early stopping check
             if avg_total_NLL_loss_val < best_val_loss:
@@ -476,14 +504,13 @@ class Trainer:
                 self.flow.load_state_dict(best_model_state)
                 break
         
-        # Load best model if training completed without early stopping
         if best_model_state is not None and patience_counter < patience:
             print(f"\n✓ Training completed. Loading best model (Val NLL: {best_val_loss:.4f})")
             self.flow.load_state_dict(best_model_state) 
     
-    def plot_corner(self, index=0):
-        val_idx = self.validation_sampler.indices[index]
-        signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
+    def plot_corner(self, signal, noisy_signal, params, index=0):
+        # Validation dataset already contains only validation samples
+        # signal, noisy_signal, params = self.validation_dataset[index]
         plot_corner(self.vae, self.flow, signal, noisy_signal, params)
 
 
@@ -511,8 +538,8 @@ class Trainer:
         plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
-        val_idx = self.validation_sampler.indices[index]
-        signal, noisy_signal, params = self.val_loader.dataset.__getitem__(val_idx)
+        # Validation dataset already contains only validation samples
+        signal, noisy_signal, params = self.validation_dataset[index]
 
         # Generate reconstructions
         self.vae.eval()
@@ -529,7 +556,7 @@ class Trainer:
         plot_reconstruction_distribution(
             reconstructed_signals=reconstructed_signals,
             signal=noisy_signal,
-            max_value=self.val_loader.dataset.max_strain,
+            max_value=self.validation_dataset.max_strain,
             num_samples=num_samples,
             background=background,
             font_family=font_family,
