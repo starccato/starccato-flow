@@ -163,7 +163,7 @@ def plot_candidate_signal(
     set_plot_style(background, font_family, font_name)
     
     # Set colors based on background and generated status
-    clean_color = "lightskyblue"
+    clean_color = "white"
     noisy_color = SIGNAL_COLOUR
     vline_color = "white" if background == "black" else "black"
     text_color = vline_color
@@ -186,8 +186,9 @@ def plot_candidate_signal(
         y_noisy = noisy_signal.flatten() * max_value
 
     # Plot signals
-    plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=0.8, label="Clean Signal")
-    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=0.6, label="Noisy Signal")
+    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=1.0, label="Signal + Noise")
+    plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=1.0, label="Signal")
+
     
     # Add reference line and styling
     plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
@@ -198,7 +199,7 @@ def plot_candidate_signal(
     plt.grid(False)
     
     # Add legend
-    plt.legend(loc='upper right', facecolor="none", edgecolor=text_color, 
+    plt.legend(loc='lower right', facecolor="none", edgecolor=text_color, 
                labelcolor=text_color, fontsize=12, framealpha=0.0)
 
     # Finalize and save

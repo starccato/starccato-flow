@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
 
-from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner
+from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner, plot_candidate_signal
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
@@ -614,6 +614,11 @@ class Trainer:
         # Validation dataset already contains only validation samples
         # signal, noisy_signal, params = self.validation_dataset[index]
         plot_corner(self.vae, self.flow, signal, noisy_signal, params)
+
+    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plot/candidate_signal"):
+        self.val_loader.dataset.update_snr(snr)
+        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
+        plot_candidate_signal(signal=signal, noisy_signal=noisy_signal, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
 
 
     def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
