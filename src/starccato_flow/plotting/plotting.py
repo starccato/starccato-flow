@@ -163,7 +163,7 @@ def plot_candidate_signal(
     set_plot_style(background, font_family, font_name)
     
     # Set colors based on background and generated status
-    clean_color = "white"
+    clean_color = SIGNAL_COLOUR
     noisy_color = SIGNAL_COLOUR
     vline_color = "white" if background == "black" else "black"
     text_color = vline_color
@@ -186,7 +186,7 @@ def plot_candidate_signal(
         y_noisy = noisy_signal.flatten() * max_value
 
     # Plot signals
-    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=1.0, label="Signal + Noise")
+    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=0.5, label="Signal + Noise")
     plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=1.0, label="Signal")
 
     
