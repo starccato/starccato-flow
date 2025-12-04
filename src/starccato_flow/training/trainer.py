@@ -177,8 +177,8 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup VAE
-        self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-        # self.vae = vae_test.VAETest(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        # self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        self.vae = vae_test.VAETest(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
         self.vae.apply(_init_weights_vae)
 
         # Setup optimizer and scheduler
@@ -228,7 +228,6 @@ class Trainer:
         self.avg_total_losses_val = []
         self.avg_reproduction_losses_val = []
         self.avg_kld_losses_val = []
-        self.vae_gradient_norms = []
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
             self.vae.train()
@@ -236,11 +235,9 @@ class Trainer:
             reproduction_loss = 0
             kld_loss = 0
             total_samples = 0
-            epoch_grad_norms = []
 
-            # Update epoch for training dataset only (curriculum learning)
-            self.train_loader.dataset.set_epoch(epoch)
             self.val_loader.dataset.set_epoch(epoch)
+            self.train_loader.dataset.set_epoch(epoch)
 
             for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
@@ -253,26 +250,22 @@ class Trainer:
                 
                 # Backward pass with gradient clipping
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
-                epoch_grad_norms.append(grad_norm.item())
+                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
                 self.optimizerVAE.step()
 
                 total_loss += loss.item()
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
+                total_samples += signal.size(0)
 
-            avg_total_loss = total_loss / len(self.train_loader.dataset)
-            avg_reproduction_loss = reproduction_loss / len(self.train_loader.dataset)
-            avg_kld_loss = kld_loss / len(self.train_loader.dataset)
+
+            avg_total_loss = total_loss / total_samples
+            avg_reproduction_loss = reproduction_loss / total_samples
+            avg_kld_loss = kld_loss / total_samples
 
             self.avg_total_losses.append(avg_total_loss)
             self.avg_reproduction_losses.append(avg_reproduction_loss)
             self.avg_kld_losses.append(avg_kld_loss)
-            
-            # Track average gradient norm for this epoch
-            if epoch_grad_norms:
-                avg_grad_norm = np.mean(epoch_grad_norms)
-                self.vae_gradient_norms.append(avg_grad_norm)
 
             # Validation
             self.vae.eval()
@@ -291,19 +284,20 @@ class Trainer:
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
                     val_kld_loss += v_kld.item()
+                    val_samples += val_signal.size(0)
             
-            avg_total_loss_val = val_total_loss / len(self.val_loader.dataset)
-            avg_reproduction_loss_val = val_reproduction_loss / len(self.val_loader.dataset)
-            avg_kld_loss_val = val_kld_loss / len(self.val_loader.dataset)
+            avg_total_loss_val = val_total_loss / val_samples
+            avg_reproduction_loss_val = val_reproduction_loss / val_samples
+            avg_kld_loss_val = val_kld_loss / val_samples
 
             self.avg_total_losses_val.append(avg_total_loss_val)
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
             self.avg_kld_losses_val.append(avg_kld_loss_val)
-
+            
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
 
-            print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
+            # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
             if (epoch + 1) % self.checkpoint_interval == 0:
