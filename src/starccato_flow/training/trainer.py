@@ -17,7 +17,6 @@ from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.vae import VAE
-from ..nn.vae_parameter import VAE_PARAMETER
 # from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
@@ -91,8 +90,8 @@ class Trainer:
                 start_snr=start_snr,
                 end_snr=end_snr,
                 noise=self.noise,
-                curriculum=False,  # Temporarily disable to get base count
-                noise_realizations=1  # Single realization to get base signal count
+                curriculum=False, 
+                noise_realizations=1
             )
             num_base_signals = temp_dataset.signals.shape[1]
             
@@ -144,11 +143,11 @@ class Trainer:
             # Validation: FIXED SNR (no curriculum) with single noise realization
             self.validation_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
-                start_snr=end_snr,  # Fixed SNR at final difficulty
-                end_snr=end_snr,    # Same start and end = no curriculum
+                start_snr=end_snr,
+                end_snr=end_snr,
                 noise=self.noise,
-                curriculum=False,   # CRITICAL: No curriculum for validation!
-                noise_realizations=1,  # CRITICAL: Single noise realization for consistency!
+                curriculum=self.curriculum, 
+                noise_realizations=1,
                 indices=val_base_indices
             )
     
@@ -169,11 +168,10 @@ class Trainer:
 
         print(f"\n=== Dataset Sizes (after augmentation) ===")
         print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
-        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1 realization)")
-        print(f"Validation: FIXED SNR = {end_snr}, NO curriculum learning")
+        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1)")
         print("=" * 50)
 
-        self.checkpoint_interval = checkpoint_interval # what is this?
+        self.checkpoint_interval = checkpoint_interval
 
         os.makedirs(outdir, exist_ok=True)
         _set_seed(self.seed)
@@ -219,7 +217,7 @@ class Trainer:
             num_cols=4,
             num_rows=4,
         )
-
+    
     def train(self):
         t0 = time.time()
 
@@ -241,6 +239,7 @@ class Trainer:
 
             # Update epoch for training dataset only (curriculum learning)
             self.train_loader.dataset.set_epoch(epoch)
+            self.val_loader.dataset.set_epoch(epoch)
 
             for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
@@ -260,11 +259,10 @@ class Trainer:
                 total_loss += loss.item()
                 reproduction_loss += rec_loss.item()
                 kld_loss += kld.item()
-                total_samples += signal.size(0)
 
-            avg_total_loss = total_loss / total_samples
-            avg_reproduction_loss = reproduction_loss / total_samples
-            avg_kld_loss = kld_loss / total_samples
+            avg_total_loss = total_loss / len(self.train_loader.dataset)
+            avg_reproduction_loss = reproduction_loss / len(self.train_loader.dataset)
+            avg_kld_loss = kld_loss / len(self.train_loader.dataset)
 
             self.avg_total_losses.append(avg_total_loss)
             self.avg_reproduction_losses.append(avg_reproduction_loss)
@@ -292,11 +290,10 @@ class Trainer:
                     val_total_loss += v_loss.item()
                     val_reproduction_loss += v_rec_loss.item()
                     val_kld_loss += v_kld.item()
-                    val_samples += val_signal.size(0)
             
-            avg_total_loss_val = val_total_loss / val_samples
-            avg_reproduction_loss_val = val_reproduction_loss / val_samples
-            avg_kld_loss_val = val_kld_loss / val_samples
+            avg_total_loss_val = val_total_loss / len(self.val_loader.dataset)
+            avg_reproduction_loss_val = val_reproduction_loss / len(self.val_loader.dataset)
+            avg_kld_loss_val = val_kld_loss / len(self.val_loader.dataset)
 
             self.avg_total_losses_val.append(avg_total_loss_val)
             self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
@@ -341,9 +338,9 @@ class Trainer:
         print("\n" + "="*60)
         print("Starting Flow Training")
         print("="*60)
-        self.train_npe_with_vae_standard(num_epochs=256, batch_size=BATCH_SIZE)
+        self.train_npe_with_vae_standard(num_epochs=256, lr=self.lr_flow)
     
-    def train_npe_with_vae_standard(self, num_epochs=256, batch_size=BATCH_SIZE, lr=1e-4, flow=None):
+    def train_npe_with_vae_standard(self, num_epochs=256, lr=1e-4):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
         """
@@ -374,7 +371,7 @@ class Trainer:
         self.flow = Flow(transform, base_dist)
 
         # move to device explicitly, MPS requires float32
-        self.flow = flow.to(DEVICE, dtype=torch.float32)
+        self.flow = self.flow.to(DEVICE, dtype=torch.float32)
 
         # model ends here
 
@@ -455,7 +452,7 @@ class Trainer:
             print(f"Epoch [{epoch+1}/{num_epochs}] | Flow Training NLL: {total_loss / len(self.train_loader):.4f}, | Flow Validation NLL: {val_total_NLL_loss / len(self.val_loader):.4f}") 
 
 
-    def train_npe_with_vae_improved(self, num_epochs=500, batch_size=BATCH_SIZE, lr=5e-5, patience=20):
+    def train_npe_with_vae_improved(self, num_epochs=500, lr=5e-5, patience=20):
         """
         Train a MaskedAutoregressiveFlow to estimate p(params | latent)
         With early stopping and regularization to prevent overfitting.
@@ -497,7 +494,7 @@ class Trainer:
         
         # Learning rate scheduler to reduce LR on plateau
         self.flow_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-7  # Reduced patience from 15
+            optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-7
         )
         
         # Initialize loss tracking lists (like VAE training)
