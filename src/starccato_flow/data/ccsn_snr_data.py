@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from scipy.fft import fft, ifft
 
-from ..plotting.plotting import plot_signal_distribution, plot_signal_grid
+from ..plotting.plotting import plot_candidate_signal, plot_signal_distribution, plot_signal_grid
 from ..utils.defaults import BATCH_SIZE, DEVICE
 from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV

@@ -130,7 +130,7 @@ class Trainer:
             
             # Create SEPARATE dataset instances with disjoint base indices
             # Training: with curriculum and multiple noise realizations
-            self.training_dataset = CCSNSNRData(
+            training_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -141,7 +141,7 @@ class Trainer:
             )
             
             # Validation: FIXED SNR (no curriculum) with single noise realization
-            self.validation_dataset = CCSNSNRData(
+            validation_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -151,24 +151,24 @@ class Trainer:
                 indices=val_base_indices
             )
     
-        self.training_dataset.verify_alignment()
-        self.validation_dataset.verify_alignment()
+        training_dataset.verify_alignment()
+        validation_dataset.verify_alignment()
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
         self.train_loader = DataLoader(
-            self.training_dataset, 
+            training_dataset, 
             batch_size=self.batch_size, 
             shuffle=True
         )
         self.val_loader = DataLoader(
-            self.validation_dataset, 
+            validation_dataset, 
             batch_size=self.batch_size, 
             shuffle=False  # Don't shuffle validation for consistency
         )
 
         print(f"\n=== Dataset Sizes (after augmentation) ===")
-        print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
-        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1)")
+        print(f"Training samples: {len(training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
+        print(f"Validation samples: {len(validation_dataset)} ({len(val_base_indices)} base × 1)")
         print("=" * 50)
 
         self.checkpoint_interval = checkpoint_interval
@@ -177,8 +177,8 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup VAE
-        # self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
-        self.vae = vae_test.VAETest(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        # self.vae = vae_test.VAETest(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
         self.vae.apply(_init_weights_vae)
 
         # Setup optimizer and scheduler
@@ -641,8 +641,7 @@ class Trainer:
         plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
-        # Validation dataset already contains only validation samples
-        signal, noisy_signal, params = self.validation_dataset[index]
+        signal, noisy_signal, params = self.val_loader.dataset[index]
 
         # Generate reconstructions
         self.vae.eval()
@@ -653,14 +652,14 @@ class Trainer:
             for _ in range(num_samples):
                 reconstruction, _, _ = self.vae(noisy_signal)
                 reconstructed_signals.append(
-                    reconstruction.squeeze().cpu().numpy() * self.training_dataset.max_strain
+                    reconstruction.squeeze().cpu().numpy() * self.val_loader.dataset.max_strain
                 )
 
         plot_reconstruction_distribution(
             reconstructed_signals=reconstructed_signals,
             noisy_signal=noisy_signal,
             true_signal=signal,
-            max_value=self.validation_dataset.max_strain,
+            max_value=self.val_loader.dataset.max_strain,
             num_samples=num_samples,
             background=background,
             font_family=font_family,

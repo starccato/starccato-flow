@@ -134,23 +134,22 @@ def plot_waveform_grid(
     return fig, axes
 
 
-def plot_individual_signal(
-    signals: np.ndarray,
-    noisy_signals: np.ndarray,
+def plot_candidate_signal(
+    signal: np.ndarray,
+    noisy_signal: np.ndarray,
     max_value: float,
     fname: Optional[str] = None,
     generated: bool = False,
     background: str = "white",
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT
-) -> Tuple[plt.Figure, plt.Axes]:
-    """Plot a grid of waveform signals.
+) -> plt.Figure:
+    """Plot clean and noisy signals overlaid with consistent styling.
     
     Args:
-        signals (np.ndarray): Array of signals to plot
+        signal (np.ndarray): Clean signal to plot
+        noisy_signal (np.ndarray): Noisy signal to plot
         max_value (float): Maximum value for scaling
-        num_cols (int): Number of columns in grid
-        num_rows (int): Number of rows in grid
         fname (Optional[str]): Filename to save plot
         generated (bool): Whether signals are generated (affects color)
         background (str): Background color theme
@@ -158,44 +157,42 @@ def plot_individual_signal(
         font_name (str): Specific font name
     
     Returns:
-        Tuple[plt.Figure, plt.Axes]: Figure and axes objects
+        plt.Figure: The figure object
     """
     # Set consistent styling
     set_plot_style(background, font_family, font_name)
     
     # Set colors based on background and generated status
-    signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
+    clean_color = "lightskyblue"
+    noisy_color = SIGNAL_COLOUR
     vline_color = "white" if background == "black" else "black"
+    text_color = vline_color
 
-    # Create figure and axes
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 15))
-    axes = axes.flatten()
+    # Set up figure
+    fig = plt.figure(figsize=(6, 6))
 
     # Get time axis
     d = get_time_axis()
 
-    # Plot each signal
-    for i, ax in enumerate(axes):
-        if i >= len(signals):  # Handle case where fewer signals than slots
-            ax.axis('off')
-            continue
-            
-        y = signals[i].flatten() * max_value
-        ax.set_ylim(-600, 300)
-        ax.plot(d, y, color=signal_colour)
-        
-        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-        ax.grid(True)
-        
-        # Handle axis labels
-        if i % num_cols == num_cols - 1:
-            ax.yaxis.set_ticklabels([])
-        if i < num_cols * (num_rows - 1):
-            ax.xaxis.set_ticklabels([])
+    # Scale signals
+    y_clean = signal.flatten() * max_value
+    y_noisy = noisy_signal.flatten() * max_value
 
-    # Add overall labels
-    fig.supxlabel('time (s)', fontsize=16)
-    fig.supylabel('hD (cm)', fontsize=16)
+    # Plot signals
+    plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=0.8, label="Clean Signal")
+    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=0.6, label="Noisy Signal")
+    
+    # Add reference line and styling
+    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
+    plt.ylim(-600, 300)
+    plt.xlim(min(d), max(d))
+    plt.xlabel('time (s)', size=16, color=text_color)
+    plt.ylabel('hD (cm)', size=16, color=text_color)
+    plt.grid(False)
+    
+    # Add legend
+    plt.legend(loc='upper right', facecolor="none", edgecolor=text_color, 
+               labelcolor=text_color, fontsize=12, framealpha=0.0)
 
     # Finalize and save
     plt.tight_layout()
@@ -204,7 +201,7 @@ def plot_individual_signal(
     
     plt.show()
     plt.rcdefaults()  # Reset to default style
-    return fig, axes
+    return fig
 
 def plot_reconstruction(
     original: torch.Tensor,
