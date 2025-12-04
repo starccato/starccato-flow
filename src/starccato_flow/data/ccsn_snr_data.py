@@ -251,6 +251,14 @@ class CCSNSNRData(Dataset):
         return True
 
     def __getitem__(self, idx):
+        # Validate index is within bounds
+        dataset_size = self.signals.shape[1] * self.noise_realizations
+        if idx < 0 or idx >= dataset_size:
+            raise IndexError(
+                f"Index {idx} is out of range for dataset with {self.signals.shape[1]} base signals "
+                f"and {self.noise_realizations} noise realizations (total size: {dataset_size})"
+            )
+        
         # Map the augmented index to the original signal index
         # If noise_realizations=3 and we have 100 signals:
         # idx 0-99 -> signal 0-99 (realization 0)

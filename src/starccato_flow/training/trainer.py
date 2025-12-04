@@ -20,7 +20,6 @@ from ..nn.vae import VAE
 # from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
-from ..data.ccsn_data import CCSNData
 from ..data.ccsn_snr_data import CCSNSNRData
 
 from nflows.distributions.normal import StandardNormal

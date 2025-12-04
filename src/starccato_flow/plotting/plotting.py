@@ -174,9 +174,16 @@ def plot_candidate_signal(
     # Get time axis
     d = get_time_axis()
 
-    # Scale signals
-    y_clean = signal.flatten() * max_value
-    y_noisy = noisy_signal.flatten() * max_value
+    # Convert tensors to numpy if needed and scale signals
+    if torch.is_tensor(signal):
+        y_clean = signal.cpu().numpy().flatten() * max_value
+    else:
+        y_clean = signal.flatten() * max_value
+    
+    if torch.is_tensor(noisy_signal):
+        y_noisy = noisy_signal.cpu().numpy().flatten() * max_value
+    else:
+        y_noisy = noisy_signal.flatten() * max_value
 
     # Plot signals
     plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=0.8, label="Clean Signal")
