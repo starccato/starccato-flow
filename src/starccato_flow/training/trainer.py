@@ -27,7 +27,7 @@ from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
 from nflows.flows import Flow
 
-from starccato_flow.nn import vae
+from starccato_flow.nn import vae, vae_test
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -178,6 +178,7 @@ class Trainer:
 
         # setup VAE
         self.vae = VAE(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
+        # self.vae = vae_test.VAETest(z_dim=self.z_dim, hidden_dim=self.hidden_dim, y_length=self.y_length).to(DEVICE)
         self.vae.apply(_init_weights_vae)
 
         # Setup optimizer and scheduler
@@ -302,7 +303,7 @@ class Trainer:
             # Step the learning rate scheduler
             self.scheduler.step(avg_total_loss_val)
 
-            # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
+            print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
             if (epoch + 1) % self.checkpoint_interval == 0:
@@ -663,7 +664,8 @@ class Trainer:
 
         plot_reconstruction_distribution(
             reconstructed_signals=reconstructed_signals,
-            signal=noisy_signal,
+            noisy_signal=noisy_signal,
+            true_signal=signal,
             max_value=self.validation_dataset.max_strain,
             num_samples=num_samples,
             background=background,

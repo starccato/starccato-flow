@@ -11,7 +11,7 @@ from tqdm import tqdm
 # model parameters
 
 Y_LENGTH = 256
-HIDDEN_DIM = 64
+HIDDEN_DIM = 128
 Z_DIM = 8
 
 BATCH_SIZE = 32
