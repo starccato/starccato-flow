@@ -46,7 +46,7 @@ class Trainer:
         num_epochs: int = 256,
         validation_split: float = 0.1,
         lr_vae: float = 1e-3,
-        lr_flow: float = 1e-3,
+        lr_flow: float = 1e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         noise: bool = True,
@@ -129,7 +129,7 @@ class Trainer:
             
             # Create SEPARATE dataset instances with disjoint base indices
             # Training: with curriculum and multiple noise realizations
-            training_dataset = CCSNSNRData(
+            self.training_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -140,7 +140,7 @@ class Trainer:
             )
             
             # Validation: FIXED SNR (no curriculum) with single noise realization
-            validation_dataset = CCSNSNRData(
+            self.validation_dataset = CCSNSNRData(
                 num_epochs=self.num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -150,24 +150,24 @@ class Trainer:
                 indices=val_base_indices
             )
     
-        training_dataset.verify_alignment()
-        validation_dataset.verify_alignment()
+        self.training_dataset.verify_alignment()
+        self.validation_dataset.verify_alignment()
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
         self.train_loader = DataLoader(
-            training_dataset, 
+            self.training_dataset, 
             batch_size=self.batch_size, 
             shuffle=True
         )
         self.val_loader = DataLoader(
-            validation_dataset, 
+            self.validation_dataset, 
             batch_size=self.batch_size, 
             shuffle=False  # Don't shuffle validation for consistency
         )
 
         print(f"\n=== Dataset Sizes (after augmentation) ===")
-        print(f"Training samples: {len(training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
-        print(f"Validation samples: {len(validation_dataset)} ({len(val_base_indices)} base × 1)")
+        print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
+        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1)")
         print("=" * 50)
 
         self.checkpoint_interval = checkpoint_interval
@@ -332,7 +332,8 @@ class Trainer:
         print("\n" + "="*60)
         print("Starting Flow Training")
         print("="*60)
-        self.train_npe_with_vae_standard(num_epochs=256, lr=self.lr_flow)
+        # self.train_npe_with_vae_standard(num_epochs=500, lr=self.lr_flow)
+        self.train_npe_with_vae_improved(num_epochs=500)
     
     def train_npe_with_vae_standard(self, num_epochs=256, lr=1e-4):
         """
@@ -510,6 +511,7 @@ class Trainer:
 
             # Update epoch for training dataset only (curriculum learning)
             self.train_loader.dataset.set_epoch(epoch)
+            self.val_loader.dataset.set_epoch(epoch)
 
             train_samples = 0
             for signal, noisy_signal, params in self.train_loader:
@@ -610,12 +612,12 @@ class Trainer:
             print(f"\n✓ Training completed. Loading best model (Val NLL: {best_val_loss:.4f})")
             self.flow.load_state_dict(best_model_state) 
     
-    def plot_corner(self, signal, noisy_signal, params, index=0):
+    def plot_corner(self, signal, noisy_signal, params, fname):
         # Validation dataset already contains only validation samples
         # signal, noisy_signal, params = self.validation_dataset[index]
-        plot_corner(self.vae, self.flow, signal, noisy_signal, params)
+        plot_corner(vae=self.vae, flow=self.flow, signal=signal, noisy_signal=noisy_signal, params=params, fname=fname)
 
-    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plot/candidate_signal"):
+    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         self.val_loader.dataset.update_snr(snr)
         signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
         plot_candidate_signal(signal=signal, noisy_signal=noisy_signal, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
@@ -679,7 +681,7 @@ class Trainer:
         plot_individual_loss(
             self.avg_total_losses_val, self.avg_reproduction_losses_val, self.avg_kld_losses_val
         )
-        plot_loss(self.avg_total_losses, self.avg_total_losses_val)
+        plot_loss(self.avg_total_losses, self.avg_total_losses_val, background="black")
         
         # Plot VAE gradient norms if available
         if hasattr(self, 'vae_gradient_norms'):
@@ -702,8 +704,10 @@ class Trainer:
             if len(self.flow_train_nll_losses) > 0:
                 print("\nPlotting Flow NLL Losses...")
                 plot_loss(
-                    self.flow_train_nll_losses, 
-                    self.flow_val_nll_losses
+                    train_losses=self.flow_train_nll_losses, 
+                    val_losses=self.flow_val_nll_losses,
+                    background="black",
+                    fname="plots/flow_loss_curve.svg"
                 )
         
         # Plot Flow gradient norms if available

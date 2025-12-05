@@ -75,7 +75,7 @@ class CCSNSNRData(Dataset):
         self.parameters = self.parameters[keep_idx]
 
         if multi_param:
-            parameter_set = ["beta1_IC_b", "A(km)", "Ye_c_b", "omega_0(rad|s)"]
+            parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
         else: 
             parameter_set = ["beta1_IC_b"]
 

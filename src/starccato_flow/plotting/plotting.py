@@ -95,7 +95,7 @@ def plot_waveform_grid(
     vline_color = "white" if background == "black" else "black"
 
     # Create figure and axes
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 15))
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 8))
     axes = axes.flatten()
 
     # Get time axis
@@ -109,20 +109,23 @@ def plot_waveform_grid(
             
         y = signals[i].flatten() * max_value
         ax.set_ylim(-600, 300)
+        ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_colour)
         
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-        ax.grid(True)
+        ax.grid(False)
         
         # Handle axis labels
-        if i % num_cols == num_cols - 1:
+        # Only show y-axis ticks on leftmost plots (first column)
+        if i % num_cols != 0:
             ax.yaxis.set_ticklabels([])
+        # Only show x-axis ticks on bottom row
         if i < num_cols * (num_rows - 1):
             ax.xaxis.set_ticklabels([])
 
     # Add overall labels
-    fig.supxlabel('time (s)', fontsize=16)
-    fig.supylabel('hD (cm)', fontsize=16)
+    fig.supxlabel('time (s)', fontsize=22)
+    fig.supylabel('hD (cm)', fontsize=22)
 
     # Finalize and save
     plt.tight_layout()
@@ -291,8 +294,8 @@ def plot_loss(
     fname: Optional[str] = None,
     axes: Optional[plt.Axes] = None,
     background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir"
 ):
     """Plot training and validation loss curves.
     
@@ -314,21 +317,20 @@ def plot_loss(
         fig = plt.figure(figsize=(10, 6))
         axes = fig.gca()
     
-    # Plot training losses with a blue color scheme
-    axes.plot(train_losses, label="Training Loss", color='#3498db', linewidth=2, alpha=0.8)
+    # Plot training losses - solid line
+    axes.plot(train_losses, label="Training Loss", color=SIGNAL_COLOUR, 
+              linewidth=3, alpha=1.0, linestyle='-')
     
-    # Plot validation losses with an orange color scheme if provided
+    # Plot validation losses if provided - solid line
     if val_losses is not None:
-        axes.plot(val_losses, label="Validation Loss", color='#e67e22', linewidth=2, alpha=0.8)
+        axes.plot(val_losses, label="Validation Loss", color=GENERATED_SIGNAL_COLOUR, 
+                  linewidth=3, alpha=1.0, linestyle='-')
     
-    axes.set_xlabel("Epoch", size=16)
-    axes.set_ylabel("Loss", size=16)
-    axes.legend(fontsize=12)
-    axes.grid(True, alpha=0.2)
-    
-    # Add minor gridlines for better readability
-    axes.grid(True, which='minor', alpha=0.1)
-    axes.minorticks_on()
+    axes.set_xlabel("Epoch", size=20)
+    axes.set_ylabel("Negative Log Likelihood", size=20)
+    axes.legend(fontsize=20, framealpha=0.0)
+    axes.tick_params(labelsize=18)
+    axes.grid(False)
     
     plt.tight_layout()
     if fname:
@@ -370,19 +372,18 @@ def plot_individual_loss(
     else:
         return_fig = False
 
-    # Use a nice color scheme
-    axes.plot(total_losses, label="Total Loss", color='#2ecc71', linewidth=2)  # Green
-    axes.plot(reconstruction_losses, label="Reconstruction Loss", color='#3498db', linewidth=2)  # Blue
-    axes.plot(kld_losses, label="KLD Loss", color='#e74c3c', linewidth=2)  # Red
+    # Use consistent color scheme with distinct line styles
+    axes.plot(total_losses, label="Total Loss", color=SIGNAL_COLOUR, 
+              linewidth=3, alpha=1.0, linestyle='-')
+    axes.plot(reconstruction_losses, label="Reconstruction Loss", color=GENERATED_SIGNAL_COLOUR, 
+              linewidth=3, alpha=1.0, linestyle='--', dashes=(5, 3))
+    axes.plot(kld_losses, label="KLD Loss", color=LATENT_SPACE_COLOUR, 
+              linewidth=3.5, alpha=1.0, linestyle=':')
     
     axes.set_xlabel("Epoch", size=16)
     axes.set_ylabel("Loss", size=16)
-    axes.legend(fontsize=12)
-    
-    # Add grid for better readability
-    axes.grid(True, alpha=0.2)
-    axes.grid(True, which='minor', alpha=0.1)
-    axes.minorticks_on()
+    axes.legend(fontsize=12, framealpha=0.0)
+    axes.grid(False)
     
     plt.tight_layout()
     if fname:
@@ -1201,7 +1202,7 @@ def plot_signal_grid(
 
     # Create figure
     fig, axes = plt.subplots(
-        num_rows, num_cols, figsize=(6 * num_cols, 6 * num_rows)
+        num_rows, num_cols, figsize=(6, 6)
     )
     # Ensure axes is always a flat 1D array
     if num_rows == 1 and num_cols == 1:
@@ -1361,7 +1362,7 @@ def plot_reconstruction_distribution(
     plt.rcdefaults()
 
 
-def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params):
+def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params, fname="plots/corner_plot.png"):
     """Plot corner plot of parameter posterior distribution.
     
     Args:
@@ -1380,18 +1381,18 @@ def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params):
         _, mean, log_var = vae(noisy_signal)
 
         # Sample from flow conditioned on z
-        num_draws = 1000
+        num_draws = 5000
 
         context = mean.view(1, -1)
         samples = flow.sample(num_samples=num_draws, context=context)
         samples = samples.reshape(num_draws, -1)  # -> [num_draws, 2]
 
         samples_cpu = samples.detach().cpu()
-        samples_cpu[:, [0, 2, 3]] = torch.exp(samples_cpu[:, [0, 2, 3]])  # Transform back to positive space
+        samples_cpu[:, [0, 1, 3]] = torch.exp(samples_cpu[:, [0, 1, 3]])  # Transform back to positive space
         samples_cpu = samples_cpu.numpy()
         true_params = params.detach().cpu() if torch.is_tensor(params) else params
         true_params = true_params.flatten()  # Flatten to [2] from [1, 2]
-        true_params[1] = torch.log(true_params[1] + 1e-8)  # log-transform
+        true_params[2] = torch.log(true_params[2] + 1e-8)  # log-transform
         
         print("True params:", true_params)
 
@@ -1408,17 +1409,19 @@ def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params):
     figure = corner.corner(
         samples_cpu,
         labels=[
-            r"$\beta_{IC}^b$",
-            r"$log(A)$",
-            r"$ye_{b,c}$",
-            r"$\omega_0$"
+            r"$\beta_{IC,b}$",
+            r"$\omega_0$",
+            r"$\log(A)$",
+            r"$Y_{e,b,c}$",
         ],
-        range=[(0, 0.25), (0, math.log(10000)), (0, 0.3), (0, 16)],
+        range=[(0, 0.25), (0, 16), (0, math.log(10000)), (0, 0.3)],
         truths=true_params[:4].numpy(),
         truth_color=SIGNAL_COLOUR,
         show_titles=True,
-        title_quantiles=[0.16, 0.5, 0.84],  # ← ADD THIS LINE
+        title_quantiles=[0.16, 0.5, 0.84],
         title_fmt='.4f',
+        title_kwargs={'fontsize': 12},  # Summary text on histograms
+        label_kwargs={'fontsize': 24},  # Parameter names
         bins=100,
         smooth=3,
         color=GENERATED_SIGNAL_COLOUR,
@@ -1434,15 +1437,21 @@ def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params):
             patch.set_facecolor("white")
             patch.set_alpha(1.0)
 
-    # **Make axis lines white**
+    # **Make axis lines white and adjust tick labels**
     for ax in figure.get_axes():
         for spine in ax.spines.values():
             spine.set_edgecolor('white')
+        # Axis tick numbers
+        ax.tick_params(labelsize=12)
+        # Reduce label padding to save space
+        ax.xaxis.labelpad = 2
+        ax.yaxis.labelpad = 2
 
     # Transparent canvas
     figure.patch.set_alpha(1.0)
 
-    figure.subplots_adjust(hspace=0.0, wspace=0.0)  # adjust spacing
+    # Reduce spacing between subplots to make plots bigger
+    figure.subplots_adjust(hspace=0.05, wspace=0.05)
     
-    # plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
+    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
     plt.show()
