@@ -9,12 +9,14 @@ import numpy as np
 import pandas as pd
 import torch
 from ..nn.vae import VAE
-from ..utils.defaults import DEVICE
-from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT
+from ..utils.defaults import DEVICE, TEN_KPC
+from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
 import corner
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
 from nflows.flows import Flow
+from PIL import Image
+import io
 
 import math
 
@@ -59,7 +61,7 @@ def get_time_axis(length: int = 256) -> np.ndarray:
     """
     return np.linspace(-53 / 4096, (length - 53) / 4096, length)
 
-def plot_waveform_grid(
+def plot_signal_grid(
     signals: np.ndarray,
     noisy_signals: np.ndarray,
     max_value: float,
@@ -108,7 +110,7 @@ def plot_waveform_grid(
             continue
             
         y = signals[i].flatten() * max_value
-        ax.set_ylim(-600, 300)
+        ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_colour)
         
@@ -124,8 +126,8 @@ def plot_waveform_grid(
             ax.xaxis.set_ticklabels([])
 
     # Add overall labels
-    fig.supxlabel('time (s)', fontsize=22)
-    fig.supylabel('hD (cm)', fontsize=22)
+    fig.supxlabel('time (s)', fontsize=20)
+    fig.supylabel('h', fontsize=20)
 
     # Finalize and save
     plt.tight_layout()
@@ -195,10 +197,10 @@ def plot_candidate_signal(
     
     # Add reference line and styling
     plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
-    plt.ylim(-600, 300)
+    plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel('hD (cm)', size=16, color=text_color)
+    plt.ylabel('h', size=16, color=text_color)
     plt.grid(False)
     
     # Add legend
@@ -209,9 +211,9 @@ def plot_candidate_signal(
     plt.tight_layout()
     if fname:
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+        plt.show()
+        plt.rcdefaults()  # Reset to default style
     
-    plt.show()
-    plt.rcdefaults()  # Reset to default style
     return fig
 
 def plot_reconstruction(
@@ -254,7 +256,7 @@ def plot_reconstruction(
             label="Reconstructed Signal", linewidth=2)
 
     # Style the plot
-    ax.set_ylim(-600, 300)
+    ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis="both", colors=vline_color, labelsize=12)
@@ -265,7 +267,7 @@ def plot_reconstruction(
     
     # Labels
     ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
-    ax.set_ylabel("hD (cm)", fontsize=16, color=vline_color)
+    ax.set_ylabel("h", fontsize=16, color=vline_color)
     ax.legend(fontsize=12, loc='upper right', framealpha=0.0, 
              labelcolor=vline_color)
 
@@ -436,6 +438,209 @@ def plot_training_validation_loss(
     
     # return axes.get_figure()
 
+def plot_parameter_distribution(
+    values: Union[List[float], np.ndarray],
+    param_name: str,
+    param_label: Optional[str] = None,
+    bins: int = 25,
+    fname: Optional[str] = None,
+    axes: Optional[plt.Axes] = None,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    color: Optional[str] = None,
+    alpha: float = 0.8,
+    show_stats: bool = True,
+    param_range: Optional[Tuple[float, float]] = None
+) -> Union[plt.Figure, plt.Axes]:
+    """Plot the distribution of a single parameter.
+    
+    Args:
+        values (Union[List[float], np.ndarray]): Parameter values to plot
+        param_name (str): Name of the parameter
+        param_label (Optional[str]): Label for the parameter (LaTeX supported). If None, uses param_name
+        bins (int): Number of histogram bins
+        fname (Optional[str]): Filename to save plot
+        axes (Optional[plt.Axes]): Existing axes to plot on
+        background (str): Background color theme ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        color (Optional[str]): Color for the histogram. If None, uses SIGNAL_COLOUR
+        alpha (float): Transparency of the histogram bars
+        show_stats (bool): Whether to display mean and std on the plot
+        param_range (Optional[Tuple[float, float]]): Fixed range for x-axis (min, max). If None, uses data range
+    
+    Returns:
+        Union[plt.Figure, plt.Axes]: The figure or axes object depending on input
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    if axes is None:
+        fig = plt.figure(figsize=(6, 6))
+        axes = fig.gca()
+        return_fig = True
+    else:
+        return_fig = False
+    
+    # Convert to numpy array if needed
+    if isinstance(values, list):
+        values = np.array(values)
+    
+    # Use default color if not specified
+    if color is None:
+        color = SIGNAL_COLOUR
+    
+    # Create histogram
+    n, bins_edges, patches = axes.hist(
+        values, 
+        bins=bins, 
+        color=color, 
+        alpha=alpha, 
+        edgecolor='none'
+    )
+    
+    # Add mean line
+    mean_val = np.mean(values)
+    std_val = np.std(values)
+    axes.axvline(mean_val, color=GENERATED_SIGNAL_COLOUR, linewidth=2.5, linestyle='--')    
+
+    # Set labels
+    if param_label is None:
+        param_label = param_name
+    
+    axes.set_xlabel(param_label, size=20)
+    axes.set_ylabel("Count", size=20)
+    # axes.set_title(param_label, size=22, pad=15)
+    
+    # Set x-axis limits
+    if param_range is not None:
+        axes.set_xlim(param_range[0], param_range[1])
+    else:
+        axes.set_xlim(min(values), max(values))
+    
+    # # Add statistics text box if requested
+    # if show_stats:
+    #     stats_text = f'μ = {mean_val:.3f}\nσ = {std_val:.3f}\nN = {len(values)}'
+    #     text_color = 'white' if background == "black" else 'black'
+    #     axes.text(0.97, 0.97, stats_text,
+    #              transform=axes.transAxes,
+    #              fontsize=14,
+    #              verticalalignment='top',
+    #              horizontalalignment='right',
+    #              bbox=dict(boxstyle='round', facecolor=background, 
+    #                       alpha=0.8, edgecolor=text_color, linewidth=1.5))
+    
+    axes.tick_params(labelsize=18)
+    # Rotate x-axis tick labels diagonally like corner plots
+    axes.tick_params(axis='x', rotation=45)
+    axes.grid(False)
+    axes.legend(fontsize=16, framealpha=0.0)
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
+    plt.rcdefaults()
+    return fig if return_fig else axes
+
+def plot_parameter_distribution_grid(
+    parameters_dict: dict,
+    labels_dict: Optional[dict] = None,
+    ranges_dict: Optional[dict] = None,
+    bins: int = 25,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    color: Optional[str] = None,
+    alpha: float = 0.8,
+    figsize: Tuple[float, float] = (20, 5)
+) -> plt.Figure:
+    """Plot distributions for multiple parameters in a 1x4 grid (one row).
+    
+    Args:
+        parameters_dict (dict): Dictionary mapping parameter names to value arrays
+        labels_dict (Optional[dict]): Dictionary mapping parameter names to LaTeX labels
+        ranges_dict (Optional[dict]): Dictionary mapping parameter names to (min, max) tuples
+        bins (int): Number of histogram bins
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        color (Optional[str]): Color for the histogram. If None, uses SIGNAL_COLOUR
+        alpha (float): Transparency of the histogram bars
+        figsize (Tuple[float, float]): Figure size in inches
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    # Create 1x4 subplot grid (one row, four columns)
+    fig, axes = plt.subplots(1, 4, figsize=figsize)
+    axes = axes.flatten()
+    
+    # Use default color if not specified
+    if color is None:
+        color = SIGNAL_COLOUR
+    
+    # Plot each parameter
+    for idx, (param_name, values) in enumerate(parameters_dict.items()):
+        if idx >= 4:  # Only plot first 4 parameters
+            break
+            
+        ax = axes[idx]
+        
+        # Convert to numpy array if needed
+        if isinstance(values, list):
+            values = np.array(values)
+        
+        # Create histogram
+        n, bins_edges, patches = ax.hist(
+            values, 
+            bins=bins, 
+            color=color, 
+            alpha=alpha, 
+            edgecolor='none'
+        )
+        
+        # Add mean line
+        mean_val = np.mean(values)
+        ax.axvline(mean_val, color=GENERATED_SIGNAL_COLOUR, linewidth=2.5, linestyle='--')
+        
+        # Get label
+        if labels_dict and param_name in labels_dict:
+            param_label = labels_dict[param_name]
+        else:
+            param_label = param_name
+        
+        # Set labels and title
+        ax.set_xlabel(param_label, size=16)
+        ax.set_ylabel("Count", size=16)
+        ax.set_title(param_label, size=18, pad=10)
+        
+        # Set x-axis limits
+        if ranges_dict and param_name in ranges_dict:
+            ax.set_xlim(ranges_dict[param_name][0], ranges_dict[param_name][1])
+        else:
+            ax.set_xlim(min(values), max(values))
+        
+        # Style ticks
+        ax.tick_params(labelsize=14)
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(False)
+    
+    # Hide any unused subplots
+    for idx in range(len(parameters_dict), 4):
+        axes[idx].axis('off')
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+    
+    plt.rcdefaults()
+    return fig
+
 def plot_latent_morphs(
     model: VAE, 
     signal_1: torch.Tensor,
@@ -488,7 +693,7 @@ def plot_latent_morphs(
     # Plot original signal 1
     y1 = signal_1.cpu().detach().numpy().flatten() * max_value
     axes[0].plot(d, y1, color="deepskyblue")
-    axes[0].set_ylim(-600, 300)
+    axes[0].set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     axes[0].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     axes[0].grid(True)
     axes[0].set_title("Original Signal 1 (Start)")
@@ -497,7 +702,7 @@ def plot_latent_morphs(
     for i, signal in enumerate(morphed_signals):
         y_interp = signal.flatten() * max_value
         axes[i + 1].plot(d, y_interp, color=GENERATED_SIGNAL_COLOUR)
-        axes[i + 1].set_ylim(-600, 300)
+        axes[i + 1].set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         axes[i + 1].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         axes[i + 1].grid(True)
         axes[i + 1].set_title(f"Interpolated Signal {i + 1}")
@@ -505,14 +710,14 @@ def plot_latent_morphs(
     # Plot original signal 2
     y2 = signal_2.cpu().detach().numpy().flatten() * max_value
     axes[-1].plot(d, y2, color="deepskyblue")
-    axes[-1].set_ylim(-600, 300)
+    axes[-1].set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     axes[-1].axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     axes[-1].grid(True)
     axes[-1].set_title("Original Signal 2 (End)")
 
     # Add labels
     fig.supxlabel('time (s)', fontsize=16)
-    fig.supylabel('hD (cm)', fontsize=16)
+    fig.supylabel('h', fontsize=16)
 
     plt.tight_layout()
     if fname:
@@ -589,15 +794,15 @@ def plot_latent_morph_grid(
     ax1 = fig.add_subplot(2, 3, 1)
     ax1.plot(d, signal_1_np, color=signal_color)
     ax1.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
-    ax1.set_ylim(-600, 300)
+    ax1.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax1.set_title("Start Signal")
-    ax1.set_ylabel("hD (cm)", fontsize=16)
+    ax1.set_ylabel("h", fontsize=16)
     ax1.grid(True)
 
     ax2 = fig.add_subplot(2, 3, 2)
     ax2.plot(d, signal_mid, color=GENERATED_SIGNAL_COLOUR)
     ax2.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
-    ax2.set_ylim(-600, 300)
+    ax2.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax2.set_title("Interpolated Signal")
     ax2.set_xlabel("time (s)", fontsize=16)
     ax2.grid(True)
@@ -605,7 +810,7 @@ def plot_latent_morph_grid(
     ax3 = fig.add_subplot(2, 3, 3)
     ax3.plot(d, signal_2_np, color=signal_color)
     ax3.axvline(x=0, linestyle="--", color=vline_color, alpha=0.5)
-    ax3.set_ylim(-600, 300)
+    ax3.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax3.set_title("End Signal")
     ax3.set_xlabel("time (s)", fontsize=16)
     ax3.grid(True)
@@ -748,11 +953,11 @@ def animate_latent_morphs(
     # Initialize the plot
     line, = ax_signal.plot([], [], color=GENERATED_SIGNAL_COLOUR)
     ax_signal.set_xlim(min(d), max(d))
-    ax_signal.set_ylim(-600, 300)
+    ax_signal.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax_signal.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     ax_signal.grid(True)
     ax_signal.set_xlabel('time (s)', fontsize=16)
-    ax_signal.set_ylabel('hD (cm)', fontsize=16)
+    ax_signal.set_ylabel('h', fontsize=16)
 
     def init():
         line.set_data([], [])
@@ -865,10 +1070,10 @@ def plot_latent_morph_up_and_down(
     ax1.plot(x_vals, signal_mid, color='red', label='Interpolant', linewidth=2, zorder=3)  # Highest zorder
     ax1.plot(x_vals, signal_2_np, color='deepskyblue', label='Signal 2', alpha=0.75, linewidth=2, zorder=2)
     plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
-    ax1.set_ylim(-600, 300)
+    ax1.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax1.set_xlim(left=x_vals[0], right=x_vals[-1])
     ax1.set_xlabel("time (s)", fontsize=16)
-    ax1.set_ylabel("hD (cm)", fontsize=16)
+    ax1.set_ylabel("h", fontsize=16)
     ax1.tick_params(axis='both', which='major', labelsize=12)    
 
     ax1.legend(loc='upper center', fontsize=12, facecolor='none', bbox_to_anchor=(0.5, 1.125), ncol=3, frameon=False)
@@ -956,10 +1161,10 @@ def plot_signal_distribution(
 
     # Add reference line and styling
     plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
-    plt.ylim(-600, 300)
+    plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel('hD (cm)', size=16, color=text_color)
+    plt.ylabel('h', size=16, color=text_color)
     plt.grid(False)
 
     # Add sample size note
@@ -1028,9 +1233,9 @@ def plot_single_signal(
 
     plt.plot(d, y, color=signal_color)
     plt.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-    plt.ylim(-600, 300)
+    plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     plt.xlabel('time (s)', size=16)
-    plt.ylabel('hD (cm)', size=16)
+    plt.ylabel('h', size=16)
     plt.grid(True)
 
     if fname:
@@ -1224,14 +1429,14 @@ def plot_reconstruction_distribution(
 
     # Style the plot
     ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-    ax.set_ylim(-600, 300)
+    ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
     ax.grid(True, alpha=0.3)
     
     # Style axes and labels
     ax.tick_params(axis="both", colors=vline_color, labelsize=12)
     ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
-    ax.set_ylabel("hD (cm)", fontsize=16, color=vline_color)
+    ax.set_ylabel("h", fontsize=16, color=vline_color)
     
     # Style spines
     for spine in ax.spines.values():
@@ -1367,3 +1572,211 @@ def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params, fname="plots
     
     plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
     plt.show()
+
+def create_signal_grid_gif(
+    dataset,
+    num_frames: int = 20,
+    num_signals_per_frame: int = 8,
+    num_cols: int = 4,
+    num_rows: int = 2,
+    fname: str = "plots/signal_grid_animation.gif",
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    duration: int = 1000,
+    seed: Optional[int] = None
+) -> None:
+    """Create an animated GIF of signal grids with randomly sampled signals.
+    
+    Args:
+        dataset: Dataset object with signals (e.g., CCSNSNRData)
+        num_frames (int): Number of frames in the GIF
+        num_signals_per_frame (int): Number of signals to display per frame
+        num_cols (int): Number of columns in grid
+        num_rows (int): Number of rows in grid
+        fname (str): Filename to save the GIF
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        duration (int): Duration of each frame in milliseconds
+        seed (Optional[int]): Random seed for reproducibility
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    frames = []
+    total_signals = len(dataset)
+    
+    print(f"Creating {num_frames} frames for GIF animation...")
+    
+    for frame_idx in range(num_frames):
+        # Randomly sample signal indices
+        signal_indices = np.random.choice(total_signals, size=num_signals_per_frame, replace=False)
+        
+        # Collect signals
+        selected_signals = []
+        for idx in signal_indices:
+            signal = dataset[idx][0].cpu().numpy().flatten()
+            selected_signals.append(signal)
+        
+        selected_signals = np.array(selected_signals)
+        
+        # Use plot_signal_grid to create the plot
+        # Temporarily disable plt.show() by using non-interactive backend
+        plt.ioff()
+        fig, _ = plot_signal_grid(
+            signals=selected_signals/TEN_KPC,
+            noisy_signals=None,
+            max_value=dataset.max_strain,
+            num_cols=num_cols,
+            num_rows=num_rows,
+            fname=None,
+            background=background,
+            generated=False,
+            font_family=font_family,
+            font_name=font_name
+        )
+        
+        # Save frame to buffer
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', 
+                   facecolor=fig.get_facecolor())
+        buf.seek(0)
+        frames.append(Image.open(buf).copy())  # Copy to avoid buffer issues
+        buf.close()
+        
+        plt.close(fig)
+        plt.ion()  # Re-enable interactive mode
+        
+        if (frame_idx + 1) % 5 == 0:
+            print(f"  Generated {frame_idx + 1}/{num_frames} frames")
+    
+    # Save as GIF
+    print(f"Saving GIF to {fname}...")
+    frames[0].save(
+        fname,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0
+    )
+    print(f"GIF created successfully with {num_frames} frames!")
+
+
+def create_snr_variation_gif(
+    dataset,
+    signal_index: int = 0,
+    snr_start: int = 200,
+    snr_end: int = 10,
+    num_frames: int = 20,
+    fname: str = "plots/snr_variation.gif",
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    duration: int = 500
+) -> None:
+    """Create an animated GIF showing how a signal changes with varying SNR.
+    
+    Args:
+        dataset: Dataset object (e.g., CCSNSNRData) with calculate_snr and aLIGO_noise methods
+        signal_index (int): Index of the signal to use from the dataset
+        snr_start (int): Starting SNR value (higher, less noise)
+        snr_end (int): Ending SNR value (lower, more noise)
+        num_frames (int): Number of frames in the animation
+        fname (str): Filename to save the GIF
+        background (str): Background color theme
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        duration (int): Duration of each frame in milliseconds
+    """
+    print(f"Creating SNR variation GIF from SNR={snr_start} to SNR={snr_end}...")
+    
+    # Get the clean signal
+    clean_signal = dataset.signals[:, signal_index].reshape(1, -1)
+    
+    # Calculate SNR range
+    snr_values = np.linspace(snr_start, snr_end, num_frames)
+    
+    frames = []
+    
+    # Import required utilities
+    from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
+    
+    is_even = (Y_LENGTH % 2 == 0)
+    half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
+    delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
+    fourier_freq = np.arange(half_N + 1) * delta_f
+    
+    Sn = dataset.AdvLIGOPsd(fourier_freq)
+    
+    # Turn off interactive plotting to avoid showing intermediate plots
+    plt.ioff()
+    
+    for frame_idx, target_snr in enumerate(snr_values):
+        # Scale signal properly
+        s = clean_signal / 3.086e+22
+        s_array = np.asarray(s).flatten()
+        rho = dataset.calculate_snr(s_array, Sn)
+        
+        # Generate noise
+        n = dataset.aLIGO_noise(seed_offset=frame_idx)
+        
+        # Add noise with target SNR
+        d_noisy = s + n * (rho / target_snr) * 100
+        
+        # Scale back
+        s_scaled = s * 3.086e+22
+        d_noisy_scaled = d_noisy * 3.086e+22
+        
+        # Normalize
+        s_normalized = s_scaled / dataset.max_strain
+        d_noisy_normalized = d_noisy_scaled / dataset.max_strain
+        
+        # Use plot_candidate_signal to create the frame
+        # We need to temporarily disable plt.show() and handle the figure ourselves
+        fig = plot_candidate_signal(
+            signal=s_normalized/TEN_KPC,
+            noisy_signal=d_noisy_normalized/TEN_KPC,
+            max_value=dataset.max_strain,
+            fname=None,
+            generated=False,
+            background=background,
+            font_family=font_family,
+            font_name=font_name
+        )
+        
+        # Add SNR text annotation to the figure
+        ax = fig.gca()
+        text_color = "white" if background == "black" else "black"
+        ax.text(0.98, 0.98, f'SNR = {target_snr:.1f}',
+                transform=ax.transAxes,
+                fontsize=16, color=text_color,
+                verticalalignment='top',
+                horizontalalignment='right')
+        
+        # Save frame to buffer
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight',
+                   facecolor=fig.get_facecolor())
+        buf.seek(0)
+        frames.append(Image.open(buf).copy())
+        buf.close()
+        
+        plt.close(fig)
+        
+        if (frame_idx + 1) % 5 == 0:
+            print(f"  Generated {frame_idx + 1}/{num_frames} frames")
+    
+    # Re-enable interactive plotting
+    plt.ion()
+    
+    # Save as GIF
+    print(f"Saving GIF to {fname}...")
+    frames[0].save(
+        fname,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0
+    )
+    print(f"GIF created successfully with {num_frames} frames!")

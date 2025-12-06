@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from scipy.fft import fft, ifft
 
-from ..plotting.plotting import plot_candidate_signal, plot_signal_distribution, plot_signal_grid
-from ..utils.defaults import BATCH_SIZE, DEVICE
+from ..plotting.plotting import plot_candidate_signal, plot_signal_distribution, plot_signal_grid, plot_parameter_distribution, plot_parameter_distribution_grid
+from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
 from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
 
@@ -22,6 +22,22 @@ delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
 class CCSNSNRData(Dataset):
+    # Default LaTeX labels for parameters
+    PARAMETER_LABELS = {
+        'beta1_IC_b': r'$\beta_{IC,b}$',
+        'omega_0(rad|s)': r'$\omega_0$',
+        'A(km)': r'$\log(A)$',
+        'Ye_c_b': r'$Y_{e,c,b}$'
+    }
+    
+    # Default ranges for parameters (matching corner plot)
+    PARAMETER_RANGES = {
+        'beta1_IC_b': (0, 0.25),
+        'omega_0(rad|s)': (0, 16),
+        'A(km)': (0, math.log(10000)),  # log-transformed range
+        'Ye_c_b': (0, 0.3)
+    }
+    
     def __init__(
         self,
         batch_size: int = BATCH_SIZE,
@@ -126,7 +142,7 @@ class CCSNSNRData(Dataset):
 
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
-        plot_signal_distribution(self.signals, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+        plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
         # Collect indices of the signals to plot
@@ -139,7 +155,8 @@ class CCSNSNRData(Dataset):
         selected_signals = np.array(selected_signals)
 
         plot_signal_grid(
-            signals=selected_signals,
+            signals=selected_signals/TEN_KPC,
+            noisy_signals=None,
             max_value=self.max_strain,
             num_cols=1,
             num_rows=1,
@@ -148,6 +165,154 @@ class CCSNSNRData(Dataset):
             generated=False,
             font_family=font_family,
             font_name=font_name
+        )
+
+    def plot_parameter_distribution(
+        self, 
+        param_name: str,
+        param_label: Optional[str] = None,
+        bins: int = 50,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "sans-serif",
+        font_name: str = "Avenir",
+        color: Optional[str] = None,
+        alpha: float = 0.7,
+        show_stats: bool = True
+    ):
+        """Plot the distribution of a parameter from the dataset.
+        
+        Args:
+            param_name (str): Name of the parameter column to plot
+            param_label (Optional[str]): Label for the parameter (LaTeX supported). If None, uses default from PARAMETER_LABELS
+            bins (int): Number of histogram bins
+            fname (Optional[str]): Filename to save plot
+            background (str): Background color theme
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+            color (Optional[str]): Color for the histogram
+            alpha (float): Transparency of the histogram bars
+            show_stats (bool): Whether to display mean and std on the plot
+        """
+        if param_name not in self.parameters.columns:
+            raise ValueError(f"Parameter '{param_name}' not found. Available parameters: {list(self.parameters.columns)}")
+        
+        # Use default label if not provided
+        if param_label is None:
+            param_label = self.PARAMETER_LABELS.get(param_name, param_name)
+        
+        # Apply log transformation for A(km) parameter
+        values = self.parameters[param_name].values
+        if param_name == "A(km)":
+            values = np.log(values)
+        
+        # Get default range for this parameter
+        param_range = self.PARAMETER_RANGES.get(param_name, None)
+        
+        plot_parameter_distribution(
+            values=values,
+            param_name=param_name,
+            param_label=param_label,
+            bins=bins,
+            fname=fname,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            color=color,
+            alpha=alpha,
+            show_stats=show_stats,
+            param_range=param_range
+        )
+
+    def plot_all_parameter_distributions(
+        self,
+        bins: int = 50,
+        fname_prefix: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "sans-serif",
+        font_name: str = "Avenir",
+        color: Optional[str] = None,
+        alpha: float = 0.7,
+        show_stats: bool = True
+    ):
+        """Plot distributions for all parameters in the dataset.
+        
+        Args:
+            bins (int): Number of histogram bins
+            fname_prefix (Optional[str]): Prefix for saved plot filenames (e.g., 'plots/param_')
+            background (str): Background color theme
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+            color (Optional[str]): Color for the histogram
+            alpha (float): Transparency of the histogram bars
+            show_stats (bool): Whether to display mean and std on the plot
+        """
+        for param_name in self.parameters.columns:
+            if fname_prefix:
+                # Extract extension from prefix if it has one, otherwise default to .png
+                import os
+                prefix_base, prefix_ext = os.path.splitext(fname_prefix)
+                ext = prefix_ext if prefix_ext else '.png'
+                fname = f"{prefix_base}{param_name}{ext}"
+            else:
+                fname = None
+            self.plot_parameter_distribution(
+                param_name=param_name,
+                param_label=None,  # Will use default
+                bins=bins,
+                fname=fname,
+                background=background,
+                font_family=font_family,
+                font_name=font_name,
+                color=color,
+                alpha=alpha,
+                show_stats=show_stats
+            )
+
+    def plot_parameter_distributions_grid(
+        self,
+        bins: int = 25,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "sans-serif",
+        font_name: str = "Avenir",
+        color: Optional[str] = None,
+        alpha: float = 0.8,
+        figsize: Tuple[float, float] = (20, 5)
+    ):
+        """Plot distributions for all parameters in a 1x4 grid (one row).
+        
+        Args:
+            bins (int): Number of histogram bins
+            fname (Optional[str]): Filename to save plot
+            background (str): Background color theme
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+            color (Optional[str]): Color for the histogram
+            alpha (float): Transparency of the histogram bars
+            figsize (Tuple[float, float]): Figure size in inches
+        """
+        # Prepare parameters dictionary
+        parameters_dict = {}
+        for param_name in self.parameters.columns:
+            values = self.parameters[param_name].values
+            # Apply log transformation for A(km) parameter
+            if param_name == "A(km)":
+                values = np.log(values)
+            parameters_dict[param_name] = values
+        
+        return plot_parameter_distribution_grid(
+            parameters_dict=parameters_dict,
+            labels_dict=self.PARAMETER_LABELS,
+            ranges_dict=self.PARAMETER_RANGES,
+            bins=bins,
+            fname=fname,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            color=color,
+            alpha=alpha,
+            figsize=figsize
         )
  
     def __str__(self):

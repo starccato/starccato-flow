@@ -18,6 +18,8 @@ BATCH_SIZE = 32
 
 SAMPLING_RATE = 1/4096
 
+TEN_KPC = 3.086e+22
+
 def get_device() -> torch.device:
     try:
         if torch.cuda.is_available():

@@ -13,9 +13,9 @@ import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
 
-from ..plotting.plotting import plot_reconstruction_distribution, plot_waveform_grid, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner, plot_candidate_signal
+from ..plotting.plotting import plot_reconstruction_distribution, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner, plot_candidate_signal
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..nn.vae import VAE
 # from ..nn.flow import FLOW
 
@@ -309,7 +309,8 @@ class Trainer:
                     print("Parameter values:", generated_signals)
                 else:
                     plot_signal_grid(
-                        signals=generated_signals,
+                        signals=generated_signals/TEN_KPC,
+                        noisy_signals=None,
                         max_value=self.training_dataset.max_strain,
                         num_cols=3,
                         num_rows=1,
@@ -620,7 +621,7 @@ class Trainer:
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         self.val_loader.dataset.update_snr(snr)
         signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
-        plot_candidate_signal(signal=signal, noisy_signal=noisy_signal, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
+        plot_candidate_signal(signal=signal/TEN_KPC, noisy_signal=noisy_signal/TEN_KPC, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
 
 
     def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
@@ -662,9 +663,9 @@ class Trainer:
                 )
 
         plot_reconstruction_distribution(
-            reconstructed_signals=reconstructed_signals,
-            noisy_signal=noisy_signal,
-            true_signal=signal,
+            reconstructed_signals=reconstructed_signals/TEN_KPC,
+            noisy_signal=noisy_signal/TEN_KPC,
+            true_signal=signal/TEN_KPC,
             max_value=self.val_loader.dataset.max_strain,
             num_samples=num_samples,
             background=background,
