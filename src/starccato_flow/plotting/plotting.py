@@ -1,3 +1,4 @@
+from turtle import back
 from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -17,6 +18,7 @@ from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffi
 from nflows.flows import Flow
 from PIL import Image
 import io
+import ligo.skymap.plot
 
 import math
 
@@ -1087,8 +1089,8 @@ def plot_latent_morph_up_and_down(
         color='red', linestyle='--', linewidth=3
     )
     ax2.scatter(mean_1[0].cpu(), mean_1[1].cpu(), color='deepskyblue', label="Signal 1", alpha=0.5, edgecolors='none', s=100)
-    ax2.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), color='red', label="Interpolant", edgecolors='none', s=100)
     ax2.scatter(mean_2[0].cpu(), mean_2[1].cpu(), color='deepskyblue', label="Signal 2", alpha=0.75, edgecolors='none', s=100)
+    ax2.scatter(mean_mid[0].cpu(), mean_mid[1].cpu(), color='red', label="Interpolant", edgecolors='none', s=100)
     ax2.set_xlabel('Latent Dimension 1', fontsize=16)
     ax2.set_ylabel('Latent Dimension 2', fontsize=16)
     ax2.tick_params(axis='both', which='major', labelsize=12)
@@ -1107,6 +1109,181 @@ def plot_latent_morph_up_and_down(
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.2)
     plt.savefig(fname=fname, dpi=300, bbox_inches='tight', transparent=True)
+
+
+def create_latent_morph_gif(
+    model,
+    train_dataset,
+    signal_1_index: int,
+    signal_2_index: int,
+    max_value: float,
+    num_frames: int = 30,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    fname: str = "plots/latent_morph_animation.gif",
+    duration: int = 100
+):
+    """Create an animated GIF showing interpolation between two signals in latent space.
+    
+    This function creates a smooth animation that moves back and forth between two signals,
+    showing how the interpolation evolves in both signal space and latent space.
+    
+    Args:
+        model: Trained VAE model with encoder and decoder
+        train_dataset: Dataset to get signals and compute background latent scatter
+        signal_1_index (int): Index of first signal in dataset
+        signal_2_index (int): Index of second signal in dataset
+        max_value (float): Maximum strain value for scaling signals
+        num_frames (int): Number of frames in the animation (half cycle)
+        background (str): Background color theme ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        fname (str): Filename to save the GIF
+        duration (int): Duration of each frame in milliseconds
+    """
+    import io
+    
+    # Get the two signals from the dataset
+    signal_1 = train_dataset[signal_1_index][0].unsqueeze(0).to(DEVICE)
+    signal_2 = train_dataset[signal_2_index][0].unsqueeze(0).to(DEVICE)
+    
+    model.eval()
+    with torch.no_grad():
+        # Encode signals
+        mean_1, _ = model.encoder(signal_1)
+        mean_2, _ = model.encoder(signal_2)
+        
+        # Reconstruct signals
+        signal_1_np = signal_1.cpu().detach().numpy().flatten() * max_value / TEN_KPC
+        signal_2_np = signal_2.cpu().detach().numpy().flatten() * max_value / TEN_KPC
+        
+        # X-axis
+        x_vals = [i / 4096 for i in range(0, 256)]
+        x_vals = [x - (53 / 4096) for x in x_vals]
+        
+        # Posterior means for background latent scatter
+        all_means = []
+        for _, x, _ in train_dataset:
+            x = torch.tensor(x).to(DEVICE)
+            mean, _ = model.encoder(x)
+            all_means.append(mean.cpu().numpy())
+        all_means = np.concatenate(all_means, axis=0)
+    
+    # Create alpha values for interpolation (back and forth)
+    alphas_forward = np.linspace(0, 1, num_frames)
+    alphas_backward = np.linspace(1, 0, num_frames)
+    alphas = np.concatenate([alphas_forward, alphas_backward])
+    
+    frames = []
+    print(f"Creating {len(alphas)} frames for latent morph GIF...")
+    
+    for frame_idx, alpha in enumerate(alphas):
+        with torch.no_grad():
+            # Interpolate in latent space
+            mean_interp = mean_1 * (1 - alpha) + mean_2 * alpha
+            signal_interp = model.decoder(mean_interp).cpu().detach().numpy().flatten() * max_value / TEN_KPC
+        
+        # Set up styling
+        if background == "black":
+            plt.style.use('dark_background')
+            plt.rcParams['axes.facecolor'] = 'black'
+            plt.rcParams['figure.facecolor'] = 'black'
+            plt.rcParams['savefig.facecolor'] = 'black'
+            plt.rcParams['text.color'] = 'white'
+            plt.rcParams['axes.labelcolor'] = 'white'
+            plt.rcParams['xtick.color'] = 'white'
+            plt.rcParams['ytick.color'] = 'white'
+            text_colour = 'white'
+            vline_color = 'white'
+        else:
+            plt.style.use('default')
+            plt.rcParams['axes.facecolor'] = 'white'
+            plt.rcParams['figure.facecolor'] = 'white'
+            plt.rcParams['savefig.facecolor'] = 'white'
+            plt.rcParams['text.color'] = 'black'
+            plt.rcParams['axes.labelcolor'] = 'black'
+            plt.rcParams['xtick.color'] = 'black'
+            plt.rcParams['ytick.color'] = 'black'
+            text_colour = 'black'
+            vline_color = 'black'
+        
+        plt.rcParams['font.family'] = font_family
+        plt.rcParams['font.sans-serif'] = font_name
+        plt.rcParams['font.size'] = 12
+        
+        mean_1_sq = mean_1.squeeze()
+        mean_2_sq = mean_2.squeeze()
+        mean_interp_sq = mean_interp.squeeze()
+        
+        # Set up figure with same dimensions as animate_latent_morphs
+        fig = plt.figure(figsize=(10, 17))
+        
+        # Signal plot - show only interpolation
+        ax1 = fig.add_subplot(2, 1, 1)
+        ax1.plot(x_vals, signal_interp, color='red', linewidth=2, zorder=3)
+        plt.axvline(x=0, color=vline_color, linestyle='dashed', alpha=0.5)
+        ax1.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
+        ax1.set_xlim(left=x_vals[0], right=x_vals[-1])
+        ax1.set_xlabel("time (s)", fontsize=16)
+        ax1.set_ylabel("h", fontsize=16)
+        ax1.tick_params(axis='both', which='major', labelsize=12)
+        
+        # Latent space plot - show all with blue original signals and red interpolation
+        ax2 = fig.add_subplot(2, 1, 2)
+        ax2.scatter(all_means[:, 0], all_means[:, 1], alpha=0.2, color='gray', edgecolors='none', s=50)
+        ax2.plot(
+            [mean_1_sq[0].cpu(), mean_2_sq[0].cpu()],
+            [mean_1_sq[1].cpu(), mean_2_sq[1].cpu()],
+            color='red', linestyle='--', linewidth=3
+        )
+        ax2.scatter(mean_1_sq[0].cpu(), mean_1_sq[1].cpu(), color='deepskyblue', label="Signal 1", edgecolors='none', s=100)
+        ax2.scatter(mean_interp_sq[0].cpu(), mean_interp_sq[1].cpu(), color='red', label="Interpolant", edgecolors='none', s=100)
+        ax2.scatter(mean_2_sq[0].cpu(), mean_2_sq[1].cpu(), color='deepskyblue', label="Signal 2", edgecolors='none', s=100)
+        ax2.set_xlabel('Latent Dimension 1', fontsize=16)
+        ax2.set_ylabel('Latent Dimension 2', fontsize=16)
+        ax2.tick_params(axis='both', which='major', labelsize=12)
+        ax2.legend(loc='upper center', fontsize=12, facecolor='none', bbox_to_anchor=(0.5, 1.125), ncol=3, frameon=False)
+        
+        # Sample size note
+        n = len(train_dataset)
+        plt.text(
+            0.98, 0.02, f"n = {n}",
+            ha='right', va='bottom',
+            transform=plt.gca().transAxes,
+            fontsize=12, color=text_colour,
+            alpha=0.8
+        )
+        
+        plt.tight_layout()
+        plt.subplots_adjust(wspace=0.2)
+        
+        # Save frame to buffer
+        plt.ioff()
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', transparent=True)
+        buf.seek(0)
+        frames.append(Image.open(buf).copy())
+        buf.close()
+        
+        plt.close(fig)
+        plt.ion()
+        
+        if (frame_idx + 1) % 10 == 0:
+            print(f"  Generated {frame_idx + 1}/{len(alphas)} frames")
+    
+    # Save as GIF
+    print(f"Saving GIF to {fname}...")
+    frames[0].save(
+        fname,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0
+    )
+    print(f"GIF created successfully with {len(alphas)} frames!")
+    plt.rcdefaults()
+
 
 def plot_signal_distribution(
     signals: np.ndarray,
@@ -1780,3 +1957,147 @@ def create_snr_variation_gif(
         loop=0
     )
     print(f"GIF created successfully with {num_frames} frames!")
+
+def plot_sky_localisation(
+    ra_samples: np.ndarray,
+    dec_samples: np.ndarray,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman"
+) -> plt.Figure:
+    """Plot sky location distribution from RA and Dec samples.
+    
+    Args:
+        ra_samples (np.ndarray): Right Ascension samples in radians
+        dec_samples (np.ndarray): Declination samples in radians
+        fname (Optional[str]): Filename to save the plot
+        background (str): Background color ("white" or "black")
+        font_family (str): Font family for labels
+        font_name (str): Specific font name
+        
+    Returns:
+        plt.Figure: The matplotlib figure object
+    """
+    # Set up colors based on background
+    if background == "black":
+        text_color = "white"
+        grid_color = "black"
+        grid_alpha = 0.5
+    else:
+        text_color = "black"
+        grid_color = "black"
+        grid_alpha = 0.5
+    
+    # Create figure with ligo.skymap projection
+    fig = plt.figure(figsize=(12, 7))
+    ax = plt.axes(projection='geo aitoff')
+    
+    # Set background color
+    fig.patch.set_facecolor(background)
+    ax.set_facecolor(background)
+    
+    # Make the plot outline solid white
+    for spine in ax.spines.values():
+        spine.set_edgecolor('white')
+        spine.set_linewidth(2)
+        spine.set_linestyle('-')
+    
+    # Add grid with dotted lines
+    ax.grid(linestyle=':', linewidth=0.8)
+    
+    # Plot the samples as a contour/density plot
+    from scipy.stats import gaussian_kde
+    import matplotlib.patches as mpatches
+    
+    # Create 2D histogram/contour of the samples
+    # Convert samples to the correct coordinate system for plotting
+    ra_plot = ra_samples
+    dec_plot = dec_samples
+    
+    # Print sample statistics for debugging
+    print(f"RA range: [{np.min(ra_plot):.3f}, {np.max(ra_plot):.3f}] rad")
+    print(f"Dec range: [{np.min(dec_plot):.3f}, {np.max(dec_plot):.3f}] rad")
+    print(f"Number of samples: {len(ra_plot)}")
+    
+    # Create density estimate
+    try:
+        kde = gaussian_kde(np.vstack([ra_plot, dec_plot]))
+        
+        # Create grid for contour plot
+        ra_grid = np.linspace(-np.pi, np.pi, 200)
+        dec_grid = np.linspace(-np.pi/2, np.pi/2, 100)
+        ra_mesh, dec_mesh = np.meshgrid(ra_grid, dec_grid)
+        positions = np.vstack([ra_mesh.ravel(), dec_mesh.ravel()])
+        
+        # Evaluate KDE on grid
+        density = kde(positions).reshape(ra_mesh.shape)
+        
+        # Plot filled contours for 68%, 95%, 99.7% credible regions
+        # Calculate levels corresponding to these percentiles
+        sorted_density = np.sort(density.ravel())[::-1]
+        cumsum = np.cumsum(sorted_density)
+        cumsum /= cumsum[-1]
+        
+        level_68 = sorted_density[np.argmin(np.abs(cumsum - 0.68))]
+        level_95 = sorted_density[np.argmin(np.abs(cumsum - 0.95))]
+        level_997 = sorted_density[np.argmin(np.abs(cumsum - 0.997))]
+        
+        # Use brighter colors for better visibility
+        contour_color = '#FF6B6B' if background == "white" else '#FF4444'
+        
+        # Plot filled contours - need 3 colors/alphas for 4 levels (creates 3 regions)
+        contours = ax.contourf(ra_mesh, dec_mesh, density, 
+                              levels=[level_997, level_95, level_68, density.max()],
+                              colors=[contour_color, contour_color, contour_color],
+                              alpha=[0.3, 0.5, 0.7],
+                              extend='neither')
+        
+        # Add contour lines with higher visibility
+        line_color = 'black' if background == "white" else 'white'
+        ax.contour(ra_mesh, dec_mesh, density,
+                  levels=[level_68, level_95, level_997],
+                  colors=line_color, linewidths=2, alpha=0.9)
+        
+    except Exception as e:
+        print(f"KDE failed: {e}")
+        # If KDE fails, just plot scatter
+        scatter_color = '#FF6B6B' if background == "white" else '#FF4444'
+        ax.scatter(ra_plot, dec_plot, c=scatter_color, s=5, alpha=0.5, edgecolors='none')
+    
+    # Plot median position as a star
+    ra_median = np.median(ra_samples)
+    dec_median = np.median(dec_samples)
+    star_color = '#FF6B6B' if background == "white" else '#FF4444'
+    star_edge = 'black' if background == "white" else 'white'
+    ax.plot(ra_median, dec_median, marker='*', markersize=30,
+            color=star_color, markeredgecolor=star_edge,
+            markeredgewidth=2, zorder=5)
+    print(f"Median position: RA={ra_median:.3f} rad, Dec={dec_median:.3f} rad")
+    
+    # Add detector locations for reference
+    detector_coords = [
+        ("LIGO Hanford", np.deg2rad(240), np.deg2rad(46.5)),
+        ("LIGO Livingston", np.deg2rad(268), np.deg2rad(30.5)),
+        ("Virgo", np.deg2rad(10), np.deg2rad(43.6))
+    ]
+    
+    for name, ra_det, dec_det in detector_coords:
+        # Convert to -pi to pi range
+        ra_det_plot = ra_det - np.pi
+        ax.plot(ra_det_plot, dec_det, marker='v', markersize=8,
+                color='#FFD93D', markeredgecolor=text_color,
+                markeredgewidth=0.5, zorder=4)
+    
+    # Set tick colors
+    ax.tick_params(colors=text_color)
+    
+    plt.tight_layout()
+    
+    if fname:
+        plt.savefig(fname, dpi=300, facecolor=background,
+                   edgecolor='none', bbox_inches='tight')
+        print(f"Saved sky localization plot to {fname}")
+    
+    plt.show()
+    return fig

@@ -17,7 +17,6 @@ from ..plotting.plotting import plot_reconstruction_distribution, plot_signal_gr
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..nn.vae import VAE
-# from ..nn.flow import FLOW
 
 from ..data.toy_data import ToyData
 from ..data.ccsn_snr_data import CCSNSNRData
@@ -25,8 +24,6 @@ from ..data.ccsn_snr_data import CCSNSNRData
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
 from nflows.flows import Flow
-
-from starccato_flow.nn import vae, vae_test
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -334,7 +331,7 @@ class Trainer:
         print("Starting Flow Training")
         print("="*60)
         # self.train_npe_with_vae_standard(num_epochs=500, lr=self.lr_flow)
-        self.train_npe_with_vae_improved(num_epochs=500)
+        # self.train_npe_with_vae_improved(num_epochs=500)
     
     def train_npe_with_vae_standard(self, num_epochs=256, lr=1e-4):
         """
