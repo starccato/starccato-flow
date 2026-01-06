@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from ..utils.defaults import SIGNAL_LENGTH
+from ..utils.defaults import SIGNAL_LENGTH, HIDDEN_DIM
 
 class Flow(nn.Module):
-    def __init__(self, dim: int = 2, signal_dim: int = SIGNAL_LENGTH, h: int = 64):
+    def __init__(self, dim: int = 2, signal_dim: int = SIGNAL_LENGTH, h: int = HIDDEN_DIM):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim + 1 + signal_dim, h), nn.ELU(),  # parameters + time + signal

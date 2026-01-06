@@ -168,48 +168,21 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        flow = Flow()
-        optimizer = torch.optim.Adam(flow.parameters(), 1e-2)
-        loss_fn = nn.MSELoss()
+        self.flow = Flow(dim=2)
+        self.optimizer = torch.optim.Adam(self.flow.parameters(), 1e-2)
+        self.loss_fn = nn.MSELoss()
 
-        # Setup scheduler
-        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     self.optimizerVAE,
-        #     mode='min',
-        #     factor=0.5,
-        #     patience=10,
-        #     min_lr=1e-6
-        # )
+        # self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
 
-        self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
-
-
-    @property
-    def plt_kwgs(self):
-        return dict(
-            scaling_factor=self.dataset.scaling_factor,
-            mean=self.dataset.mean,
-            std=self.dataset.std,
-            max_value=self.dataset.max_value,
-            num_cols=4,
-            num_rows=4,
-        )
-    
     def train(self):
         t0 = time.time()
 
-        self.avg_total_losses = []
-        self.avg_reproduction_losses = []
-        self.avg_kld_losses = []
-        self.avg_total_losses_val = []
-        self.avg_reproduction_losses_val = []
-        self.avg_kld_losses_val = []
+        self.avg_mse_losses = []
+        self.avg_mse_losses_val = []
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
-            self.vae.train()
+            self.flow.train()
             total_loss = 0
-            reproduction_loss = 0
-            kld_loss = 0
             total_samples = 0
 
             self.val_loader.dataset.set_epoch(epoch)
@@ -220,34 +193,25 @@ class Trainer:
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
 
-                self.optimizerVAE.zero_grad()
-                recon, mean, log_var = self.vae(noisy_signal)
-                loss, rec_loss, kld = self.loss_function_vae(signal, recon, mean, log_var)
-                
-                # Backward pass with gradient clipping
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
-                self.optimizerVAE.step()
+                x_0 = torch.randn_like(params)  # noise in parameter space
+                t = torch.rand(len(params), 1)  # random time values
+                x_t = (1 - t) * x_0 + t * params  # interpolated parameters
+                dx_t = params - x_0  # true velocity direction in parameter space
+
+                self.optimizer.zero_grad()
+                loss = self.loss_fn(self.flow(x_t, t, noisy_signal), dx_t)
+                loss.backward()  # predict parameter velocity given signal
+                self.optimizer.step()
 
                 total_loss += loss.item()
-                reproduction_loss += rec_loss.item()
-                kld_loss += kld.item()
                 total_samples += signal.size(0)
 
-
             avg_total_loss = total_loss / total_samples
-            avg_reproduction_loss = reproduction_loss / total_samples
-            avg_kld_loss = kld_loss / total_samples
-
             self.avg_total_losses.append(avg_total_loss)
-            self.avg_reproduction_losses.append(avg_reproduction_loss)
-            self.avg_kld_losses.append(avg_kld_loss)
 
             # Validation
-            self.vae.eval()
+            self.flow.eval()
             val_total_loss = 0
-            val_reproduction_loss = 0
-            val_kld_loss = 0
             val_samples = 0
             with torch.no_grad():
                 for val_signal, val_noisy_signal, val_params in self.val_loader:
@@ -255,63 +219,46 @@ class Trainer:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-                    recon, mean, log_var = self.vae(val_noisy_signal)
-                    v_loss, v_rec_loss, v_kld = self.loss_function_vae(val_signal, recon, mean, log_var)
-                    val_total_loss += v_loss.item()
-                    val_reproduction_loss += v_rec_loss.item()
-                    val_kld_loss += v_kld.item()
+                    loss = self.loss_fn(self.flow(val_params, val_noisy_signal), val_params)
+                    val_total_loss += loss.item()
                     val_samples += val_signal.size(0)
             
             avg_total_loss_val = val_total_loss / val_samples
-            avg_reproduction_loss_val = val_reproduction_loss / val_samples
-            avg_kld_loss_val = val_kld_loss / val_samples
-
             self.avg_total_losses_val.append(avg_total_loss_val)
-            self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
-            self.avg_kld_losses_val.append(avg_kld_loss_val)
-            
-            # Step the learning rate scheduler
-            self.scheduler.step(avg_total_loss_val)
 
-            # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
+
+            print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
-            if (epoch + 1) % self.checkpoint_interval == 0:
-                # gridded plots
-                with torch.no_grad():
-                    generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-                print(f"Generated signals shape: {generated_signals.shape}")
-                # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-                if self.vae_parameter_test:
-                    print("Parameter values:", generated_signals)
-                else:
-                    plot_signal_grid(
-                        signals=generated_signals/TEN_KPC,
-                        noisy_signals=None,
-                        max_value=self.training_dataset.max_strain,
-                        num_cols=3,
-                        num_rows=1,
-                        fname="plots/ccsn_generated_signal_grid.svg",
-                        background="white",
-                        generated=True
-                    )
-                plot_latent_space_3d(
-                    model=self.vae,
-                    dataloader=self.train_loader
-                )
-                
+            # if (epoch + 1) % self.checkpoint_interval == 0:
+                # # gridded plots
+                # with torch.no_grad():
+                #     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+                # print(f"Generated signals shape: {generated_signals.shape}")
+                # # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+                # if self.vae_parameter_test:
+                #     print("Parameter values:", generated_signals)
+                # else:
+                #     plot_signal_grid(
+                #         signals=generated_signals/TEN_KPC,
+                #         noisy_signals=None,
+                #         max_value=self.training_dataset.max_strain,
+                #         num_cols=3,
+                #         num_rows=1,
+                #         fname="plots/ccsn_generated_signal_grid.svg",
+                #         background="white",
+                #         generated=True
+                #     )
+                # plot_latent_space_3d(
+                #     model=self.vae,
+                #     dataloader=self.train_loader
+                # )
+        
 
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
-        self.save_models()
-
-        # train flows with overfitting prevention
-        print("\n" + "="*60)
-        print("Starting Flow Training")
-        print("="*60)
-        # self.train_npe_with_vae_standard(num_epochs=500, lr=self.lr_flow)
-        # self.train_npe_with_vae_improved(num_epochs=500)
+        # self.save_models()
     
     def plot_corner(self, signal, noisy_signal, params, fname):
         # Validation dataset already contains only validation samples
