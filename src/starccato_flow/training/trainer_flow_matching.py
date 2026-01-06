@@ -303,10 +303,52 @@ class FlowMatchingTrainer:
         # Optionally: plot final results or save model
         # self.save_models()
     
-    def plot_corner(self, signal, noisy_signal, params, fname):
-        # Validation dataset already contains only validation samples
-        # signal, noisy_signal, params = self.validation_dataset[index]
-        plot_corner(vae=self.vae, flow=self.flow, signal=signal, noisy_signal=noisy_signal, params=params, fname=fname)
+    def plot_corner(self, index=0, num_samples=5000, fname="plots/corner_plot.png"):
+        """Generate corner plot with posterior samples for a validation signal.
+        
+        Args:
+            index (int): Index of validation signal to use
+            num_samples (int): Number of posterior samples to generate
+            fname (str): Filename to save plot
+        """
+        # Get signal from validation dataset
+        signal, noisy_signal, params = self.val_loader.dataset[index]
+        
+        self.flow.eval()
+        
+        with torch.no_grad():
+            # Ensure proper device and shape
+            if noisy_signal.dim() == 1:
+                noisy_signal = noisy_signal.unsqueeze(0)
+            elif noisy_signal.dim() == 2 and noisy_signal.shape[0] != 1:
+                noisy_signal = noisy_signal.unsqueeze(0)
+            
+            device = next(self.flow.parameters()).device
+            noisy_signal = noisy_signal.to(device).float()
+            
+            # Generate posterior samples by flowing from noise
+            posterior_samples = torch.randn(num_samples, 2, device=device)
+            repeated_signal = noisy_signal.repeat(num_samples, 1)
+            
+            # Flow the samples to get posterior distribution
+            n_steps = 20
+            time_steps = torch.linspace(0, 1.0, n_steps + 1)
+            
+            for i in range(n_steps):
+                posterior_samples = self.flow.step(
+                    posterior_samples, 
+                    time_steps[i], 
+                    time_steps[i + 1], 
+                    repeated_signal
+                )
+            
+            # Convert to CPU numpy for corner plot
+            samples_cpu = posterior_samples.detach().cpu().numpy()
+            true_params = params.detach().cpu() if torch.is_tensor(params) else params
+            true_params = true_params.flatten().numpy()
+        
+        # Call plotting function with samples
+        plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname)
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         self.val_loader.dataset.update_snr(snr)

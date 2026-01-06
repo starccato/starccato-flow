@@ -1657,40 +1657,38 @@ def plot_reconstruction_distribution(
     plt.rcdefaults()
 
 
-def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params, fname="plots/corner_plot.png"):
+def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png"):
     """Plot corner plot of parameter posterior distribution.
     
     Args:
-        noisy_signal (torch.Tensor): Noisy input signal
-        params (torch.Tensor): True parameter values
-        fname (Optional[str]): Filename to save plot
+        samples_cpu (np.ndarray): Posterior samples as numpy array, shape (num_samples, num_params)
+        true_params (np.ndarray): True parameter values as numpy array, shape (num_params,)
+        fname (str): Filename to save plot
     """
-    vae.eval()
-    flow.eval()
-
-    with torch.no_grad():
-        noisy_signal = noisy_signal.to(DEVICE).float()
-        if noisy_signal.dim() == 2:
-            noisy_signal = noisy_signal.unsqueeze(0)
-        
-        _, mean, log_var = vae(noisy_signal)
-
-        # Sample from flow conditioned on z
-        num_draws = 5000
-
-        context = mean.view(1, -1)
-        samples = flow.sample(num_samples=num_draws, context=context)
-        samples = samples.reshape(num_draws, -1)  # -> [num_draws, 2]
-
-        samples_cpu = samples.detach().cpu()
-        samples_cpu[:, [0, 1, 3]] = torch.exp(samples_cpu[:, [0, 1, 3]])  # Transform back to positive space
-        samples_cpu = samples_cpu.numpy()
-        true_params = params.detach().cpu() if torch.is_tensor(params) else params
-        true_params = true_params.flatten()  # Flatten to [2] from [1, 2]
-        true_params[2] = torch.log(true_params[2] + 1e-8)  # log-transform
-        
-        print("True params:", true_params)
-
+    import math
+    
+    # Detect number of parameters
+    num_params = samples_cpu.shape[1]
+    
+    # Set labels and ranges based on number of parameters
+    if num_params == 2:
+        # Toy data with 2 parameters
+        labels = [r"Parameter 1", r"Parameter 2"]
+        ranges = None  # Let corner auto-determine ranges
+    elif num_params == 4:
+        # CCSN data with 4 parameters
+        labels = [
+            r"$\beta_{IC,b}$",
+            r"$\omega_0$",
+            r"$\log(A)$",
+            r"$Y_{e,b,c}$",
+        ]
+        ranges = [(0, 0.25), (0, 16), (0, math.log(10000)), (0, 0.3)]
+    else:
+        # Generic labels for other cases
+        labels = [f"Parameter {i+1}" for i in range(num_params)]
+        ranges = None
+    
     plt.rcParams['figure.facecolor'] = 'none' # Transparent figure background
     plt.rcParams['axes.facecolor'] = 'black' # Black subplot backgrounds
     plt.rcParams['savefig.facecolor'] = 'none' # Also transparent when saving
@@ -1699,32 +1697,29 @@ def plot_corner(vae: VAE, flow: Flow, signal, noisy_signal, params, fname="plots
     plt.rcParams['xtick.color'] = 'white'
     plt.rcParams['ytick.color'] = 'white'
 
-    print(true_params.detach().cpu().numpy())
-
-    figure = corner.corner(
-        samples_cpu,
-        labels=[
-            r"$\beta_{IC,b}$",
-            r"$\omega_0$",
-            r"$\log(A)$",
-            r"$Y_{e,b,c}$",
-        ],
-        range=[(0, 0.25), (0, 16), (0, math.log(10000)), (0, 0.3)],
-        truths=true_params[:4].numpy(),
-        truth_color=SIGNAL_COLOUR,
-        show_titles=True,
-        title_quantiles=[0.16, 0.5, 0.84],
-        title_fmt='.4f',
-        title_kwargs={'fontsize': 12},  # Summary text on histograms
-        label_kwargs={'fontsize': 24},  # Parameter names
-        bins=100,
-        smooth=3,
-        color=GENERATED_SIGNAL_COLOUR,
-        hist_kwargs={'density': False, 'alpha': 1.0},
-        levels=(0.68, 0.95),
-        fill_contours=True,
-        plot_datapoints=False
-    )
+    corner_kwargs = {
+        'labels': labels,
+        'truths': true_params[:num_params],
+        'truth_color': SIGNAL_COLOUR,
+        'show_titles': True,
+        'title_quantiles': [0.16, 0.5, 0.84],
+        'title_fmt': '.4f',
+        'title_kwargs': {'fontsize': 12},
+        'label_kwargs': {'fontsize': 24},
+        'bins': 100,
+        'smooth': 3,
+        'color': GENERATED_SIGNAL_COLOUR,
+        'hist_kwargs': {'density': False, 'alpha': 1.0},
+        'levels': (0.68, 0.95),
+        'fill_contours': True,
+        'plot_datapoints': False
+    }
+    
+    # Add range only if specified
+    if ranges is not None:
+        corner_kwargs['range'] = ranges
+    
+    figure = corner.corner(samples_cpu, **corner_kwargs)
 
     # Fill hist patches
     for ax in figure.get_axes():
