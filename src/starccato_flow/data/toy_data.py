@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from sklearn.datasets import make_moons
 
 from ..utils.defaults import Y_LENGTH, TEN_KPC
 from ..plotting.plotting import plot_signal_distribution
@@ -8,7 +9,7 @@ from ..plotting.plotting import plot_signal_distribution
 """
 This class generates synthetic time series data for testing purposes.
 signals: y
-parameters: x (frequencies and phases)
+parameters: x (two moons distribution)
 """
 
 def _set_seed(seed: int):
@@ -19,12 +20,15 @@ def _set_seed(seed: int):
     return seed
 
 class ToyData:
-    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise = True, noise_level=0.1):
+    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise = True, curriculum=False, noise_level=0.1):
         _set_seed(42)
         self.num_signals = num_signals
         self.signal_length = signal_length
+        self.num_epochs = 256
         self.noise = noise
-        self.curriculum = False
+        self.start_snr = 200
+        self.end_snr = 10
+        self.curriculum = curriculum
         self.noise_level = noise_level
 
         self.parameters = self.generate_parameters()
@@ -33,30 +37,27 @@ class ToyData:
         self.max_strain = abs(self.signals).max()
 
     def generate_parameters(self):
-        # Generate synthetic parameters for each signal
-        # frequencies = np.random.uni(loc=1.0, scale=0.2, size=self.num_signals)  # mean=1.0, std=0.2
-        # generate uniform distribution for frequencies
-        frequencies = np.random.uniform(low=0.0, high=1.0, size=self.num_signals)  # mean=1.0, std=0.2
-        # phases = np.random.normal(loc=np.pi, scale=1.0, size=self.num_signals)      # mean=pi, std=1.0
-        phases = np.random.uniform(low=-np.pi, high=np.pi, size=self.num_signals)  # mean=0, std=pi
-        # Shape: (num_signals, 2)
-        parameters = np.stack([frequencies, phases], axis=1)
-        return parameters
+        # Generate parameters from two moons distribution
+        data = make_moons(self.num_signals, noise=0.05)
+        parameters = data[0]  # Shape: (num_signals, 2)
+        return parameters.astype(np.float32)
 
     def generate_data(self):
-        t = np.linspace(0, 1, self.signal_length)
+        """Generate sine wave signals based on 2D parameters from two moons"""
+        t = np.linspace(0, 2*np.pi, self.signal_length)
         signals = []
         for i in range(self.num_signals):
-            frequency = self.parameters[i, 0]
-            phase = self.parameters[i, 1]
-            # Generate clean signal without noise
-            signal = 400 * np.sin(2 * np.pi * frequency * t + phase)
+            # Use parameters to modulate frequency and phase of sine wave
+            freq = 1 + self.parameters[i, 0] * 0.5  # parameter controls frequency
+            phase = self.parameters[i, 1]  # parameter controls phase
+            # Generate clean signal
+            signal = 1e-20 * np.sin(freq * t + phase)
             signals.append(signal)
         return np.array(signals)  # Shape: (num_signals, signal_length)
-
+    
     def __len__(self):
         return self.num_signals
-
+    
     @property
     def shape(self):
         return self.signals.shape
@@ -67,7 +68,7 @@ class ToyData:
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         # Transpose signals to match expected shape (signal_length, num_signals)
-        plot_signal_distribution(self.signals.T / TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+        plot_signal_distribution(self.signals.T, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def __getitem__(self, idx):
         signal = self.signals[idx]
@@ -93,6 +94,33 @@ class ToyData:
             torch.tensor(normalised_noisy_signal, dtype=torch.float32),
             torch.tensor(parameters, dtype=torch.float32)
         )
+    
+    def verify_alignment(self):
+        """Verify that signals and parameters are properly aligned."""
+        print("\nVerifying data alignment:")
+        print(f"Number of signals: {self.signals.shape[0]}")
+        print(f"Number of parameter sets: {len(self.parameters)}")
+        # print(f"Parameter columns: {self.parameters.columns.tolist()}")
+        # print(f"First few parameter values:\n{self.parameters.head()}")
+        return True
+    
+    @property
+    def current_epoch(self) -> int:
+        """Get the current epoch number.
+
+        Returns:
+            int: Current epoch number
+        """
+        return self._current_epoch
+
+    def set_epoch(self, epoch: int) -> None:
+        """Update the current epoch number.
+
+        Args:
+            epoch (int): New epoch number
+        """
+        self._current_epoch = epoch
+        self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
 
     def get_loader(self, batch_size=32):
         return DataLoader(

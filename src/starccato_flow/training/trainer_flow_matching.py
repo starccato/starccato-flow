@@ -27,7 +27,7 @@ def _set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
     return seed
 
-class Trainer:
+class FlowMatchingTrainer:
     def __init__(
         self,
         y_length: int = Y_LENGTH,
@@ -72,8 +72,40 @@ class Trainer:
 
         # selector between toy and real data
         if self.toy:
-            self.training_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
-            self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
+            # Create full toy dataset
+            full_toy_dataset = ToyData(
+                num_signals=256, 
+                signal_length=self.y_length, 
+                noise=self.noise
+            )
+            
+            # Split toy data using same logic as real data
+            num_signals = full_toy_dataset.num_signals
+            base_indices = list(range(num_signals))
+            split = int(np.floor(self.validation_split * num_signals))
+            
+            # Deterministic split with fixed seed
+            rng = np.random.RandomState(self.seed)
+            rng.shuffle(base_indices)
+            train_indices = base_indices[split:]
+            val_indices = base_indices[:split]
+            
+            print(f"\n=== Toy Data Split ===")
+            print(f"Total signals: {num_signals}")
+            print(f"Training signals: {len(train_indices)}")
+            print(f"Validation signals: {len(val_indices)}")
+            
+            # Create separate datasets with different indices
+            self.training_dataset = ToyData(
+                num_signals=len(train_indices),
+                signal_length=self.y_length,
+                noise=self.noise
+            )
+            self.validation_dataset = ToyData(
+                num_signals=len(val_indices),
+                signal_length=self.y_length,
+                noise=self.noise
+            )
         else:
             # Create a temporary dataset to get the number of base signals (before augmentation)
             temp_dataset = CCSNSNRData(
@@ -141,7 +173,7 @@ class Trainer:
                 noise_realizations=1,
                 indices=val_base_indices
             )
-    
+            
         self.training_dataset.verify_alignment()
         self.validation_dataset.verify_alignment()
 
@@ -157,9 +189,13 @@ class Trainer:
             shuffle=False  # Don't shuffle validation for consistency
         )
 
-        print(f"\n=== Dataset Sizes (after augmentation) ===")
-        print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
-        print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1)")
+        print(f"\n=== Dataset Sizes ===")
+        if self.toy:
+            print(f"Training samples: {len(self.training_dataset)}")
+            print(f"Validation samples: {len(self.validation_dataset)}")
+        else:
+            print(f"Training samples: {len(self.training_dataset)} ({len(train_base_indices)} base × {self.noise_realizations} realizations)")
+            print(f"Validation samples: {len(self.validation_dataset)} ({len(val_base_indices)} base × 1)")
         print("=" * 50)
 
         self.checkpoint_interval = checkpoint_interval
@@ -168,7 +204,7 @@ class Trainer:
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        self.flow = Flow(dim=2)
+        self.flow = Flow(dim=2).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), 1e-2)
         self.loss_fn = nn.MSELoss()
 
@@ -194,7 +230,7 @@ class Trainer:
                 params = params.view(params.size(0), -1).to(DEVICE)
 
                 x_0 = torch.randn_like(params)  # noise in parameter space
-                t = torch.rand(len(params), 1)  # random time values
+                t = torch.rand(len(params), 1, device=DEVICE)  # random time values on correct device
                 x_t = (1 - t) * x_0 + t * params  # interpolated parameters
                 dx_t = params - x_0  # true velocity direction in parameter space
 
@@ -207,7 +243,7 @@ class Trainer:
                 total_samples += signal.size(0)
 
             avg_total_loss = total_loss / total_samples
-            self.avg_total_losses.append(avg_total_loss)
+            self.avg_mse_losses.append(avg_total_loss)
 
             # Validation
             self.flow.eval()
@@ -219,12 +255,18 @@ class Trainer:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-                    loss = self.loss_fn(self.flow(val_params, val_noisy_signal), val_params)
+
+                    x_0 = torch.randn_like(val_params)  # noise in parameter space
+                    t = torch.rand(len(val_params), 1, device=DEVICE)  # random time values on correct device
+                    x_t = (1 - t) * x_0 + t * val_params  # interpolated parameters
+                    dx_t = val_params - x_0  # true velocity direction in parameter space
+
+                    loss = self.loss_fn(self.flow(x_t, t, val_noisy_signal), dx_t)
                     val_total_loss += loss.item()
                     val_samples += val_signal.size(0)
             
             avg_total_loss_val = val_total_loss / val_samples
-            self.avg_total_losses_val.append(avg_total_loss_val)
+            self.avg_mse_losses_val.append(avg_total_loss_val)
 
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
