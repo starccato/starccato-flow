@@ -209,8 +209,6 @@ class FlowMatchingTrainer:
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
-        # self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
-
     def train(self):
         t0 = time.time()
 
@@ -327,11 +325,10 @@ class FlowMatchingTrainer:
             elif noisy_signal.dim() == 2 and noisy_signal.shape[0] != 1:
                 noisy_signal = noisy_signal.unsqueeze(0)
             
-            device = next(self.flow.parameters()).device
-            noisy_signal = noisy_signal.to(device).float()
+            noisy_signal = noisy_signal.to(DEVICE).float()
             
             # Generate posterior samples by flowing from noise
-            posterior_samples = torch.randn(num_samples, 2, device=device)
+            posterior_samples = torch.randn(num_samples, params.shape[-1], device=DEVICE)
             repeated_signal = noisy_signal.repeat(num_samples, 1)
             
             # Flow the samples to get posterior distribution
