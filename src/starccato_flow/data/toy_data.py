@@ -35,6 +35,8 @@ class ToyData:
         self.signals = self.generate_data()
 
         self.max_strain = abs(self.signals).max()
+        self.parameter_min = self.parameters.min().values.astype(np.float32)
+        self.parameter_max = self.parameters.max().values.astype(np.float32)
 
     def generate_parameters(self):
         # Generate parameters from two moons distribution
@@ -65,6 +67,44 @@ class ToyData:
     def normalise_signals(self, signal):
         normalised_signal = signal / self.max_strain
         return normalised_signal
+    
+    def normalize_parameters(self, params):
+        """Normalize toy data parameters to roughly [-1, 1] range.
+        
+        Two moons data is roughly in [-2, 2] range, so normalize to [-1, 1].
+        
+        Args:
+            params: numpy array of shape (..., 2)
+            
+        Returns:
+            Normalized parameters
+        """
+        # Two moons data is roughly [-1.5, 2.5] in x and [-1, 1.5] in y
+        # Simple normalization to [-1, 1]
+        params_norm = params.copy()
+
+        # Min-max normalization: (x - min) / (max - min) * 2 - 1
+        param_range = self.parameter_max - self.parameter_min
+        params_norm = 2 * (params - self.parameter_min) / param_range - 1
+        
+        return params_norm
+    
+    def denormalize_parameters(self, params_norm):
+        """Denormalize toy parameters back to original range.
+        
+        Args:
+            params_norm: numpy array of shape (..., 2) with normalized params
+            
+        Returns:
+            Denormalized parameters
+        """
+        params = params_norm.copy()
+
+        # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
+        param_range = self.parameter_max - self.parameter_min
+        params = (params_norm + 1) / 2 * param_range + self.parameter_min
+
+        return params
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         # Transpose signals to match expected shape (signal_length, num_signals)
@@ -82,6 +122,9 @@ class ToyData:
             normalised_noisy_signal = normalised_signal
         
         parameters = self.parameters[idx].astype(np.float32)
+        
+        # Normalize parameters to [-1, 1]
+        parameters = self.normalize_parameters(parameters)
         
         # Reshape for compatibility
         normalised_signal = normalised_signal.reshape(1, -1)

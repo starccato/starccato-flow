@@ -26,16 +26,8 @@ class CCSNSNRData(Dataset):
     PARAMETER_LABELS = {
         'beta1_IC_b': r'$\beta_{IC,b}$',
         'omega_0(rad|s)': r'$\omega_0$',
-        'A(km)': r'$\log(A)$',
+        'A(km)': r'$\A$',
         'Ye_c_b': r'$Y_{e,c,b}$'
-    }
-    
-    # Default ranges for parameters (matching corner plot)
-    PARAMETER_RANGES = {
-        'beta1_IC_b': (0, 0.25),
-        'omega_0(rad|s)': (0, 16),
-        'A(km)': (0, math.log(10000)),  # log-transformed range
-        'Ye_c_b': (0, 0.3)
     }
     
     def __init__(
@@ -139,7 +131,8 @@ class CCSNSNRData(Dataset):
                 self.indices = indices
 
         self.max_strain = abs(self.signals).max()
-
+        self.min_parameter = self.parameters.min().values.astype(np.float32)
+        self.max_parameter = self.parameters.max().values.astype(np.float32)
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
@@ -203,8 +196,8 @@ class CCSNSNRData(Dataset):
         
         # Apply log transformation for A(km) parameter
         values = self.parameters[param_name].values
-        if param_name == "A(km)":
-            values = np.log(values)
+        # if param_name == "A(km)":
+        #     values = np.log(values)
         
         # Get default range for this parameter
         param_range = self.PARAMETER_RANGES.get(param_name, None)
@@ -269,51 +262,51 @@ class CCSNSNRData(Dataset):
                 show_stats=show_stats
             )
 
-    def plot_parameter_distributions_grid(
-        self,
-        bins: int = 25,
-        fname: Optional[str] = None,
-        background: str = "white",
-        font_family: str = "sans-serif",
-        font_name: str = "Avenir",
-        color: Optional[str] = None,
-        alpha: float = 0.8,
-        figsize: Tuple[float, float] = (20, 5)
-    ):
-        """Plot distributions for all parameters in a 1x4 grid (one row).
+    # def plot_parameter_distributions_grid(
+    #     self,
+    #     bins: int = 25,
+    #     fname: Optional[str] = None,
+    #     background: str = "white",
+    #     font_family: str = "sans-serif",
+    #     font_name: str = "Avenir",
+    #     color: Optional[str] = None,
+    #     alpha: float = 0.8,
+    #     figsize: Tuple[float, float] = (20, 5)
+    # ):
+    #     """Plot distributions for all parameters in a 1x4 grid (one row).
         
-        Args:
-            bins (int): Number of histogram bins
-            fname (Optional[str]): Filename to save plot
-            background (str): Background color theme
-            font_family (str): Font family to use
-            font_name (str): Specific font name
-            color (Optional[str]): Color for the histogram
-            alpha (float): Transparency of the histogram bars
-            figsize (Tuple[float, float]): Figure size in inches
-        """
-        # Prepare parameters dictionary
-        parameters_dict = {}
-        for param_name in self.parameters.columns:
-            values = self.parameters[param_name].values
-            # Apply log transformation for A(km) parameter
-            if param_name == "A(km)":
-                values = np.log(values)
-            parameters_dict[param_name] = values
+    #     Args:
+    #         bins (int): Number of histogram bins
+    #         fname (Optional[str]): Filename to save plot
+    #         background (str): Background color theme
+    #         font_family (str): Font family to use
+    #         font_name (str): Specific font name
+    #         color (Optional[str]): Color for the histogram
+    #         alpha (float): Transparency of the histogram bars
+    #         figsize (Tuple[float, float]): Figure size in inches
+    #     """
+    #     # Prepare parameters dictionary
+    #     parameters_dict = {}
+    #     for param_name in self.parameters.columns:
+    #         values = self.parameters[param_name].values
+    #         # Apply log transformation for A(km) parameter
+    #         if param_name == "A(km)":
+    #             values = np.log(values)
+    #         parameters_dict[param_name] = values
         
-        return plot_parameter_distribution_grid(
-            parameters_dict=parameters_dict,
-            labels_dict=self.PARAMETER_LABELS,
-            ranges_dict=self.PARAMETER_RANGES,
-            bins=bins,
-            fname=fname,
-            background=background,
-            font_family=font_family,
-            font_name=font_name,
-            color=color,
-            alpha=alpha,
-            figsize=figsize
-        )
+    #     return plot_parameter_distribution_grid(
+    #         parameters_dict=parameters_dict,
+    #         labels_dict=self.PARAMETER_LABELS,
+    #         ranges_dict=self.PARAMETER_RANGES,
+    #         bins=bins,
+    #         fname=fname,
+    #         background=background,
+    #         font_family=font_family,
+    #         font_name=font_name,
+    #         color=color,
+    #         alpha=alpha,
+    #         figsize=figsize
+    #     )
  
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"
@@ -394,6 +387,40 @@ class CCSNSNRData(Dataset):
         normalised_signal = signal / self.max_strain
         return normalised_signal
     
+    def normalize_parameters(self, params):
+        """Normalize CCSN parameters to [-1, 1] range using min-max normalization.
+        
+        Args:
+            params: numpy array of shape (..., 4) with [beta, omega, A, Ye]
+            
+        Returns:
+            Normalized parameters in [-1, 1] range
+        """
+        params_norm = params.copy()
+        
+        # Min-max normalization: (x - min) / (max - min) * 2 - 1
+        param_range = self.max_parameter - self.min_parameter
+        params_norm = 2 * (params - self.min_parameter) / param_range - 1
+        
+        return params_norm
+    
+    def denormalize_parameters(self, params_norm):
+        """Denormalize parameters from [-1, 1] back to original ranges.
+        
+        Args:
+            params_norm: numpy array of shape (..., 4) with normalized params
+            
+        Returns:
+            Denormalized parameters in original units
+        """
+        params = params_norm.copy()
+        
+        # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
+        param_range = self.max_parameter - self.min_parameter
+        params = (params_norm + 1) / 2 * param_range + self.min_parameter
+        
+        return params
+    
     ### overloads ###
     def __len__(self):
         # Multiply dataset size by number of noise realizations
@@ -439,10 +466,11 @@ class CCSNSNRData(Dataset):
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         
         # Apply log transformation to omega_0 and A(km)
-        # Parameters: [beta1_IC_b, omega_0, A(km), Ye_c_b]
-        if parameters.shape[0] == 4:
-            parameters[1] = np.log1p(parameters[1])  # omega_0: [0, 16] -> [0, 2.83]
-            parameters[2] = np.log(parameters[2] + 1e-8)  # A(km): [0, 10000] -> [-18.4, 9.2]
+        # parameters[1] = np.log(parameters[1] + 1e-8)  # omega_0: [0, 16] -> [-18.4, 2.77]
+        # parameters[2] = np.log(parameters[2] + 1e-8)  # A(km): [0, 10000] -> [-18.4, 9.2]
+        
+        # Normalize all parameters to [-1, 1]
+        parameters = self.normalize_parameters(parameters)
         
         parameters = parameters.reshape(1, -1)
 

@@ -35,16 +35,14 @@ class FlowMatchingTrainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs: int = 512,
+        num_epochs: int = 256,
         validation_split: float = 0.1,
-        lr_vae: float = 1e-3,
         lr_flow: float = 1e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         noise: bool = True,
         curriculum: bool = True,
         toy: bool = True,
-        vae_parameter_test: bool = False,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
         start_snr: int = 100,
         end_snr: int = 10,
@@ -57,14 +55,12 @@ class FlowMatchingTrainer:
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.validation_split = validation_split
-        self.lr_vae = lr_vae
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
         self.toy = toy
         self.noise = noise
         self.curriculum = curriculum
-        self.vae_parameter_test = vae_parameter_test
         self.max_grad_norm = max_grad_norm
         self.start_snr = start_snr
         self.end_snr = end_snr
@@ -347,6 +343,14 @@ class FlowMatchingTrainer:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params = params.detach().cpu() if torch.is_tensor(params) else params
             true_params = true_params.flatten().numpy()
+            
+            # Denormalize parameters for visualization
+            if self.toy:
+                samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
+                true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
+            else:
+                samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
+                true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
         
         # Call plotting function with samples
         plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname)
