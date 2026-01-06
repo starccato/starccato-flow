@@ -35,7 +35,7 @@ class FlowMatchingTrainer:
         z_dim: int = Z_DIM,
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
-        num_epochs: int = 256,
+        num_epochs: int = 512,
         validation_split: float = 0.1,
         lr_vae: float = 1e-3,
         lr_flow: float = 1e-4,
