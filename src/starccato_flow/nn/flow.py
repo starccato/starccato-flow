@@ -17,7 +17,9 @@ class Flow(nn.Module):
         return self.net(torch.cat((t, x_t, h), -1))
     
     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
-        t_start = t_start.view(1, 1).expand(x_t.shape[0], 1)
+        # Ensure t_start and t_end are on the same device as x_t
+        t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
+        t_end = t_end.to(x_t.device)
         # TODO: implement another class with different ODE solvers
         # Midpoint ODE solver, can use any other solver!
         return x_t + (t_end - t_start) * self(

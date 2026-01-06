@@ -295,6 +295,7 @@ def plot_reconstruction(
 def plot_loss(
     train_losses: List[float],
     val_losses: Optional[List[float]] = None,
+    loss_type: str = "Loss",
     fname: Optional[str] = None,
     axes: Optional[plt.Axes] = None,
     background: str = "white",
@@ -331,7 +332,7 @@ def plot_loss(
                   linewidth=3, alpha=1.0, linestyle='-')
     
     axes.set_xlabel("Epoch", size=20)
-    axes.set_ylabel("Negative Log Likelihood", size=20)
+    axes.set_ylabel(loss_type, size=20)
     axes.legend(fontsize=20, framealpha=0.0)
     axes.tick_params(labelsize=18)
     axes.grid(False)

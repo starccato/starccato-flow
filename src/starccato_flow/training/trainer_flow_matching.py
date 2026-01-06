@@ -74,7 +74,7 @@ class FlowMatchingTrainer:
         if self.toy:
             # Create full toy dataset
             full_toy_dataset = ToyData(
-                num_signals=256, 
+                num_signals=1684, 
                 signal_length=self.y_length, 
                 noise=self.noise
             )
@@ -204,7 +204,8 @@ class FlowMatchingTrainer:
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        self.flow = Flow(dim=2).to(DEVICE)
+        # Get parameter dimension (2 for toy data with two moons)
+        self.flow = Flow(dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), 1e-2)
         self.loss_fn = nn.MSELoss()
 
@@ -363,57 +364,50 @@ class FlowMatchingTrainer:
     #         fname=fname
     #     )
 
-    # def display_results(self):
-    #     # Plot VAE training and validation losses
-    #     plot_individual_loss(
-    #         self.avg_total_losses, self.avg_reproduction_losses, self.avg_kld_losses
-    #     )
-    #     plot_individual_loss(
-    #         self.avg_total_losses_val, self.avg_reproduction_losses_val, self.avg_kld_losses_val
-    #     )
-    #     plot_loss(self.avg_total_losses, self.avg_total_losses_val, background="black")
+    def display_results(self):
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background="black")
         
-    #     # Plot VAE gradient norms if available
-    #     if hasattr(self, 'vae_gradient_norms'):
-    #         if len(self.vae_gradient_norms) > 0:
-    #             print("\nPlotting VAE Gradient Norms...")
-    #             fig, ax = plt.subplots(figsize=(10, 6))
-    #             ax.plot(self.vae_gradient_norms, label='VAE Gradient Norm', color='#3498db', linewidth=2)
-    #             ax.set_xlabel('Epoch', size=16)
-    #             ax.set_ylabel('Gradient Norm', size=16)
-    #             ax.set_title('VAE Gradient Norms During Training', size=18)
-    #             ax.legend(fontsize=12)
-    #             ax.grid(True, alpha=0.3)
-    #             ax.axhline(y=self.max_grad_norm, color='red', linestyle='--', alpha=0.5, label=f'Clipping Threshold ({self.max_grad_norm})')
-    #             ax.legend(fontsize=12)
-    #             plt.tight_layout()
-    #             plt.show()
+        # # Plot VAE gradient norms if available
+        # if hasattr(self, 'vae_gradient_norms'):
+        #     if len(self.vae_gradient_norms) > 0:
+        #         print("\nPlotting VAE Gradient Norms...")
+        #         fig, ax = plt.subplots(figsize=(10, 6))
+        #         ax.plot(self.vae_gradient_norms, label='VAE Gradient Norm', color='#3498db', linewidth=2)
+        #         ax.set_xlabel('Epoch', size=16)
+        #         ax.set_ylabel('Gradient Norm', size=16)
+        #         ax.set_title('VAE Gradient Norms During Training', size=18)
+        #         ax.legend(fontsize=12)
+        #         ax.grid(True, alpha=0.3)
+        #         ax.axhline(y=self.max_grad_norm, color='red', linestyle='--', alpha=0.5, label=f'Clipping Threshold ({self.max_grad_norm})')
+        #         ax.legend(fontsize=12)
+        #         plt.tight_layout()
+        #         plt.show()
         
-    #     # Plot Flow NLL losses if available
-    #     if hasattr(self, 'flow_train_nll_losses') and hasattr(self, 'flow_val_nll_losses'):
-    #         if len(self.flow_train_nll_losses) > 0:
-    #             print("\nPlotting Flow NLL Losses...")
-    #             plot_loss(
-    #                 train_losses=self.flow_train_nll_losses, 
-    #                 val_losses=self.flow_val_nll_losses,
-    #                 background="black",
-    #                 fname="plots/flow_loss_curve.svg"
-    #             )
+        # # Plot Flow NLL losses if available
+        # if hasattr(self, 'flow_train_nll_losses') and hasattr(self, 'flow_val_nll_losses'):
+        #     if len(self.flow_train_nll_losses) > 0:
+        #         print("\nPlotting Flow NLL Losses...")
+        #         plot_loss(
+        #             train_losses=self.flow_train_nll_losses, 
+        #             val_losses=self.flow_val_nll_losses,
+        #             background="black",
+        #             fname="plots/flow_loss_curve.svg"
+        #         )
         
-    #     # Plot Flow gradient norms if available
-    #     if hasattr(self, 'flow_gradient_norms'):
-    #         if len(self.flow_gradient_norms) > 0:
-    #             print("\nPlotting Flow Gradient Norms...")
-    #             fig, ax = plt.subplots(figsize=(10, 6))
-    #             ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
-    #             ax.set_xlabel('Epoch', size=16)
-    #             ax.set_ylabel('Gradient Norm', size=16)
-    #             ax.set_title('Flow Gradient Norms During Training', size=18)
-    #             ax.legend(fontsize=12)
-    #             ax.grid(True, alpha=0.3)
-    #             ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
-    #             plt.tight_layout()
-    #             plt.show()
+        # # Plot Flow gradient norms if available
+        # if hasattr(self, 'flow_gradient_norms'):
+        #     if len(self.flow_gradient_norms) > 0:
+        #         print("\nPlotting Flow Gradient Norms...")
+        #         fig, ax = plt.subplots(figsize=(10, 6))
+        #         ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
+        #         ax.set_xlabel('Epoch', size=16)
+        #         ax.set_ylabel('Gradient Norm', size=16)
+        #         ax.set_title('Flow Gradient Norms During Training', size=18)
+        #         ax.legend(fontsize=12)
+        #         ax.grid(True, alpha=0.3)
+        #         ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
+        #         plt.tight_layout()
+        #         plt.show()
         
     @property
     def save_fname(self):
