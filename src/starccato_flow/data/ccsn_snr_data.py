@@ -437,6 +437,25 @@ class CCSNSNRData(Dataset):
 
         parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
+        
+        # Apply log transformation to bring down parameter scales
+        # Parameters: [beta1_IC_b, omega_0, A(km), Ye_c_b]
+        # Transform omega_0 and A(km) with log, then normalize to [-1, 1]
+        if parameters.shape[0] == 4:
+            # beta1_IC_b: [0.025, 0.4] -> normalize to [-1, 1]
+            parameters[0] = 2 * (parameters[0] - 0.025) / (0.4 - 0.025) - 1
+            
+            # omega_0: [0, 16] -> log1p -> [0, 2.83] -> normalize to [-1, 1]
+            parameters[1] = np.log1p(parameters[1])  # [0, 16] -> [0, 2.83]
+            parameters[1] = 2 * parameters[1] / 2.833 - 1  # -> [-1, 1]
+            
+            # A(km): [0, 10000] -> log -> [-18.4, 9.2] -> normalize to [-1, 1]
+            parameters[2] = np.log(parameters[2] + 1e-8)  # [0, 10000] -> [-18.4, 9.2]
+            parameters[2] = 2 * (parameters[2] + 18.4) / (9.2 + 18.4) - 1  # -> [-1, 1]
+            
+            # Ye_c_b: [0.46, 0.6] -> normalize to [-1, 1]
+            parameters[3] = 2 * (parameters[3] - 0.46) / (0.6 - 0.46) - 1
+        
         parameters = parameters.reshape(1, -1)
 
         Sn = self.AdvLIGOPsd(fourier_freq)

@@ -206,7 +206,7 @@ class FlowMatchingTrainer:
         # setup Flow Matching model
         # Get parameter dimension (2 for toy data with two moons)
         self.flow = Flow(dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
-        self.optimizer = torch.optim.Adam(self.flow.parameters(), 1e-2)
+        self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
         # self.fixed_noise = torch.randn(batch_size, z_dim, device=DEVICE)
@@ -238,6 +238,10 @@ class FlowMatchingTrainer:
                 self.optimizer.zero_grad()
                 loss = self.loss_fn(self.flow(x_t, t, noisy_signal), dx_t)
                 loss.backward()  # predict parameter velocity given signal
+                
+                # Clip gradients to prevent explosion
+                torch.nn.utils.clip_grad_norm_(self.flow.parameters(), self.max_grad_norm)
+                
                 self.optimizer.step()
 
                 total_loss += loss.item()
