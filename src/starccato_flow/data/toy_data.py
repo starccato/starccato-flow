@@ -20,7 +20,8 @@ def _set_seed(seed: int):
     return seed
 
 class ToyData:
-    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise = True, curriculum=False, noise_level=0.1):
+    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise=True, curriculum=False, noise_level=0.1, 
+                 shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):
         _set_seed(42)
         self.num_signals = num_signals
         self.signal_length = signal_length
@@ -31,12 +32,23 @@ class ToyData:
         self.curriculum = curriculum
         self.noise_level = noise_level
 
-        self.parameters = self.generate_parameters()
+        # Use shared parameters/min/max if provided, otherwise generate new
+        if shared_params is not None:
+            self.parameters = shared_params
+            self.parameter_min = shared_min
+            self.parameter_max = shared_max
+        else:
+            self.parameters = self.generate_parameters()
+            self.parameter_min = self.parameters.min(axis=0).astype(np.float32)
+            self.parameter_max = self.parameters.max(axis=0).astype(np.float32)
+        
         self.signals = self.generate_data()
-
-        self.max_strain = abs(self.signals).max()
-        self.parameter_min = self.parameters.min().values.astype(np.float32)
-        self.parameter_max = self.parameters.max().values.astype(np.float32)
+        
+        # Use shared max_strain if provided, otherwise compute from this subset
+        if shared_max_strain is not None:
+            self.max_strain = shared_max_strain
+        else:
+            self.max_strain = abs(self.signals).max()
 
     def generate_parameters(self):
         # Generate parameters from two moons distribution

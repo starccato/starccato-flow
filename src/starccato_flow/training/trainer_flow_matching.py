@@ -91,16 +91,24 @@ class FlowMatchingTrainer:
             print(f"Training signals: {len(train_indices)}")
             print(f"Validation signals: {len(val_indices)}")
             
-            # Create separate datasets with different indices
+            # Create subsets using shared parameter ranges from full dataset
             self.training_dataset = ToyData(
                 num_signals=len(train_indices),
                 signal_length=self.y_length,
-                noise=self.noise
+                noise=self.noise,
+                shared_params=full_toy_dataset.parameters[train_indices],
+                shared_min=full_toy_dataset.parameter_min,
+                shared_max=full_toy_dataset.parameter_max,
+                shared_max_strain=full_toy_dataset.max_strain
             )
             self.validation_dataset = ToyData(
                 num_signals=len(val_indices),
                 signal_length=self.y_length,
-                noise=self.noise
+                noise=self.noise,
+                shared_params=full_toy_dataset.parameters[val_indices],
+                shared_min=full_toy_dataset.parameter_min,
+                shared_max=full_toy_dataset.parameter_max,
+                shared_max_strain=full_toy_dataset.max_strain
             )
         else:
             # Create a temporary dataset to get the number of base signals (before augmentation)
@@ -156,7 +164,10 @@ class FlowMatchingTrainer:
                 noise=self.noise,
                 curriculum=self.curriculum,
                 noise_realizations=self.noise_realizations,
-                indices=train_base_indices
+                indices=train_base_indices,
+                shared_min=temp_dataset.min_parameter,
+                shared_max=temp_dataset.max_parameter,
+                shared_max_strain=temp_dataset.max_strain
             )
             
             # Validation: FIXED SNR (no curriculum) with single noise realization
@@ -167,7 +178,10 @@ class FlowMatchingTrainer:
                 noise=self.noise,
                 curriculum=self.curriculum, 
                 noise_realizations=1,
-                indices=val_base_indices
+                indices=val_base_indices,
+                shared_min=temp_dataset.min_parameter,
+                shared_max=temp_dataset.max_parameter,
+                shared_max_strain=temp_dataset.max_strain
             )
             
         self.training_dataset.verify_alignment()
@@ -345,12 +359,8 @@ class FlowMatchingTrainer:
             true_params = true_params.flatten().numpy()
             
             # Denormalize parameters for visualization
-            if self.toy:
-                samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
-                true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
-            else:
-                samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
-                true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
+            samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
+            true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
         
         # Call plotting function with samples
         plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname)

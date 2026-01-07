@@ -44,7 +44,10 @@ class CCSNSNRData(Dataset):
         rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
         multi_param: bool = True,
-        noise_realizations: int = 1
+        noise_realizations: int = 1,
+        shared_min: Optional[np.ndarray] = None,
+        shared_max: Optional[np.ndarray] = None,
+        shared_max_strain: Optional[float] = None
     ):
         """Initialize the CCSN dataset.
         
@@ -130,9 +133,19 @@ class CCSNSNRData(Dataset):
                 self.parameters = self.parameters.iloc[indices]
                 self.indices = indices
 
-        self.max_strain = abs(self.signals).max()
-        self.min_parameter = self.parameters.min().values.astype(np.float32)
-        self.max_parameter = self.parameters.max().values.astype(np.float32)
+        # Use shared max_strain if provided, otherwise compute from this subset
+        if shared_max_strain is not None:
+            self.max_strain = shared_max_strain
+        else:
+            self.max_strain = abs(self.signals).max()
+        
+        # Use shared min/max if provided, otherwise compute from this subset
+        if shared_min is not None and shared_max is not None:
+            self.min_parameter = shared_min
+            self.max_parameter = shared_max
+        else:
+            self.min_parameter = self.parameters.min().values.astype(np.float32)
+            self.max_parameter = self.parameters.max().values.astype(np.float32)
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)

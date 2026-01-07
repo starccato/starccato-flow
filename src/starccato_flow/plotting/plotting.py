@@ -1683,7 +1683,7 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png"):
             r"$\log(A)$",
             r"$Y_{e,b,c}$",
         ]
-        ranges = [(0, 0.25), (0, 16), (0, math.log(10000)), (0, 0.3)]
+        ranges = [(0, 0.25), (0, 16), (0, 10000), (0, 0.3)]
     else:
         # Generic labels for other cases
         labels = [f"Parameter {i+1}" for i in range(num_params)]
