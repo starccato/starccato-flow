@@ -21,7 +21,7 @@ half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
 delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
-class CCSNSNRData(Dataset):
+class CCSNData(Dataset):
     # Default LaTeX labels for parameters
     PARAMETER_LABELS = {
         'beta1_IC_b': r'$\beta_{IC,b}$',
@@ -92,6 +92,11 @@ class CCSNSNRData(Dataset):
 
         # keep only the parameters we want
         self.parameters = self.parameters[parameter_set]
+        
+        # Apply log transformations to large-scale parameters BEFORE computing min/max
+        # This brings all parameters to similar scales for better training
+        self.parameters['omega_0(rad|s)'] = np.log(self.parameters['omega_0(rad|s)'] + 1e-8)
+        self.parameters['A(km)'] = np.log(self.parameters['A(km)'] + 1e-8)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]
@@ -424,13 +429,17 @@ class CCSNSNRData(Dataset):
             params_norm: numpy array of shape (..., 4) with normalized params
             
         Returns:
-            Denormalized parameters in original units
+            Denormalized parameters in original physical units
         """
         params = params_norm.copy()
         
         # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
         param_range = self.max_parameter - self.min_parameter
         params = (params_norm + 1) / 2 * param_range + self.min_parameter
+        
+        # Reverse log transformations for omega_0 (index 1) and A(km) (index 2)
+        params[..., 1] = np.exp(params[..., 1])  # exp(log(omega_0)) = omega_0
+        params[..., 2] = np.exp(params[..., 2])  # exp(log(A)) = A
         
         return params
     
@@ -478,9 +487,8 @@ class CCSNSNRData(Dataset):
         parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
         parameters = parameters.astype(np.float32)  # Ensure parameters are float32
         
-        # Apply log transformation to omega_0 and A(km)
-        # parameters[1] = np.log(parameters[1] + 1e-8)  # omega_0: [0, 16] -> [-18.4, 2.77]
-        # parameters[2] = np.log(parameters[2] + 1e-8)  # A(km): [0, 10000] -> [-18.4, 9.2]
+        # Note: Log transformations already applied to DataFrame in __init__
+        # Parameters are: [beta, log(omega_0), log(A), Ye]
         
         # Normalize all parameters to [-1, 1]
         parameters = self.normalize_parameters(parameters)

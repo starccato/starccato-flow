@@ -143,7 +143,7 @@ class ToyData:
         normalised_noisy_signal = normalised_noisy_signal.reshape(1, -1)
         parameters = parameters.reshape(1, -1)
         
-        # Return format: (clean_signal, noisy_signal, parameters) to match CCSNSNRData
+        # Return format: (clean_signal, noisy_signal, parameters) to match CCSNData
         return (
             torch.tensor(normalised_signal, dtype=torch.float32),
             torch.tensor(normalised_noisy_signal, dtype=torch.float32),

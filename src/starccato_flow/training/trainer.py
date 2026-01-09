@@ -19,7 +19,7 @@ from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TE
 from ..nn.vae import VAE
 
 from ..data.toy_data import ToyData
-from ..data.ccsn_snr_data import CCSNSNRData
+from ..data.ccsn_data import CCSNData
 
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
@@ -81,7 +81,7 @@ class Trainer:
             self.validation_dataset = ToyData(num_signals=1684, signal_length=self.y_length)
         else:
             # Create a temporary dataset to get the number of base signals (before augmentation)
-            temp_dataset = CCSNSNRData(
+            temp_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -126,7 +126,7 @@ class Trainer:
             
             # Create SEPARATE dataset instances with disjoint base indices
             # Training: with curriculum and multiple noise realizations
-            self.training_dataset = CCSNSNRData(
+            self.training_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -137,7 +137,7 @@ class Trainer:
             )
             
             # Validation: FIXED SNR (no curriculum) with single noise realization
-            self.validation_dataset = CCSNSNRData(
+            self.validation_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,

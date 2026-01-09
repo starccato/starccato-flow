@@ -18,7 +18,7 @@ from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TE
 from ..nn.flow import Flow
 
 from ..data.toy_data import ToyData
-from ..data.ccsn_snr_data import CCSNSNRData
+from ..data.ccsn_data import CCSNData
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -37,7 +37,7 @@ class FlowMatchingTrainer:
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
         validation_split: float = 0.1,
-        lr_flow: float = 1e-4,
+        lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         noise: bool = True,
@@ -112,7 +112,7 @@ class FlowMatchingTrainer:
             )
         else:
             # Create a temporary dataset to get the number of base signals (before augmentation)
-            temp_dataset = CCSNSNRData(
+            temp_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -157,7 +157,7 @@ class FlowMatchingTrainer:
             
             # Create SEPARATE dataset instances with disjoint base indices
             # Training: with curriculum and multiple noise realizations
-            self.training_dataset = CCSNSNRData(
+            self.training_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -171,7 +171,7 @@ class FlowMatchingTrainer:
             )
             
             # Validation: FIXED SNR (no curriculum) with single noise realization
-            self.validation_dataset = CCSNSNRData(
+            self.validation_dataset = CCSNData(
                 num_epochs=self.num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -281,7 +281,6 @@ class FlowMatchingTrainer:
             avg_total_loss_val = val_total_loss / val_samples
             self.avg_mse_losses_val.append(avg_total_loss_val)
 
-
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
@@ -324,22 +323,22 @@ class FlowMatchingTrainer:
             fname (str): Filename to save plot
         """
         # Get signal from validation dataset
-        signal, noisy_signal, params = self.val_loader.dataset[index]
+        signal, noisy_signal, params = self.val_loader.dataset[index] # signal and parameters are normalized
         
         self.flow.eval()
         
         with torch.no_grad():
             # Ensure proper device and shape
-            if noisy_signal.dim() == 1:
-                noisy_signal = noisy_signal.unsqueeze(0)
-            elif noisy_signal.dim() == 2 and noisy_signal.shape[0] != 1:
-                noisy_signal = noisy_signal.unsqueeze(0)
-            
             noisy_signal = noisy_signal.to(DEVICE).float()
+            
+            # Flatten to 1D if needed, then reshape for batch processing
+            if noisy_signal.dim() > 1:
+                noisy_signal = noisy_signal.flatten()
             
             # Generate posterior samples by flowing from noise
             posterior_samples = torch.randn(num_samples, params.shape[-1], device=DEVICE)
-            repeated_signal = noisy_signal.repeat(num_samples, 1)
+            # Repeat signal for all samples: (signal_dim,) -> (1, signal_dim) -> (num_samples, signal_dim)
+            repeated_signal = noisy_signal.unsqueeze(0).repeat(num_samples, 1)
             
             # Flow the samples to get posterior distribution
             n_steps = 20

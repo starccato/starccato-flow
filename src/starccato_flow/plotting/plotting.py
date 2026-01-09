@@ -1674,7 +1674,7 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png"):
     if num_params == 2:
         # Toy data with 2 parameters
         labels = [r"Parameter 1", r"Parameter 2"]
-        ranges = None  # Let corner auto-determine ranges
+        ranges = [(-3, 3), (-3, 3)]
     elif num_params == 4:
         # CCSN data with 4 parameters
         labels = [
@@ -1762,7 +1762,7 @@ def create_signal_grid_gif(
     """Create an animated GIF of signal grids with randomly sampled signals.
     
     Args:
-        dataset: Dataset object with signals (e.g., CCSNSNRData)
+        dataset: Dataset object with signals (e.g., CCSNData)
         num_frames (int): Number of frames in the GIF
         num_signals_per_frame (int): Number of signals to display per frame
         num_cols (int): Number of columns in grid
@@ -1851,7 +1851,7 @@ def create_snr_variation_gif(
     """Create an animated GIF showing how a signal changes with varying SNR.
     
     Args:
-        dataset: Dataset object (e.g., CCSNSNRData) with calculate_snr and aLIGO_noise methods
+        dataset: Dataset object (e.g., CCSNData) with calculate_snr and aLIGO_noise methods
         signal_index (int): Index of the signal to use from the dataset
         snr_start (int): Starting SNR value (higher, less noise)
         snr_end (int): Ending SNR value (lower, more noise)
