@@ -156,6 +156,9 @@ class CCSNData(Dataset):
             self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
             self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
 
+        self.PSD = self.AdvLIGOPsd(fourier_freq)
+
+
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
@@ -499,11 +502,9 @@ class CCSNData(Dataset):
         
         parameters = parameters.reshape(1, -1)
 
-        Sn = self.AdvLIGOPsd(fourier_freq)
-
         # Ensure signal is a proper numpy array (not lazy object)
         s_array = np.asarray(s / 3.086e+22).flatten()
-        rho = self.calculate_snr(s_array, Sn)
+        rho = self.calculate_snr(s_array, self.PSD)
         
         # Add different noise each time by using a unique seed based on noise_realization_idx
         n = self.aLIGO_noise(seed_offset=noise_realization_idx)
@@ -604,7 +605,7 @@ class CCSNData(Dataset):
             kappa[-1] = 0
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
-        psd = self.AdvLIGOPsd(fourier_freq)
+        psd = self.PSD
         psd[~np.isfinite(psd)] = 0
         psd[psd < 0] = 0
 
