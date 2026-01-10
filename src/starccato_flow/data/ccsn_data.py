@@ -157,6 +157,7 @@ class CCSNData(Dataset):
             self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
 
         self.PSD = self.AdvLIGOPsd(fourier_freq)
+        self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)
 
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
@@ -358,16 +359,31 @@ class CCSNData(Dataset):
 
     @staticmethod
     def calculate_snr(h, Sn, fs=SAMPLING_RATE):
-        """
+        """Calculate SNR from signal and PSD.
+        
         Args:
-            h: signal
-            sn: one-sided PDS as array over frequencies
+            h: signal in time domain or frequency domain (FFT)
+            Sn: one-sided PSD as array over frequencies
             fs: sampling rate 
         """
         N = len(h)
         df = fs / N
         hf = np.fft.rfft(h)
-        freqs = np.fft.rfftfreq(N, 1/fs)
+        integrand = (np.abs(hf)**2) / Sn
+        rho2 = 4 * np.sum(integrand) * df
+        return np.sqrt(rho2)
+    
+    @staticmethod
+    def calculate_snr_from_fft(hf, Sn, fs=SAMPLING_RATE, N=Y_LENGTH):
+        """Calculate SNR directly from pre-computed FFT.
+        
+        Args:
+            hf: signal FFT (already computed)
+            Sn: one-sided PSD as array over frequencies
+            fs: sampling rate
+            N: length of original signal
+        """
+        df = fs / N
         integrand = (np.abs(hf)**2) / Sn
         rho2 = 4 * np.sum(integrand) * df
         return np.sqrt(rho2)
@@ -502,9 +518,9 @@ class CCSNData(Dataset):
         
         parameters = parameters.reshape(1, -1)
 
-        # Ensure signal is a proper numpy array (not lazy object)
-        s_array = np.asarray(s / 3.086e+22).flatten()
-        rho = self.calculate_snr(s_array, self.PSD)
+        # Use pre-computed FFT to calculate SNR (much faster!)
+        hf = self.signal_rfft[:, original_idx]
+        rho = self.calculate_snr_from_fft(hf, self.PSD)
         
         # Add different noise each time by using a unique seed based on noise_realization_idx
         n = self.aLIGO_noise(seed_offset=noise_realization_idx)
