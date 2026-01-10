@@ -4,7 +4,7 @@
 # from ..utils.defaults import Y_LENGTH, HIDDEN_DIM
 
 # class Flow(nn.Module):
-#     def __init__(self, dim: int = 2, signal_dim: int = Y_LENGTH, h: int = HIDDEN_DIM):
+#     def __init__(self, dim: int = 2, signal_dim: int = Y_LENGTH, hidden: int = HIDDEN_DIM):
 #         super().__init__()
 #         # Encode signal separately first
 #         self.signal_encoder = nn.Sequential(

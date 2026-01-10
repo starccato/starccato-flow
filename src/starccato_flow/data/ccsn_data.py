@@ -64,9 +64,11 @@ class CCSNData(Dataset):
         self.batch_size = batch_size
         self._current_epoch = 0
         self.num_epochs = num_epochs
-        self.parameters = pd.read_csv(PARAMETERS_CSV)
-        self.signals = pd.read_csv(SIGNALS_CSV).astype("float32").T
-        self.signals.index = [i for i in range(len(self.signals.index))]
+        
+        # Load data from CSV files
+        params_df = pd.read_csv(PARAMETERS_CSV)
+        signals_df = pd.read_csv(SIGNALS_CSV).astype("float32").T
+        
         self.noise = noise
         self.curriculum = curriculum
         self.snr = snr
@@ -76,36 +78,43 @@ class CCSNData(Dataset):
         self.noise_realizations = noise_realizations
 
         assert (
-            self.signals.shape[0] == self.parameters.shape[0],
+            signals_df.shape[0] == params_df.shape[0],
             "Signals and parameters must have the same number of rows (the number of signals)",
         )
 
         # Remove unusual parameters and corresponding signals
-        keep_idx = self.parameters["beta1_IC_b"] > 0
+        keep_idx = params_df["beta1_IC_b"].values > 0
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
-        self.parameters = self.parameters[keep_idx]
-
+        params_df = params_df[keep_idx]
+        
         if multi_param:
             parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
         else: 
             parameter_set = ["beta1_IC_b"]
 
         # keep only the parameters we want
-        self.parameters = self.parameters[parameter_set]
+        params_df = params_df[parameter_set]
         
-        # Apply log transformations to large-scale parameters BEFORE computing min/max
+        # Store parameter names for reference
+        self.parameter_names = parameter_set
+        
+        # Convert to numpy array and apply log transformations BEFORE computing min/max
         # This brings all parameters to similar scales for better training
-        self.parameters['omega_0(rad|s)'] = np.log(self.parameters['omega_0(rad|s)'] + 1e-8)
-        self.parameters['A(km)'] = np.log(self.parameters['A(km)'] + 1e-8)
+        self.parameters = params_df.values.astype(np.float32)
+        
+        # Apply log transformations to omega_0 (column 1) and A (column 2)
+        if multi_param:
+            self.parameters[:, 1] = np.log(self.parameters[:, 1] + 1e-8)  # omega_0
+            self.parameters[:, 2] = np.log(self.parameters[:, 2] + 1e-8)  # A(km)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]
-        self.signals = self.signals[keep_idx]
-        self.signals = self.signals.values.T
+        signals_df = signals_df[keep_idx]
+        self.signals = signals_df.values.T
 
         # print(f"Processing {self.signals.shape[1]} signals")
         # print(f"Parameters shape: {self.parameters.shape}")
-        assert self.signals.shape[1] == len(self.parameters), "Signal and parameter counts don't match!"
+        assert self.signals.shape[1] == self.parameters.shape[0], "Signal and parameter counts don't match!"
 
         ### flatten signals and take last 256 timestamps
         temp_data = np.empty(shape=(256, 0)).astype("float32")
@@ -126,17 +135,12 @@ class CCSNData(Dataset):
         self.signals = temp_data
         
         # Verify alignment
-        assert self.signals.shape[1] == len(self.parameters), "Signal and parameter counts don't match after processing!"
+        assert self.signals.shape[1] == self.parameters.shape[0], "Signal and parameter counts don't match after processing!"
 
         if indices is not None:
-            if train:
-                self.signals = self.signals[:, indices]
-                self.parameters = self.parameters.iloc[indices]
-                self.indices = indices
-            else:
-                self.signals = self.signals[:, indices]
-                self.parameters = self.parameters.iloc[indices]
-                self.indices = indices
+            self.signals = self.signals[:, indices]
+            self.parameters = self.parameters[indices]
+            self.indices = indices
 
         # Use shared max_strain if provided, otherwise compute from this subset
         if shared_max_strain is not None:
@@ -149,8 +153,8 @@ class CCSNData(Dataset):
             self.min_parameter = shared_min
             self.max_parameter = shared_max
         else:
-            self.min_parameter = self.parameters.min().values.astype(np.float32)
-            self.max_parameter = self.parameters.max().values.astype(np.float32)
+            self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
+            self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
@@ -205,15 +209,16 @@ class CCSNData(Dataset):
             alpha (float): Transparency of the histogram bars
             show_stats (bool): Whether to display mean and std on the plot
         """
-        if param_name not in self.parameters.columns:
-            raise ValueError(f"Parameter '{param_name}' not found. Available parameters: {list(self.parameters.columns)}")
+        if param_name not in self.parameter_names:
+            raise ValueError(f"Parameter '{param_name}' not found. Available parameters: {self.parameter_names}")
         
         # Use default label if not provided
         if param_label is None:
             param_label = self.PARAMETER_LABELS.get(param_name, param_name)
         
-        # Apply log transformation for A(km) parameter
-        values = self.parameters[param_name].values
+        # Get parameter column index
+        param_idx = self.parameter_names.index(param_name)
+        values = self.parameters[:, param_idx]
         # if param_name == "A(km)":
         #     values = np.log(values)
         
@@ -258,7 +263,7 @@ class CCSNData(Dataset):
             alpha (float): Transparency of the histogram bars
             show_stats (bool): Whether to display mean and std on the plot
         """
-        for param_name in self.parameters.columns:
+        for param_name in self.parameter_names:
             if fname_prefix:
                 # Extract extension from prefix if it has one, otherwise default to .png
                 import os
@@ -459,9 +464,9 @@ class CCSNData(Dataset):
         """Verify that signals and parameters are properly aligned."""
         print("\nVerifying data alignment:")
         print(f"Number of signals: {self.signals.shape[1]}")
-        print(f"Number of parameter sets: {len(self.parameters)}")
-        print(f"Parameter columns: {self.parameters.columns.tolist()}")
-        print(f"First few parameter values:\n{self.parameters.head()}")
+        print(f"Number of parameter sets: {self.parameters.shape[0]}")
+        print(f"Parameter names: {self.parameter_names}")
+        print(f"First few parameter values:\n{self.parameters[:5]}")
         return True
 
     def __getitem__(self, idx):
@@ -484,10 +489,9 @@ class CCSNData(Dataset):
         s = self.signals[:, original_idx]
         s = s.reshape(1, -1)
 
-        parameters = self.parameters.iloc[original_idx].values  # Extract parameter values as a NumPy array
-        parameters = parameters.astype(np.float32)  # Ensure parameters are float32
+        parameters = self.parameters[original_idx].copy()  # Extract parameter values as a NumPy array
         
-        # Note: Log transformations already applied to DataFrame in __init__
+        # Note: Log transformations already applied to parameters array in __init__
         # Parameters are: [beta, log(omega_0), log(A), Ye]
         
         # Normalize all parameters to [-1, 1]
