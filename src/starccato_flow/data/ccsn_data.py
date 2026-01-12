@@ -77,11 +77,6 @@ class CCSNData(Dataset):
         self.rho_target = rho_target
         self.noise_realizations = noise_realizations
 
-        assert (
-            signals_df.shape[0] == params_df.shape[0],
-            "Signals and parameters must have the same number of rows (the number of signals)",
-        )
-
         # Remove unusual parameters and corresponding signals
         keep_idx = params_df["beta1_IC_b"].values > 0
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")

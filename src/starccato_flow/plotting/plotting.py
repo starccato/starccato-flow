@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from ..nn.vae import VAE
 from ..utils.defaults import DEVICE, TEN_KPC
-from .plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
+from ..utils.plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
 import corner
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
