@@ -1,8 +1,13 @@
 """Training utilities and shared functions."""
 
+import time
 import numpy as np
+import torch
+
 from ..data.toy_data import ToyData
 from ..data.ccsn_data import CCSNData
+from ..plotting.plotting import plot_signal_distribution, plot_candidate_signal, plot_loss
+from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
 
 
 def create_train_val_split(
@@ -156,3 +161,92 @@ def create_train_val_split(
     validation_dataset.verify_alignment()
     
     return training_dataset, validation_dataset
+
+
+def plot_generated_signal_distribution(
+    vae,
+    training_dataset,
+    background="white",
+    font_family="serif",
+    font_name="Times New Roman",
+    fname=None,
+    number_of_signals=10000
+):
+    """Plot distribution of VAE-generated signals.
+    
+    Args:
+        vae: VAE model with decoder
+        training_dataset: Dataset to get denormalization parameters
+        background: Plot background color
+        font_family: Font family for plot
+        font_name: Font name for plot
+        fname: Filename to save plot
+        number_of_signals: Number of signals to generate
+    """
+    noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
+
+    start_time = time.time()
+    with torch.no_grad():
+        generated_signals = vae.decoder(noise).cpu().detach().numpy()
+    end_time = time.time()
+
+    execution_time = end_time - start_time
+    print("Execution Time:", execution_time, "seconds")    
+
+    generated_signals_transpose = np.empty((Y_LENGTH, 0))
+
+    for i in range(number_of_signals):
+        y = generated_signals[i, :].flatten()
+        y = training_dataset.denormalise_signals(y)
+        y = y.reshape(-1, 1)
+        
+        generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
+
+    plot_signal_distribution(
+        signals=generated_signals_transpose,
+        generated=True,
+        background=background,
+        font_family=font_family,
+        font_name=font_name,
+        fname=fname
+    )
+
+
+def plot_candidate_signal_method(
+    val_loader,
+    snr=100,
+    background="white",
+    index=0,
+    fname="plots/candidate_signal.png"
+):
+    """Plot a candidate signal with noise.
+    
+    Args:
+        val_loader: Validation data loader
+        snr: Signal-to-noise ratio
+        background: Plot background color
+        index: Index of signal to plot
+        fname: Filename to save plot
+    """
+    val_loader.dataset.update_snr(snr)
+    signal, noisy_signal, _ = val_loader.dataset.__getitem__(index)
+    signal_denorm = val_loader.dataset.denormalise_signals(signal) / TEN_KPC
+    noisy_signal_denorm = val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
+    plot_candidate_signal(
+        signal=signal_denorm,
+        noisy_signal=noisy_signal_denorm,
+        max_value=val_loader.dataset.max_strain,
+        background=background,
+        fname=fname
+    )
+
+
+def display_results_method(avg_mse_losses, avg_mse_losses_val, background="black"):
+    """Display training results with loss plots.
+    
+    Args:
+        avg_mse_losses: List of average training MSE losses per epoch
+        avg_mse_losses_val: List of average validation MSE losses per epoch
+        background: Plot background color
+    """
+    plot_loss(avg_mse_losses, avg_mse_losses_val, background=background)

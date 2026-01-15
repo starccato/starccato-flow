@@ -20,6 +20,8 @@ from ..nn.vae import VAE
 
 from ..data.toy_data import ToyData
 from ..data.ccsn_data import CCSNData
+from . import plot_generated_signal_distribution as plot_generated_signal_distribution_shared
+from . import plot_candidate_signal_method, display_results_method
 
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
@@ -621,28 +623,17 @@ class Trainer:
         plot_candidate_signal(signal=signal/TEN_KPC, noisy_signal=noisy_signal/TEN_KPC, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
 
 
-    def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
-        number_of_signals = 10000
-        noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
-
-        start_time = time.time()
-        with torch.no_grad():
-            generated_signals = self.vae.decoder(noise).cpu().detach().numpy()
-        end_time = time.time()
-
-        execution_time = end_time - start_time
-        print("Execution Time:", execution_time, "seconds")    
-
-        generated_signals_transpose = np.empty((Y_LENGTH, 0))
-
-        for i in range(number_of_signals):
-            y = generated_signals[i, :].flatten()
-            y = y * self.training_dataset.max_strain
-            y = y.reshape(-1, 1)
-            
-            generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
-
-        plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
+    def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None, number_of_signals=10000):
+        """Plot distribution of VAE-generated signals."""
+        plot_generated_signal_distribution_shared(
+            vae=self.vae,
+            training_dataset=self.training_dataset,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            fname=fname,
+            number_of_signals=number_of_signals
+        )
 
     def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
         signal, noisy_signal, params = self.val_loader.dataset[index]

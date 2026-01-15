@@ -19,7 +19,7 @@ from ..nn.flow import Flow
 
 from ..data.toy_data import ToyData
 from ..data.ccsn_data import CCSNData
-from . import create_train_val_split
+from . import create_train_val_split, plot_generated_signal_distribution, plot_candidate_signal_method, display_results_method
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -255,35 +255,14 @@ class FlowMatchingTrainer:
                    dataset=self.val_loader.dataset)
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
-        self.val_loader.dataset.update_snr(snr)
-        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
-        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
-        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
-        plot_candidate_signal(signal=signal_denorm, noisy_signal=noisy_signal_denorm, max_value=self.val_loader.dataset.max_strain, background=background, fname=fname)
-
-
-    def plot_generated_signal_distribution(self, background="white", font_family="serif", font_name="Times New Roman", fname=None):
-        number_of_signals = 10000
-        noise = torch.randn(number_of_signals, Z_DIM).to(DEVICE)
-
-        start_time = time.time()
-        with torch.no_grad():
-            generated_signals = self.vae.decoder(noise).cpu().detach().numpy()
-        end_time = time.time()
-
-        execution_time = end_time - start_time
-        print("Execution Time:", execution_time, "seconds")    
-
-        generated_signals_transpose = np.empty((Y_LENGTH, 0))
-
-        for i in range(number_of_signals):
-            y = generated_signals[i, :].flatten()
-            y = self.training_dataset.denormalise_signals(y)
-            y = y.reshape(-1, 1)
-            
-            generated_signals_transpose = np.concatenate((generated_signals_transpose, y), axis=1)
-
-        plot_signal_distribution(signals=generated_signals_transpose, generated=True, background=background, font_family=font_family, font_name=font_name, fname=fname)
+        """Plot a candidate signal with noise."""
+        plot_candidate_signal_method(
+            val_loader=self.val_loader,
+            snr=snr,
+            background=background,
+            index=index,
+            fname=fname
+        )
 
     # def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
     #     signal, noisy_signal, params = self.val_loader.dataset[index]
@@ -312,8 +291,9 @@ class FlowMatchingTrainer:
     #         fname=fname
     #     )
 
-    def display_results(self):
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background="black")
+    def display_results(self, background="black"):
+        """Display training results."""
+        display_results_method(self.avg_mse_losses, self.avg_mse_losses_val, background=background)
         
         # # Plot VAE gradient norms if available
         # if hasattr(self, 'vae_gradient_norms'):
