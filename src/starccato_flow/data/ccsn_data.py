@@ -31,6 +31,14 @@ class CCSNData(BaseDataset, Dataset):
         'Ye_c_b': r'$Y_{e,c,b}$'
     }
     
+    # Default parameter ranges for plotting (in physical units after denormalization)
+    PARAMETER_RANGES = {
+        'beta1_IC_b': (0, 0.25),
+        'omega_0(rad|s)': (0, 16),
+        'A(km)': (0, 10000),
+        'Ye_c_b': (0, 0.3)
+    }
+    
     def __init__(
         self,
         batch_size: int = BATCH_SIZE,
@@ -80,7 +88,8 @@ class CCSNData(BaseDataset, Dataset):
         params_df = params_df[keep_idx]
         
         if multi_param:
-            parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
+            # parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
+            parameter_set = ["beta1_IC_b"]
         else: 
             parameter_set = ["beta1_IC_b"]
 
@@ -95,8 +104,8 @@ class CCSNData(BaseDataset, Dataset):
         self.parameters = params_df.values.astype(np.float32)
         
         # Apply log transformations A (column 2)
-        if multi_param:
-            self.parameters[:, 2] = np.log(self.parameters[:, 2] + 1e-8)  # A(km)
+        # if multi_param:
+            # self.parameters[:, 2] = np.log(self.parameters[:, 2] + 1e-8)  # A(km)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]

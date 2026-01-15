@@ -36,12 +36,12 @@ class ToyData(BaseDataset):
         # Use shared parameters/min/max if provided, otherwise generate new
         if shared_params is not None:
             self.parameters = shared_params
-            self.parameter_min = shared_min
-            self.parameter_max = shared_max
+            self.min_parameter = shared_min
+            self.max_parameter = shared_max
         else:
             self.parameters = self.generate_parameters()
-            self.parameter_min = self.parameters.min(axis=0).astype(np.float32)
-            self.parameter_max = self.parameters.max(axis=0).astype(np.float32)
+            self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
+            self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
         
         self.signals = self.generate_data()
         

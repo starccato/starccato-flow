@@ -67,6 +67,7 @@ class FlowMatchingTrainer:
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
 
+        # Create train/val split using shared utility function
         self.training_dataset, self.validation_dataset = create_train_val_split(
             toy=self.toy,
             y_length=self.y_length,
@@ -202,57 +203,7 @@ class FlowMatchingTrainer:
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
         # self.save_models()
-    
-    def plot_corner(self, index=0, num_samples=5000, fname="plots/corner_plot.png"):
-        """Generate corner plot with posterior samples for a validation signal.
-        
-        Args:
-            index (int): Index of validation signal to use
-            num_samples (int): Number of posterior samples to generate
-            fname (str): Filename to save plot
-        """
-        # Get signal from validation dataset
-        signal, noisy_signal, params = self.val_loader.dataset[index] # signal and parameters are normalized
-        
-        self.flow.eval()
-        
-        with torch.no_grad():
-            # Ensure proper device and shape
-            noisy_signal = noisy_signal.to(DEVICE).float()
-            
-            # Flatten to 1D if needed, then reshape for batch processing
-            if noisy_signal.dim() > 1:
-                noisy_signal = noisy_signal.flatten()
-            
-            # Generate posterior samples by flowing from noise
-            posterior_samples = torch.randn(num_samples, params.shape[-1], device=DEVICE)
-            # Repeat signal for all samples: (signal_dim,) -> (1, signal_dim) -> (num_samples, signal_dim)
-            repeated_signal = noisy_signal.unsqueeze(0).repeat(num_samples, 1)
-            
-            # Flow the samples to get posterior distribution
-            n_steps = 20
-            time_steps = torch.linspace(0, 1.0, n_steps + 1)
-            
-            for i in range(n_steps):
-                posterior_samples = self.flow.step(
-                    posterior_samples, 
-                    time_steps[i], 
-                    time_steps[i + 1], 
-                    repeated_signal
-                )
-            
-            # Convert to CPU numpy for corner plot
-            samples_cpu = posterior_samples.detach().cpu().numpy()
-            true_params = params.detach().cpu() if torch.is_tensor(params) else params
-            true_params = true_params.flatten().numpy()
-            
-            # Denormalize parameters for visualization
-            samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
-            true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
-        
-        # Call plotting function with samples and dataset for automatic label extraction
-        plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname, 
-                   dataset=self.val_loader.dataset)
+
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         self.val_loader.dataset.update_snr(snr)
@@ -364,3 +315,18 @@ class FlowMatchingTrainer:
     def save_models(self):
         torch.save(self.vae.state_dict(), self.save_fname)
         print(f"Saved VAE model to {self.save_fname}")
+
+# def _init_weights_vae(m: torch.nn.Module) -> None:
+#     """Initialize weights with Xavier/Glorot initialization for better gradient flow."""
+#     if isinstance(m, nn.Linear):
+#         if hasattr(m, 'weight') and m.weight is not None:
+#             # Use Xavier uniform initialization for better gradient flow
+#             nn.init.xavier_uniform_(m.weight, gain=1.0)
+#         if hasattr(m, 'bias') and m.bias is not None:
+#             # Initialize biases to small positive values for better gradient flow
+#             nn.init.constant_(m.bias, 0.01)
+#     elif isinstance(m, nn.BatchNorm1d):
+#         if hasattr(m, 'weight') and m.weight is not None:
+#             nn.init.constant_(m.weight, 1.0)
+#         if hasattr(m, 'bias') and m.bias is not None:
+#             nn.init.constant_(m.bias, 0.0)
