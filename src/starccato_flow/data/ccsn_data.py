@@ -12,6 +12,7 @@ from ..plotting.plotting import plot_candidate_signal, plot_signal_distribution,
 from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
 from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
+from . import BaseDataset
 
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
 
@@ -21,7 +22,7 @@ half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
 delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
-class CCSNData(Dataset):
+class CCSNData(BaseDataset, Dataset):
     # Default LaTeX labels for parameters
     PARAMETER_LABELS = {
         'beta1_IC_b': r'$\beta_{IC,b}$',
@@ -93,9 +94,8 @@ class CCSNData(Dataset):
         # This brings all parameters to similar scales for better training
         self.parameters = params_df.values.astype(np.float32)
         
-        # Apply log transformations to omega_0 (column 1) and A (column 2)
+        # Apply log transformations A (column 2)
         if multi_param:
-            self.parameters[:, 1] = np.log(self.parameters[:, 1] + 1e-8)  # omega_0
             self.parameters[:, 2] = np.log(self.parameters[:, 2] + 1e-8)  # A(km)
 
         # Keep track of original indices
@@ -202,8 +202,6 @@ class CCSNData(Dataset):
         # Get parameter column index
         param_idx = self.parameter_names.index(param_name)
         values = self.parameters[:, param_idx]
-        # if param_name == "A(km)":
-        #     values = np.log(values)
         
         # Get default range for this parameter
         param_range = self.PARAMETER_RANGES.get(param_name, None)
@@ -403,48 +401,6 @@ class CCSNData(Dataset):
         noise = noise - noise.mean()  # Mean center as in R implementation
 
         return noise
-
-    def normalise_signals(self, signal):
-        normalised_signal = signal / self.max_strain
-        return normalised_signal
-    
-    def normalize_parameters(self, params):
-        """Normalize CCSN parameters to [-1, 1] range using min-max normalization.
-        
-        Args:
-            params: numpy array of shape (..., 4) with [beta, omega, A, Ye]
-            
-        Returns:
-            Normalized parameters in [-1, 1] range
-        """
-        params_norm = params.copy()
-        
-        # Min-max normalization: (x - min) / (max - min) * 2 - 1
-        param_range = self.max_parameter - self.min_parameter
-        params_norm = 2 * (params - self.min_parameter) / param_range - 1
-        
-        return params_norm
-    
-    def denormalize_parameters(self, params_norm):
-        """Denormalize parameters from [-1, 1] back to original ranges.
-        
-        Args:
-            params_norm: numpy array of shape (..., 4) with normalized params
-            
-        Returns:
-            Denormalized parameters in original physical units
-        """
-        params = params_norm.copy()
-        
-        # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
-        param_range = self.max_parameter - self.min_parameter
-        params = (params_norm + 1) / 2 * param_range + self.min_parameter
-        
-        # Reverse log transformations for omega_0 (index 1) and A(km) (index 2)
-        params[..., 1] = np.exp(params[..., 1])  # exp(log(omega_0)) = omega_0
-        params[..., 2] = np.exp(params[..., 2])  # exp(log(A)) = A
-        
-        return params
     
     ### overloads ###
     def __len__(self):
@@ -490,7 +446,7 @@ class CCSNData(Dataset):
         parameters = self.parameters[original_idx].copy()  # Extract parameter values as a NumPy array
         
         # Note: Log transformations already applied to parameters array in __init__
-        # Parameters are: [beta, log(omega_0), log(A), Ye]
+        # Parameters are: [beta, omega_0, log(A), Ye]
         
         # Normalize all parameters to [-1, 1]
         parameters = self.normalize_parameters(parameters)

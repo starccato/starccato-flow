@@ -5,6 +5,7 @@ from sklearn.datasets import make_moons
 
 from ..utils.defaults import Y_LENGTH, TEN_KPC
 from ..plotting.plotting import plot_signal_distribution
+from . import BaseDataset
 
 """
 This class generates synthetic time series data for testing purposes.
@@ -19,7 +20,7 @@ def _set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
     return seed
 
-class ToyData:
+class ToyData(BaseDataset):
     def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise=True, curriculum=False, noise_level=0.1, 
                  shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):
         _set_seed(42)
@@ -76,47 +77,6 @@ class ToyData:
     def shape(self):
         return self.signals.shape
 
-    def normalise_signals(self, signal):
-        normalised_signal = signal / self.max_strain
-        return normalised_signal
-    
-    def normalize_parameters(self, params):
-        """Normalize toy data parameters to roughly [-1, 1] range.
-        
-        Two moons data is roughly in [-2, 2] range, so normalize to [-1, 1].
-        
-        Args:
-            params: numpy array of shape (..., 2)
-            
-        Returns:
-            Normalized parameters
-        """
-        # Two moons data is roughly [-1.5, 2.5] in x and [-1, 1.5] in y
-        # Simple normalization to [-1, 1]
-        params_norm = params.copy()
-
-        # Min-max normalization: (x - min) / (max - min) * 2 - 1
-        param_range = self.parameter_max - self.parameter_min
-        params_norm = 2 * (params - self.parameter_min) / param_range - 1
-        
-        return params_norm
-    
-    def denormalize_parameters(self, params_norm):
-        """Denormalize toy parameters back to original range.
-        
-        Args:
-            params_norm: numpy array of shape (..., 2) with normalized params
-            
-        Returns:
-            Denormalized parameters
-        """
-        params = params_norm.copy()
-
-        # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
-        param_range = self.parameter_max - self.parameter_min
-        params = (params_norm + 1) / 2 * param_range + self.parameter_min
-
-        return params
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         # Transpose signals to match expected shape (signal_length, num_signals)
