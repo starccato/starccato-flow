@@ -33,9 +33,7 @@ class CCSNData(Dataset):
     def __init__(
         self,
         batch_size: int = BATCH_SIZE,
-        num_epochs: int = 256,
-        frac: float = 1.0,
-        train: bool = True,
+        num_epochs: int = Y_LENGTH,
         noise: bool = True,
         curriculum: bool = True,
         snr: bool = True,
@@ -53,8 +51,6 @@ class CCSNData(Dataset):
         
         Args:
             batch_size (int): Batch size for data loading
-            frac (float): Fraction of data to use
-            train (bool): Whether this is training data
             noise (bool): Whether to add noise
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
@@ -111,23 +107,11 @@ class CCSNData(Dataset):
         # print(f"Parameters shape: {self.parameters.shape}")
         assert self.signals.shape[1] == self.parameters.shape[0], "Signal and parameter counts don't match!"
 
-        ### flatten signals and take last 256 timestamps
-        temp_data = np.empty(shape=(256, 0)).astype("float32")
-
+        ### Take last Y_LENGTH timestamps from all signals (vectorized operation)
+        self.signals = self.signals[-Y_LENGTH:, :]
+        
         # Store original signal indices for verification
-        self.original_indices = []
-
-        for i in range(0, self.signals.shape[1]):
-            signal = self.signals[:, i]
-            signal = signal.reshape(1, -1)
-
-            cut_signal = signal[:, int(len(signal[0]) - 256) : len(signal[0])]
-            temp_data = np.insert(
-                temp_data, temp_data.shape[1], cut_signal, axis=1
-            )
-            self.original_indices.append(signal_indices[i])
-
-        self.signals = temp_data
+        self.original_indices = signal_indices.tolist()
         
         # Verify alignment
         assert self.signals.shape[1] == self.parameters.shape[0], "Signal and parameter counts don't match after processing!"
@@ -400,7 +384,7 @@ class CCSNData(Dataset):
             np.random.set_state(random_state.get_state())
         
         dataDeltaT = SAMPLING_RATE  # Sampling rate: 4096 Hz
-        dataSec = 256 * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
+        dataSec = Y_LENGTH * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
         
         # Generate noise with proper PSD scaling
@@ -409,7 +393,7 @@ class CCSNData(Dataset):
             delta_t=dataDeltaT,
             one_sided=True,  # Use one-sided spectrum as in R
             pad=1
-        ).reshape(1, -1)  # shape (1, 256)
+        ).reshape(1, -1)  # shape (1, Y_LENGTH)
 
         # Restore original random state if we changed it
         if seed_offset > 0:
