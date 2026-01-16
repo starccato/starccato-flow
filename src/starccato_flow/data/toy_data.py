@@ -22,16 +22,19 @@ def _set_seed(seed: int):
 
 class ToyData(BaseDataset):
     def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise=True, curriculum=False, noise_level=0.1, 
+                 start_snr=200, end_snr=10, rho_target=10,
                  shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):
         _set_seed(42)
         self.num_signals = num_signals
         self.signal_length = signal_length
         self.num_epochs = 256
         self.noise = noise
-        self.start_snr = 200
-        self.end_snr = 10
+        self.start_snr = start_snr
+        self.end_snr = end_snr
+        self.rho_target = rho_target
         self.curriculum = curriculum
         self.noise_level = noise_level
+        self._current_epoch = 0
 
         # Use shared parameters/min/max if provided, otherwise generate new
         if shared_params is not None:
@@ -86,9 +89,14 @@ class ToyData(BaseDataset):
         signal = self.signals[idx]
         normalised_signal = self.normalise_signals(signal)
         
-        # Add noise if enabled
+        # Add noise if enabled with SNR control
         if self.noise:
-            noisy_signal = signal + np.random.normal(0, self.noise_level, self.signal_length)
+            noise = np.random.normal(0, 1.0, self.signal_length)
+            signal_power = np.sqrt(np.mean(signal**2))
+            noise_power = np.sqrt(np.mean(noise**2))
+            # Scale noise to achieve target SNR
+            scaled_noise = noise * (signal_power / (self.rho_target * noise_power))
+            noisy_signal = signal + scaled_noise
             normalised_noisy_signal = self.normalise_signals(noisy_signal)
         else:
             normalised_noisy_signal = normalised_signal
@@ -119,6 +127,22 @@ class ToyData(BaseDataset):
         # print(f"First few parameter values:\n{self.parameters.head()}")
         return True
     
+    def update_snr(self, snr):
+        """Update the target SNR.
+        
+        Args:
+            snr: Target signal-to-noise ratio
+        """
+        self.rho_target = snr
+    
+    def set_snr(self, snr):
+        """Set the target SNR (alias for update_snr).
+        
+        Args:
+            snr: Target signal-to-noise ratio
+        """
+        self.rho_target = snr
+
     @property
     def current_epoch(self) -> int:
         """Get the current epoch number.
@@ -129,13 +153,14 @@ class ToyData(BaseDataset):
         return self._current_epoch
 
     def set_epoch(self, epoch: int) -> None:
-        """Update the current epoch number.
+        """Update the current epoch number and adjust SNR for curriculum learning.
 
         Args:
             epoch (int): New epoch number
         """
         self._current_epoch = epoch
-        self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
+        if self.curriculum:
+            self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
 
     def get_loader(self, batch_size=32):
         return DataLoader(

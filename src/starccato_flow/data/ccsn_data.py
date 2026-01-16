@@ -466,13 +466,18 @@ class CCSNData(BaseDataset, Dataset):
         hf = self.signal_rfft[:, original_idx]
         rho = self.calculate_snr_from_fft(hf, self.PSD)
         
-        # Add different noise each time by using a unique seed based on noise_realization_idx
-        n = self.aLIGO_noise(seed_offset=noise_realization_idx)
-        
-        s = s / 3.086e+22
-        d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
-        s = s * 3.086e+22
-        d = d * 3.086e+22
+        # Add noise only if self.noise is True
+        if self.noise:
+            # Add different noise each time by using a unique seed based on noise_realization_idx
+            n = self.aLIGO_noise(seed_offset=noise_realization_idx)
+            
+            s = s / 3.086e+22
+            d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
+            s = s * 3.086e+22
+            d = d * 3.086e+22
+        else:
+            # No noise: d = s (clean signal)
+            d = s
 
         s_star = self.normalise_signals(s)
         d_star = self.normalise_signals(d)

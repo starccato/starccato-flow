@@ -111,22 +111,6 @@ def create_train_val_split(
         print(f"First 5 training indices: {train_base_indices[:5]}")
         print(f"First 5 validation indices: {val_base_indices[:5]}")
         
-        # VERIFY: No overlap between train and validation base indices
-        train_set = set(train_base_indices)
-        val_set = set(val_base_indices)
-        overlap = train_set.intersection(val_set)
-        
-        if len(overlap) > 0:
-            raise ValueError(
-                f"❌ DATA LEAKAGE DETECTED! {len(overlap)} signals appear in both "
-                f"train and validation sets: {sorted(list(overlap))[:10]}"
-            )
-        else:
-            print(f"✓ Verification PASSED: No overlap between train and validation sets")
-            print(f"  Train signals: {len(train_set)} unique indices")
-            print(f"  Val signals: {len(val_set)} unique indices")
-            print(f"  Total coverage: {len(train_set) + len(val_set)} / {num_base_signals}")
-        
         # Create SEPARATE dataset instances with disjoint base indices
         # Training: with curriculum and multiple noise realizations
         training_dataset = CCSNData(

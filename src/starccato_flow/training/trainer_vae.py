@@ -28,7 +28,7 @@ def _set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
     return seed
 
-class FlowMatchingTrainer:
+class VAETrainer:
     def __init__(
         self,
         y_length: int = Y_LENGTH,
