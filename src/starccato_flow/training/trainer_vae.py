@@ -12,14 +12,11 @@ from torch.utils.data import SubsetRandomSampler, DataLoader
 import torch.nn.functional as F
 from tqdm.auto import tqdm, trange
 
-from ..plotting.plotting import plot_reconstruction_distribution, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner, plot_candidate_signal
+from ..nn.vae import VAE
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
-from ..nn.flow import Flow
+from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 
-from ..data.toy_data import ToyData
-from ..data.ccsn_data import CCSNData
-from . import create_train_val_split, plot_generated_signal_distribution, plot_candidate_signal_method, display_results_method
+from . import create_train_val_split, plot_generated_signal_distribution, plot_candidate_signal_method, display_results_method, plot_signal_grid , plot_latent_space_3d
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -105,19 +102,50 @@ class VAETrainer:
 
         # setup Flow Matching model
         # Get parameter dimension (2 for toy data with two moons)
-        self.flow = Flow(dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
-        self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
-        self.loss_fn = nn.MSELoss()
+        # self.flow = Flow(dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
+        # self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
+        # self.loss_fn = nn.MSELoss()
+
+        self.vae = VAE(
+            y_length=self.y_length,
+            hidden_dim=self.hidden_dim,
+            z_dim=self.z_dim
+        ).to(DEVICE)    
+        self.optimizerVAE = optim.Adam(self.vae.parameters(), lr=self.lr_flow, weight_decay=1e-5)
+
+        self.fixed_noise = torch.randn(16, self.z_dim).to(DEVICE)
+
+    def loss_function_vae(self, y, y_hat, mean, log_var):
+        # sse loss
+        reproduction_loss = nn.functional.mse_loss(y_hat, y, reduction='sum')
+        reproduction_loss *= 1 * y.shape[1]
+
+        # KL Divergence loss
+        kld_beta = 1
+        kld_loss = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
+        kld_loss = kld_loss * kld_beta
+
+        # total loss
+        total_loss = reproduction_loss + kld_loss
+
+        return total_loss, reproduction_loss, kld_loss
+
 
     def train(self):
         t0 = time.time()
 
-        self.avg_mse_losses = []
-        self.avg_mse_losses_val = []
+        self.avg_total_losses = []
+        self.avg_reproduction_losses = []
+        self.avg_kld_losses = []
+        self.avg_total_losses_val = []
+        self.avg_reproduction_losses_val = []
+        self.avg_kld_losses_val = []
 
         for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
-            self.flow.train()
+            self.vae.train()
             total_loss = 0
+            reproduction_loss = 0
+            kld_loss = 0
             total_samples = 0
 
             self.val_loader.dataset.set_epoch(epoch)
@@ -128,29 +156,34 @@ class VAETrainer:
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
 
-                x_0 = torch.randn_like(params)  # noise in parameter space
-                t = torch.rand(len(params), 1, device=DEVICE)  # random time values on correct device
-                x_t = (1 - t) * x_0 + t * params  # interpolated parameters
-                dx_t = params - x_0  # true velocity direction in parameter space
-
-                self.optimizer.zero_grad()
-                loss = self.loss_fn(self.flow(x_t, t, noisy_signal), dx_t)
-                loss.backward()  # predict parameter velocity given signal
+                self.optimizerVAE.zero_grad()
+                recon, mean, log_var = self.vae(noisy_signal)
+                loss, rec_loss, kld = self.loss_function_vae(signal, recon, mean, log_var)
                 
-                # Clip gradients to prevent explosion
-                torch.nn.utils.clip_grad_norm_(self.flow.parameters(), self.max_grad_norm)
-                
-                self.optimizer.step()
+                # Backward pass with gradient clipping
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=self.max_grad_norm)
+                self.optimizerVAE.step()
 
                 total_loss += loss.item()
+                reproduction_loss += rec_loss.item()
+                kld_loss += kld.item()
                 total_samples += signal.size(0)
 
+
             avg_total_loss = total_loss / total_samples
-            self.avg_mse_losses.append(avg_total_loss)
+            avg_reproduction_loss = reproduction_loss / total_samples
+            avg_kld_loss = kld_loss / total_samples
+
+            self.avg_total_losses.append(avg_total_loss)
+            self.avg_reproduction_losses.append(avg_reproduction_loss)
+            self.avg_kld_losses.append(avg_kld_loss)
 
             # Validation
-            self.flow.eval()
+            self.vae.eval()
             val_total_loss = 0
+            val_reproduction_loss = 0
+            val_kld_loss = 0
             val_samples = 0
             with torch.no_grad():
                 for val_signal, val_noisy_signal, val_params in self.val_loader:
@@ -158,51 +191,60 @@ class VAETrainer:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-
-                    x_0 = torch.randn_like(val_params)  # noise in parameter space
-                    t = torch.rand(len(val_params), 1, device=DEVICE)  # random time values on correct device
-                    x_t = (1 - t) * x_0 + t * val_params  # interpolated parameters
-                    dx_t = val_params - x_0  # true velocity direction in parameter space
-
-                    loss = self.loss_fn(self.flow(x_t, t, val_noisy_signal), dx_t)
-                    val_total_loss += loss.item()
+                    recon, mean, log_var = self.vae(val_noisy_signal)
+                    v_loss, v_rec_loss, v_kld = self.loss_function_vae(val_signal, recon, mean, log_var)
+                    val_total_loss += v_loss.item()
+                    val_reproduction_loss += v_rec_loss.item()
+                    val_kld_loss += v_kld.item()
                     val_samples += val_signal.size(0)
             
             avg_total_loss_val = val_total_loss / val_samples
-            self.avg_mse_losses_val.append(avg_total_loss_val)
+            avg_reproduction_loss_val = val_reproduction_loss / val_samples
+            avg_kld_loss_val = val_kld_loss / val_samples
 
-            print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
+            self.avg_total_losses_val.append(avg_total_loss_val)
+            self.avg_reproduction_losses_val.append(avg_reproduction_loss_val)
+            self.avg_kld_losses_val.append(avg_kld_loss_val)
+            
+            # Step the learning rate scheduler
+            # self.scheduler.step(avg_total_loss_val)
+
+            # print(f"Epoch {epoch+1}/{self.num_epochs} | Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
 
             # Optionally: add plotting or checkpointing here
-            # if (epoch + 1) % self.checkpoint_interval == 0:
-                # # gridded plots
-                # with torch.no_grad():
-                #     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-                # print(f"Generated signals shape: {generated_signals.shape}")
-                # # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-                # if self.vae_parameter_test:
-                #     print("Parameter values:", generated_signals)
-                # else:
-                #     plot_signal_grid(
-                #         signals=generated_signals/TEN_KPC,
-                #         noisy_signals=None,
-                #         max_value=self.training_dataset.max_strain,
-                #         num_cols=3,
-                #         num_rows=1,
-                #         fname="plots/ccsn_generated_signal_grid.svg",
-                #         background="white",
-                #         generated=True
-                #     )
-                # plot_latent_space_3d(
-                #     model=self.vae,
-                #     dataloader=self.train_loader
-                # )
-        
+            if (epoch + 1) % self.checkpoint_interval == 0:
+                # gridded plots
+                with torch.no_grad():
+                    generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
+                print(f"Generated signals shape: {generated_signals.shape}")
+                # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
+                plot_signal_grid(
+                    signals=generated_signals/TEN_KPC,
+                    noisy_signals=None,
+                    max_value=self.training_dataset.max_strain,
+                    num_cols=3,
+                    num_rows=1,
+                    fname="plots/ccsn_generated_signal_grid.svg",
+                    background="white",
+                    generated=True
+                )
+                plot_latent_space_3d(
+                    model=self.vae,
+                    dataloader=self.train_loader
+                )
+                
 
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
-        # self.save_models()
+        self.save_models()
+
+        # train flows with overfitting prevention
+        print("\n" + "="*60)
+        print("Starting Flow Training")
+        print("="*60)
+        # self.train_npe_with_vae_standard(num_epochs=500, lr=self.lr_flow)
+        # self.train_npe_with_vae_improved(num_epochs=500)
 
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
