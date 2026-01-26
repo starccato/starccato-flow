@@ -73,12 +73,15 @@ class ConditionalDecoder(nn.Module):
         """
         super(ConditionalDecoder, self).__init__()
         
-        # Parameter embedding network - projects params to higher dimension
-        param_embed_dim = z_dim  # Match latent dimension for equal weight
+        # AGGRESSIVE parameter embedding - make parameters MORE important than latent
+        # Use 2x latent dimension to force decoder to pay attention to params
+        param_embed_dim = z_dim * 2
         self.param_embed = nn.Sequential(
-            nn.Linear(param_dim, param_embed_dim // 2),
+            nn.Linear(param_dim, hidden_dim // 2),
             nn.LeakyReLU(0.2),
-            nn.Linear(param_embed_dim // 2, param_embed_dim),
+            nn.Linear(hidden_dim // 2, hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, param_embed_dim),
             nn.LeakyReLU(0.2)
         )
         
@@ -87,6 +90,9 @@ class ConditionalDecoder(nn.Module):
         self.FC_hidden2 = nn.Linear(hidden_dim, hidden_dim)
         self.FC_output = nn.Linear(hidden_dim, output_dim)
         self.LeakyReLU = nn.LeakyReLU(0.2)
+        
+        # Dropout on latent to force decoder to rely on parameters
+        self.z_dropout = nn.Dropout(0.5)
         
     def forward(self, z: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
         """Forward pass through conditional decoder.
@@ -100,6 +106,10 @@ class ConditionalDecoder(nn.Module):
         """
         # Embed parameters to match latent dimension
         params_embedded = self.param_embed(params)
+        
+        # Apply dropout to latent during training to force use of parameters
+        if self.training:
+            z = self.z_dropout(z)
         
         # Concatenate latent vector with embedded parameters
         z_params = torch.cat([z, params_embedded], dim=-1)
@@ -123,12 +133,12 @@ class ConditionalEncoder(nn.Module):
         """
         super(ConditionalEncoder, self).__init__()
         
-        # Parameter embedding network - projects params to higher dimension
-        # Use hidden_dim for param embedding to balance with signal processing
+        # Stronger parameter embedding in encoder
+        # Make params equally important as signal features
         self.param_embed = nn.Sequential(
-            nn.Linear(param_dim, hidden_dim // 4),
+            nn.Linear(param_dim, hidden_dim // 2),
             nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim // 4, hidden_dim // 2),
+            nn.Linear(hidden_dim // 2, hidden_dim),
             nn.LeakyReLU(0.2)
         )
         
@@ -138,11 +148,14 @@ class ConditionalEncoder(nn.Module):
             nn.LeakyReLU(0.2)
         )
         
-        # Combine signal features and embedded parameters
-        self.FC_input2 = nn.Linear(hidden_dim + hidden_dim // 2, hidden_dim)
+        # Combine signal features and embedded parameters (now both hidden_dim)
+        self.FC_input2 = nn.Linear(hidden_dim + hidden_dim, hidden_dim)
         self.FC_mean = nn.Linear(hidden_dim, z_dim)
         self.FC_var = nn.Linear(hidden_dim, z_dim)
         self.LeakyReLU = nn.LeakyReLU(0.2)
+        
+        # Dropout on latent to prevent encoding everything in z
+        self.latent_dropout = nn.Dropout(0.3)
         
     def forward(self, d: torch.Tensor, params: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through conditional encoder.
@@ -164,6 +177,11 @@ class ConditionalEncoder(nn.Module):
         combined = torch.cat([signal_features, params_embedded], dim=-1)
         
         h_ = self.LeakyReLU(self.FC_input2(combined))
+        
+        # Apply dropout during training to prevent z from encoding everything
+        if self.training:
+            h_ = self.latent_dropout(h_)
+        
         mean = self.FC_mean(h_)
         log_var = self.FC_var(h_)  # encoder produces mean and log of variance 
         return mean, log_var

@@ -80,6 +80,10 @@ class ToyData(BaseDataset):
     def shape(self):
         return self.signals.shape
 
+    @property
+    def parameter_names(self):
+        """Return parameter names for the toy dataset."""
+        return ['x', 'y']  # Two moons 2D coordinates
 
     def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
         # Transpose signals to match expected shape (signal_length, num_signals)

@@ -182,6 +182,37 @@ class ConditionalVAETrainer:
 
     def train(self):
         """Train the Conditional VAE."""
+        # DIAGNOSTICS: Print dataset and parameter information
+        print("\n" + "=" * 60)
+        print("DIAGNOSTIC: Dataset Information")
+        print("=" * 60)
+        print(f"Max strain in dataset: {self.training_dataset.max_strain:.6e}")
+        sample_signal = self.training_dataset.signals[0]
+        print(f"Sample raw signal range: [{sample_signal.min():.6e}, {sample_signal.max():.6e}]")
+        
+        print(f"\nParameter ranges in dataset:")
+        print(f"  Param 0: [{self.training_dataset.parameters[:, 0].min():.4f}, {self.training_dataset.parameters[:, 0].max():.4f}]")
+        if self.param_dim > 1:
+            print(f"  Param 1: [{self.training_dataset.parameters[:, 1].min():.4f}, {self.training_dataset.parameters[:, 1].max():.4f}]")
+        
+        # Test normalization
+        print(f"\nTesting parameter normalization:")
+        if self.param_dim == 2:
+            p0_min, p0_max = self.training_dataset.parameters[:, 0].min(), self.training_dataset.parameters[:, 0].max()
+            p1_min, p1_max = self.training_dataset.parameters[:, 1].min(), self.training_dataset.parameters[:, 1].max()
+            
+            test_param_min = np.array([p0_min, p1_min])
+            test_param_max = np.array([p0_max, p1_max])
+            
+            print(f"  Raw param (min, min): {test_param_min}")
+            print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_min)}")
+            print(f"  Raw param (max, max): {test_param_max}")
+            print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_max)}")
+        
+        print("\n" + "=" * 60)
+        print("Starting training...")
+        print("=" * 60 + "\n")
+
         t0 = time.time()
 
         self.avg_total_losses = []
@@ -338,7 +369,7 @@ class ConditionalVAETrainer:
                 
                 # Plot generated signals
                 plot_signal_grid(
-                    signals=generated_signals / TEN_KPC,
+                    signals=generated_signals,
                     noisy_signals=None,
                     max_value=self.training_dataset.max_strain,
                     num_cols=4,
