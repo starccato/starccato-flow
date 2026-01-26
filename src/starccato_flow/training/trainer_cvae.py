@@ -171,7 +171,7 @@ class ConditionalVAETrainer:
         reproduction_loss *= 1 * y.shape[1]
 
         # KL Divergence loss with beta for β-VAE
-        kld_beta = 1.0  # Standard VAE
+        kld_beta = 100.0  # Standard VAE
         kld_loss = - 0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
         kld_loss = kld_loss * kld_beta
 

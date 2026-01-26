@@ -68,8 +68,10 @@ class ToyData(BaseDataset):
             # Use parameters to modulate frequency and phase of sine wave
             freq = 1 + self.parameters[i, 0] * 0.5  # parameter controls frequency
             phase = self.parameters[i, 1]  # parameter controls phase
+            # create another parameter which adjusts the amplitude slightly, normal distribtion between 0.8 and 1.2, this is what we want the latent space to learn
+            latent_amplitude_adjustment = 1 + np.random.normal(0, 0.2)
             # Generate clean signal
-            signal = 1e-20 * np.sin(freq * t + phase)
+            signal = 1e-20 * latent_amplitude_adjustment * np.sin(freq * t + phase)
             signals.append(signal)
         return np.array(signals)  # Shape: (num_signals, signal_length)
     
