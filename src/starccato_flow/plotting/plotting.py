@@ -1730,7 +1730,7 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
             ranges = [(-3, 3), (-3, 3)]
         elif num_params == 4:
             # Legacy fallback for 4 parameters
-            ranges = [(0, 0.25), (0, 16), (0, 10000), (0, 0.3)]
+            ranges = [(0, 0.25), (0, 16), (0, 10000), (0.2, 0.3)]
         # Otherwise ranges will be None and corner will auto-determine
     
     plt.rcParams['figure.facecolor'] = 'none' # Transparent figure background

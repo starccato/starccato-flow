@@ -129,7 +129,7 @@ class ConditionalVAETrainer:
         self.fixed_noise = noise_samples.repeat(num_rows, 1).to(DEVICE)  # Shape: (16, z_dim)
         
         # Define parameter sets for rows (already in normalized space [-1, 1])
-        self.varying_param_index = 2
+        self.varying_param_index = 3
         # Varying parameter (index specified by varying_param_index) goes from -1 to 1, others are 0
         param_sets_norm = []
         for i in range(num_rows):

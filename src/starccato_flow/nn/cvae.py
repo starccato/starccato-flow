@@ -92,7 +92,7 @@ class ConditionalDecoder(nn.Module):
         self.LeakyReLU = nn.LeakyReLU(0.2)
         
         # Dropout on latent to force decoder to rely on parameters
-        self.z_dropout = nn.Dropout(0.5)
+        self.z_dropout = nn.Dropout(0.2)
         
     def forward(self, z: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
         """Forward pass through conditional decoder.
@@ -155,7 +155,7 @@ class ConditionalEncoder(nn.Module):
         self.LeakyReLU = nn.LeakyReLU(0.2)
         
         # Dropout on latent to prevent encoding everything in z
-        self.latent_dropout = nn.Dropout(0.3)
+        self.latent_dropout = nn.Dropout(0.1)
         
     def forward(self, d: torch.Tensor, params: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through conditional encoder.
