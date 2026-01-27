@@ -46,7 +46,8 @@ class ConditionalVAETrainer:
         max_grad_norm: float = 1.0,
         start_snr: int = 100,
         end_snr: int = 10,
-        noise_realizations: int = 1
+        noise_realizations: int = 1,
+        varying_param_index: int = 0
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -65,6 +66,7 @@ class ConditionalVAETrainer:
         self.start_snr = start_snr
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
+        self.varying_param_index = varying_param_index
         self.device = DEVICE
 
         # Create train/val split using shared utility function
@@ -126,29 +128,17 @@ class ConditionalVAETrainer:
         noise_samples = torch.randn(num_cols, self.z_dim)  # 4 unique noise samples
         self.fixed_noise = noise_samples.repeat(num_rows, 1).to(DEVICE)  # Shape: (16, z_dim)
         
-        # Define parameter sets for rows
-        if self.param_dim == 1:
-            # 4 different beta values
-            param_sets = [
-                np.array([0.02]),   # Row 1: Low beta
-                np.array([0.08]),   # Row 2: Medium-low beta
-                np.array([0.14]),   # Row 3: Medium-high beta
-                np.array([0.18])    # Row 4: High beta
-            ]
-        elif self.param_dim == 4:
-            # 4 different parameter combinations (beta, omega, A, Ye)
-            param_sets = [
-                np.array([0.02, 6.0, 3000.0, 0.10]),    # Row 1: Low values
-                np.array([0.08, 8.5, 5000.0, 0.13]),    # Row 2: Medium-low
-                np.array([0.14, 11.0, 7000.0, 0.17]),   # Row 3: Medium-high
-                np.array([0.18, 14.0, 9000.0, 0.20])    # Row 4: High values
-            ]
-        else:
-            # Use linspace for any other param_dim
-            param_sets = [np.full(self.param_dim, i / (num_rows - 1)) for i in range(num_rows)]
-        
-        # Normalize parameter sets
-        param_sets_norm = [self.training_dataset.normalize_parameters(p) for p in param_sets]
+        # Define parameter sets for rows (already in normalized space [-1, 1])
+        self.varying_param_index = 2
+        # Varying parameter (index specified by varying_param_index) goes from -1 to 1, others are 0
+        param_sets_norm = []
+        for i in range(num_rows):
+            varying_value = -1.0 + (2.0 * i / (num_rows - 1))  # Linspace: -1, -0.33, 0.33, 1
+            params = [0.0] * self.param_dim
+            params[self.varying_param_index] = varying_value
+            param_sets_norm.append(np.array(params))
+
+        print(param_sets_norm)
         
         # Create parameter tensor where each row has same params (repeated across columns)
         # Shape: (16, param_dim) where rows 0-3 have params[0], rows 4-7 have params[1], etc.
@@ -171,7 +161,7 @@ class ConditionalVAETrainer:
         reproduction_loss *= 1 * y.shape[1]
 
         # KL Divergence loss with beta for β-VAE
-        kld_beta = 100.0  # Standard VAE
+        kld_beta = 1.0  # Standard VAE
         kld_loss = - 0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
         kld_loss = kld_loss * kld_beta
 
@@ -191,23 +181,21 @@ class ConditionalVAETrainer:
         print(f"Sample raw signal range: [{sample_signal.min():.6e}, {sample_signal.max():.6e}]")
         
         print(f"\nParameter ranges in dataset:")
-        print(f"  Param 0: [{self.training_dataset.parameters[:, 0].min():.4f}, {self.training_dataset.parameters[:, 0].max():.4f}]")
-        if self.param_dim > 1:
-            print(f"  Param 1: [{self.training_dataset.parameters[:, 1].min():.4f}, {self.training_dataset.parameters[:, 1].max():.4f}]")
+        for i in range(self.param_dim):
+            p_min = self.training_dataset.parameters[:, i].min()
+            p_max = self.training_dataset.parameters[:, i].max()
+            param_name = self.training_dataset.parameter_names[i] if hasattr(self.training_dataset, 'parameter_names') else f"Param {i}"
+            print(f"  {param_name}: [{p_min:.4f}, {p_max:.4f}]")
         
         # Test normalization
         print(f"\nTesting parameter normalization:")
-        if self.param_dim == 2:
-            p0_min, p0_max = self.training_dataset.parameters[:, 0].min(), self.training_dataset.parameters[:, 0].max()
-            p1_min, p1_max = self.training_dataset.parameters[:, 1].min(), self.training_dataset.parameters[:, 1].max()
-            
-            test_param_min = np.array([p0_min, p1_min])
-            test_param_max = np.array([p0_max, p1_max])
-            
-            print(f"  Raw param (min, min): {test_param_min}")
-            print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_min)}")
-            print(f"  Raw param (max, max): {test_param_max}")
-            print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_max)}")
+        test_param_min = np.array([self.training_dataset.parameters[:, i].min() for i in range(self.param_dim)])
+        test_param_max = np.array([self.training_dataset.parameters[:, i].max() for i in range(self.param_dim)])
+        
+        print(f"  Raw param (all min): {test_param_min}")
+        print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_min)}")
+        print(f"  Raw param (all max): {test_param_max}")
+        print(f"  Normalized: {self.training_dataset.normalize_parameters(test_param_max)}")
         
         print("\n" + "=" * 60)
         print("Starting training...")
@@ -328,21 +316,9 @@ class ConditionalVAETrainer:
                 
                 # DIAGNOSTIC: Check if decoder is sensitive to parameter changes
                 with torch.no_grad():
-                    # Define 2 very different parameter sets
-                    if self.param_dim == 1:
-                        test_params = [
-                            np.array([0.02]),   # Low beta
-                            np.array([0.18])    # High beta
-                        ]
-                    elif self.param_dim == 4:
-                        test_params = [
-                            np.array([0.02, 6.0, 3000.0, 0.10]),   # Low values
-                            np.array([0.18, 14.0, 9000.0, 0.20])   # High values
-                        ]
-                    else:
-                        test_params = [np.zeros(self.param_dim), np.ones(self.param_dim)]
+                    test_params_norm = [np.zeros(self.param_dim), np.ones(self.param_dim)]
                     
-                    test_params_norm = [self.training_dataset.normalize_parameters(p) for p in test_params]
+                    # test_params_norm = [self.training_dataset.normalize_parameters(p) for p in test_params]
                     
                     # Use SAME noise for both parameter sets
                     z_test = torch.randn(1, self.z_dim).to(DEVICE)
@@ -369,7 +345,7 @@ class ConditionalVAETrainer:
                 
                 # Plot generated signals
                 plot_signal_grid(
-                    signals=generated_signals,
+                    signals=generated_signals / TEN_KPC,
                     noisy_signals=None,
                     max_value=self.training_dataset.max_strain,
                     num_cols=4,
