@@ -1,22 +1,20 @@
 import os
 import time
-from typing import List, Optional
 
 import matplotlib.pyplot as plt
-import math
 import numpy as np
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
-from torch.utils.data import SubsetRandomSampler, DataLoader
+from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from tqdm.auto import tqdm, trange
+from tqdm.auto import trange
 
 from ..nn.cvae import ConditionalVAE
 
 from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 
-from . import create_train_val_split, plot_generated_signal_distribution, plot_candidate_signal_method, display_results_method, plot_signal_grid, plot_latent_space_3d
+from . import create_train_val_split, plot_candidate_signal_method, plot_signal_grid
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""

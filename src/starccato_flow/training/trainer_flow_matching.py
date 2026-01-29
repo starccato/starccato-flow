@@ -1,25 +1,19 @@
 import os
 import time
-from typing import List, Optional
 
-import matplotlib.pyplot as plt
-import math
 import numpy as np
 import torch
-from torch import nn, optim
+from torch import nn
 from torch.optim import lr_scheduler
-from torch.utils.data import SubsetRandomSampler, DataLoader
-import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm, trange
 
-from ..plotting.plotting import plot_reconstruction_distribution, plot_signal_grid, plot_latent_space_3d, plot_loss, plot_individual_loss, plot_signal_distribution, plot_corner, plot_candidate_signal
+from ..plotting.plotting import plot_corner
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.flow import Flow
 
-from ..data.toy_data import ToyData
-from ..data.ccsn_data import CCSNData
-from . import create_train_val_split, plot_generated_signal_distribution, plot_candidate_signal_method, display_results_method
+from . import create_train_val_split, plot_candidate_signal_method, display_results_method
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
