@@ -1,8 +1,5 @@
-import os
 
-import requests
 import torch
-from tqdm import tqdm
 
 # from .logger import logger
 

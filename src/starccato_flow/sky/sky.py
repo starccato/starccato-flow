@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import math
 
 class Sky:
     """Class representing sky positions in spherical coordinates."""

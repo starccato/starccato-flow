@@ -1,26 +1,17 @@
-from turtle import back
 from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
-import matplotlib.ticker as mtick
 import numpy as np
 import pandas as pd
 import torch
-from ..nn.vae import VAE
 from ..utils.defaults import DEVICE, TEN_KPC
 from ..utils.plotting_defaults import SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY, DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
 import corner
-from nflows.distributions.normal import StandardNormal
-from nflows.transforms import CompositeTransform, ReversePermutation, MaskedAffineAutoregressiveTransform
-from nflows.flows import Flow
 from PIL import Image
 import io
-import ligo.skymap.plot
 
-import math
 
 def set_plot_style(background: str = "white", font_family: str = "serif", font_name: str = "Times New Roman") -> None:
     """Set consistent matplotlib plot styling.

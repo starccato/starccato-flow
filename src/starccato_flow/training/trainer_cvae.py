@@ -5,9 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import nn, optim
-from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 from tqdm.auto import trange
 
 from ..nn.cvae import ConditionalVAE

@@ -4,9 +4,8 @@ import time
 import numpy as np
 import torch
 from torch import nn
-from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
-from tqdm.auto import tqdm, trange
+from tqdm.auto import trange
 
 from ..plotting.plotting import plot_corner
 

@@ -35,6 +35,8 @@ class Flow(nn.Module):
         )
 
 
+# slightly older version kept for reference
+
 # import torch
 # import torch.nn as nn
 # from torch import Tensor

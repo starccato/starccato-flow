@@ -1,17 +1,15 @@
-import math
-from typing import Optional, Tuple
+from typing import Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 import torch
-from scipy.fft import fft, ifft
+from scipy.fft import ifft
 
-from ..plotting.plotting import plot_candidate_signal, plot_signal_distribution, plot_signal_grid, plot_parameter_distribution, plot_parameter_distribution_grid
+from ..plotting.plotting import plot_signal_distribution, plot_signal_grid, plot_parameter_distribution
 from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
 from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
-from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV, TIME_CSV
+from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV
 from . import BaseDataset
 
 """This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""

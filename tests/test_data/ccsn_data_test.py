@@ -1,5 +1,3 @@
-import signal
-import pytest
 import numpy as np
 from starccato_flow.data.ccsn_data import CCSNData
 

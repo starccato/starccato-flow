@@ -1,6 +1,5 @@
 """Tests for train/validation split to ensure no data leakage."""
 
-import pytest
 import numpy as np
 from starccato_flow.training import create_train_val_split
 from starccato_flow.utils.defaults import Y_LENGTH

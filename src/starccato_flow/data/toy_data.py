@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 from sklearn.datasets import make_moons
 
-from ..utils.defaults import Y_LENGTH, TEN_KPC
+from ..utils.defaults import Y_LENGTH
 from ..plotting.plotting import plot_signal_distribution
 from . import BaseDataset
 

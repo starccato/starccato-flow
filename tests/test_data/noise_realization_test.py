@@ -1,5 +1,4 @@
 import unittest
-import numpy as np
 import torch
 
 from starccato_flow.data.ccsn_data import CCSNData
