@@ -64,8 +64,26 @@ class Sky:
         cartesian_coords = np.column_stack((x, y, z_heights))  # Shape: (num_supernovae, 3)
         
         return cartesian_coords 
-
     
+    def calculate_sky_location_distances(self, supernovae_positions_gal):
+        """Calculate distances from observer to each supernova.
+        
+        Args:
+            observer_position: Cartesian coordinates of the observer (x, y, z) in kpc
+            supernovae_positions_gal: Array of supernovae Cartesian coordinates in kpc
+
+        Returns:
+
+        R_sun = 8.2  # kpc
+        sun_pos = np.array([R_sun, 0.0, 0.0])
+
+        supernovae_positions_helio = supernovae_positions_gal - sun_pos
+
+        dist_sun = np.linalg.norm(supernovae_positions_helio, axis=1)  # kpc
+
+
+        return dist_sun  # in kpc
+
     @property
     def theta(self):
         """Polar angle (colatitude) in radians."""
