@@ -7,7 +7,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
-from ..plotting.plotting import plot_corner
+from ..plotting import plot_corner
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..nn.flow import Flow

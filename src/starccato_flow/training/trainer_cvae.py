@@ -449,7 +449,7 @@ class ConditionalVAETrainer:
 
     def display_results(self, background="black"):
         """Display training results."""
-        from ..plotting.plotting import plot_loss
+        from ..plotting import plot_loss
         
         # Plot total losses
         print("\nPlotting Total Losses...")
