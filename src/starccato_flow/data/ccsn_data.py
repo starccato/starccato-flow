@@ -52,7 +52,10 @@ class CCSNData(BaseDataset, Dataset):
         noise_realizations: int = 1,
         shared_min: Optional[np.ndarray] = None,
         shared_max: Optional[np.ndarray] = None,
-        shared_max_strain: Optional[float] = None
+        shared_max_strain: Optional[float] = None,
+        generated: bool = False,
+        params_df: pd.DataFrame = None,
+        signals_df: pd.DataFrame = None
     ):
         """Initialize the CCSN dataset.
         
@@ -68,9 +71,13 @@ class CCSNData(BaseDataset, Dataset):
         self._current_epoch = 0
         self.num_epochs = num_epochs
         
-        # Load data from CSV files
-        params_df = pd.read_csv(PARAMETERS_CSV)
-        signals_df = pd.read_csv(SIGNALS_CSV).astype("float32").T
+        if generated == False:
+            # Load data from CSV files
+            params_df = pd.read_csv(PARAMETERS_CSV)
+            signals_df = pd.read_csv(SIGNALS_CSV).astype("float32").T
+        else:
+            params_df = params_df
+            signals_df = signals_df
         
         self.noise = noise
         self.curriculum = curriculum

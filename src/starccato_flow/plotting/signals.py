@@ -17,7 +17,6 @@ from ..utils.plotting_defaults import (
 def plot_signal_grid(
     signals: np.ndarray,
     noisy_signals: np.ndarray,
-    max_value: float,
     num_cols: int = 2,
     num_rows: int = 4,
     fname: Optional[str] = None,
@@ -31,7 +30,6 @@ def plot_signal_grid(
     Args:
         signals (np.ndarray): Array of signals to plot
         noisy_signals (np.ndarray): Noisy version of signals (currently unused)
-        max_value (float): Maximum value for scaling
         num_cols (int): Number of columns in grid
         num_rows (int): Number of rows in grid
         fname (Optional[str]): Filename to save plot
@@ -58,7 +56,7 @@ def plot_signal_grid(
             ax.axis('off')
             continue
             
-        y = signals[i].flatten() * max_value
+        y = signals[i].flatten()
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_colour)

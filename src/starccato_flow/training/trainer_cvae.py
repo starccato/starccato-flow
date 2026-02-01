@@ -339,7 +339,6 @@ class ConditionalVAETrainer:
                     else:
                         print(f"    ✓ Model is using parameters (signals differ)")
                 
-                # Plot generated signals
                 plot_signal_grid(
                     signals=generated_signals / TEN_KPC,
                     noisy_signals=None,
@@ -351,7 +350,7 @@ class ConditionalVAETrainer:
                     generated=True
                 )
                 
-                # Plot latent space colored by first parameter (beta)
+                # Plot latent space
                 fig = plt.figure(figsize=(15, 5))
                 
                 # 2D: dims 0-1
