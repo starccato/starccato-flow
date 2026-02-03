@@ -17,6 +17,7 @@ from ..utils.plotting_defaults import (
 def plot_signal_grid(
     signals: np.ndarray,
     noisy_signals: np.ndarray,
+    max_value: int,
     num_cols: int = 2,
     num_rows: int = 4,
     fname: Optional[str] = None,
@@ -57,6 +58,7 @@ def plot_signal_grid(
             continue
             
         y = signals[i].flatten()
+        y = y * max_value
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_colour)

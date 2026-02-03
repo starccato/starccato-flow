@@ -66,7 +66,7 @@ class ConditionalVAETrainer:
         self.device = DEVICE
 
         # Create train/val split using shared utility function
-        self.training_dataset, self.validation_dataset = create_train_val_split(
+        self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
             toy=self.toy,
             y_length=self.y_length,
             noise=self.noise,
@@ -484,3 +484,8 @@ class ConditionalVAETrainer:
     def save_models(self):
         torch.save(self.cvae.state_dict(), self.save_fname)
         print(f"Saved CVAE model to {self.save_fname}")
+        
+        # Save validation indices
+        val_indices_path = f"{self.outdir}/cvae_val_indices.npy"
+        np.save(val_indices_path, self.val_indices)
+        print(f"Saved validation indices to {val_indices_path}")

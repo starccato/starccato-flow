@@ -40,8 +40,17 @@ class FlowMatchingTrainerNew:
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
         start_snr: int = 100,
         end_snr: int = 10,
-        noise_realizations: int = 1  # Number of noise realizations per signal
+        noise_realizations: int = 1,  # Number of noise realizations per signal
+        custom_data: tuple = None  # (signals_array, params_array) for generated data
     ):
+        """Initialize FlowMatchingTrainerNew.
+        
+        Args:
+            custom_data: Optional tuple of (signals, parameters) arrays for using generated data.
+                signals: shape (signal_length, num_samples)
+                parameters: shape (num_samples, num_params)
+                If provided, overrides toy/CCSN data loading.
+        """
         self.y_length = y_length
         self.hidden_dim = hidden_dim
         self.z_dim = z_dim
@@ -60,18 +69,67 @@ class FlowMatchingTrainerNew:
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
 
-        self.training_dataset, self.validation_dataset = create_train_val_split(
-            toy=self.toy,
-            y_length=self.y_length,
-            noise=self.noise,
-            validation_split=self.validation_split,
-            seed=self.seed,
-            num_epochs=self.num_epochs,
-            start_snr=start_snr,
-            end_snr=end_snr,
-            curriculum=self.curriculum,
-            noise_realizations=self.noise_realizations
-        )
+        if custom_data is not None:
+            # Use custom generated data
+            from ..data.ccsn_data import CCSNData
+            
+            signals_array, params_array = custom_data
+            num_samples = params_array.shape[0]
+            
+            # Split indices for train/val
+            base_indices = list(range(num_samples))
+            split = int(np.floor(validation_split * num_samples))
+            
+            rng = np.random.RandomState(seed)
+            rng.shuffle(base_indices)
+            train_indices = base_indices[split:]
+            val_indices = base_indices[:split]
+            
+            print(f"\n=== Custom Data Split ===")
+            print(f"Total samples: {num_samples}")
+            print(f"Training samples: {len(train_indices)}")
+            print(f"Validation samples: {len(val_indices)}")
+            
+            # Create training dataset with custom data
+            self.training_dataset = CCSNData(
+                custom_data=(signals_array[:, train_indices], params_array[train_indices]),
+                noise=noise,
+                curriculum=curriculum,
+                num_epochs=num_epochs,
+                start_snr=start_snr,
+                end_snr=end_snr,
+                noise_realizations=noise_realizations,
+                batch_size=batch_size
+            )
+            
+            # Create validation dataset with custom data
+            self.validation_dataset = CCSNData(
+                custom_data=(signals_array[:, val_indices], params_array[val_indices]),
+                noise=noise,
+                curriculum=False,  # No curriculum for validation
+                num_epochs=num_epochs,
+                start_snr=end_snr,
+                end_snr=end_snr,
+                noise_realizations=1,  # Single realization for validation
+                batch_size=batch_size,
+                shared_min=self.training_dataset.min_parameter,
+                shared_max=self.training_dataset.max_parameter,
+                shared_max_strain=self.training_dataset.max_strain
+            )
+        else:
+            # Use standard train/val split
+            self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
+                toy=self.toy,
+                y_length=self.y_length,
+                noise=self.noise,
+                validation_split=self.validation_split,
+                seed=self.seed,
+                num_epochs=self.num_epochs,
+                start_snr=start_snr,
+                end_snr=end_snr,
+                curriculum=self.curriculum,
+                noise_realizations=self.noise_realizations
+            )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
         self.train_loader = DataLoader(

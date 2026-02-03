@@ -144,7 +144,11 @@ def create_train_val_split(
     training_dataset.verify_alignment()
     validation_dataset.verify_alignment()
     
-    return training_dataset, validation_dataset
+    # Return datasets along with validation indices for later use
+    if toy:
+        return training_dataset, validation_dataset, val_indices
+    else:
+        return training_dataset, validation_dataset, val_base_indices
 
 
 def plot_generated_signal_distribution(

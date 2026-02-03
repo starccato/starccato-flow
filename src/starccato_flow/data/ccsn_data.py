@@ -55,7 +55,8 @@ class CCSNData(BaseDataset, Dataset):
         shared_max_strain: Optional[float] = None,
         generated: bool = False,
         params_df: pd.DataFrame = None,
-        signals_df: pd.DataFrame = None
+        signals_df: pd.DataFrame = None,
+        custom_data: Optional[tuple[np.ndarray, np.ndarray]] = None
     ):
         """Initialize the CCSN dataset.
         
@@ -66,16 +67,34 @@ class CCSNData(BaseDataset, Dataset):
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
             noise_realizations (int): Number of different noise realizations per signal (multiplies dataset size)
+            custom_data (Optional[tuple[np.ndarray, np.ndarray]]): Pre-generated (signals, parameters) arrays.
+                signals: shape (signal_length, num_samples) or (num_samples, signal_length)
+                parameters: shape (num_samples, num_params)
+                If provided, overrides params_df and signals_df.
         """
         self.batch_size = batch_size
         self._current_epoch = 0
         self.num_epochs = num_epochs
         
-        if generated == False:
+        if custom_data is not None:
+            # Use custom pre-generated data
+            signals_array, params_array = custom_data
+            
+            # Ensure signals are in shape (signal_length, num_samples)
+            if signals_array.shape[0] > signals_array.shape[1]:
+                # Likely (num_samples, signal_length), transpose it
+                signals_array = signals_array.T
+            
+            # Create DataFrames for consistent processing
+            signals_df = pd.DataFrame(signals_array.T)  # Transpose to (num_samples, signal_length)
+            params_df = pd.DataFrame(params_array, columns=["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"])
+            
+        elif generated == False:
             # Load data from CSV files
             params_df = pd.read_csv(PARAMETERS_CSV)
             signals_df = pd.read_csv(SIGNALS_CSV).astype("float32").T
         else:
+            # Use provided DataFrames
             params_df = params_df
             signals_df = signals_df
         
