@@ -25,7 +25,7 @@ class CCSNData(BaseDataset, Dataset):
     PARAMETER_LABELS = {
         'beta1_IC_b': r'$\beta_{IC,b}$',
         'omega_0(rad|s)': r'$\omega_0$',
-        'A(km)': r'$\A$',
+        'A(km)': r'$A$',
         'Ye_c_b': r'$Y_{e,c,b}$'
     }
     
@@ -81,9 +81,17 @@ class CCSNData(BaseDataset, Dataset):
             signals_array, params_array = custom_data
             
             # Ensure signals are in shape (signal_length, num_samples)
-            if signals_array.shape[0] > signals_array.shape[1]:
-                # Likely (num_samples, signal_length), transpose it
+            # Check against expected signal length Y_LENGTH (typically 256)
+            if signals_array.shape[0] == Y_LENGTH:
+                # Already in correct format (signal_length, num_samples)
+                pass
+            elif signals_array.shape[1] == Y_LENGTH:
+                # In (num_samples, signal_length) format, transpose it
                 signals_array = signals_array.T
+            else:
+                # Fallback to heuristic: assume larger dimension is signal_length
+                if signals_array.shape[0] > signals_array.shape[1]:
+                    signals_array = signals_array.T
             
             # Create DataFrames for consistent processing
             signals_df = pd.DataFrame(signals_array.T)  # Transpose to (num_samples, signal_length)
@@ -106,11 +114,7 @@ class CCSNData(BaseDataset, Dataset):
         self.rho_target = rho_target
         self.noise_realizations = noise_realizations
 
-        # Remove unusual parameters and corresponding signals
-        keep_idx = params_df["beta1_IC_b"].values > 0
-        # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
-        params_df = params_df[keep_idx]
-        
+        # Select parameter subset before filtering
         if multi_param:
             parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
             # parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)"]
@@ -124,6 +128,11 @@ class CCSNData(BaseDataset, Dataset):
         # Store parameter names for reference
         self.parameter_names = parameter_set
         
+        # Remove unusual parameters and corresponding signals (after selecting columns)
+        keep_idx = params_df["beta1_IC_b"].values > 0
+        # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
+        params_df = params_df[keep_idx]
+        
         # Convert to numpy array and apply log transformations BEFORE computing min/max
         # This brings all parameters to similar scales for better training
         self.parameters = params_df.values.astype(np.float32)
@@ -134,7 +143,7 @@ class CCSNData(BaseDataset, Dataset):
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]
-        signals_df = signals_df[keep_idx]
+        signals_df = signals_df.iloc[keep_idx]
         self.signals = signals_df.values.T
 
         # print(f"Processing {self.signals.shape[1]} signals")

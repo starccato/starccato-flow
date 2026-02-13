@@ -41,7 +41,9 @@ class FlowMatchingTrainerNew:
         start_snr: int = 100,
         end_snr: int = 10,
         noise_realizations: int = 1,  # Number of noise realizations per signal
-        custom_data: tuple = None  # (signals_array, params_array) for generated data
+        custom_data: tuple = None,  # (signals_array, params_array) for generated data
+        train_data_path: str = None,  # Path to training data files (generated signals)
+        val_data_path: str = None  # Path to validation data files (real CVAE val set)
     ):
         """Initialize FlowMatchingTrainerNew.
         
@@ -49,7 +51,14 @@ class FlowMatchingTrainerNew:
             custom_data: Optional tuple of (signals, parameters) arrays for using generated data.
                 signals: shape (signal_length, num_samples)
                 parameters: shape (num_samples, num_params)
-                If provided, overrides toy/CCSN data loading.
+                If provided, overrides toy/CCSN data loading and does train/val split.
+            train_data_path: Path prefix for training data (e.g., 'outdir/generated').
+                Will load {train_data_path}_signals.npy and {train_data_path}_parameters.npy
+            val_data_path: Path prefix for validation data (e.g., 'outdir/cvae_val').
+                Will load {val_data_path}_signals.npy and {val_data_path}_parameters.npy
+                
+        Note: If both train_data_path and val_data_path are provided, they take precedence
+        over custom_data.
         """
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -69,7 +78,52 @@ class FlowMatchingTrainerNew:
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
 
-        if custom_data is not None:
+        # Load data from files if paths are provided
+        if train_data_path is not None and val_data_path is not None:
+            from ..data.ccsn_data import CCSNData
+            
+            print(f"\n=== Loading Data from Files ===")
+            
+            # Load training data (generated signals)
+            train_signals = np.load(f"{train_data_path}_signals.npy")
+            train_params = np.load(f"{train_data_path}_parameters.npy")
+            print(f"Loaded training data: {train_signals.shape[1]} generated signals")
+            
+            # Load validation data (real CVAE validation set)
+            val_signals = np.load(f"{val_data_path}_signals.npy")
+            val_params = np.load(f"{val_data_path}_parameters.npy")
+            print(f"Loaded validation data: {val_signals.shape[1]} real signals (CVAE held-out)")
+            
+            # Create training dataset
+            self.training_dataset = CCSNData(
+                custom_data=(train_signals, train_params),
+                noise=noise,
+                curriculum=curriculum,
+                num_epochs=num_epochs,
+                start_snr=start_snr,
+                end_snr=end_snr,
+                noise_realizations=noise_realizations,
+                batch_size=batch_size,
+                generated=True
+            )
+            
+            # Create validation dataset sharing normalization from training
+            self.validation_dataset = CCSNData(
+                custom_data=(val_signals, val_params),
+                noise=noise,
+                curriculum=False,  # No curriculum for validation
+                num_epochs=num_epochs,
+                start_snr=end_snr,
+                end_snr=end_snr,
+                noise_realizations=1,  # Single realization for validation
+                batch_size=batch_size,
+                shared_min=self.training_dataset.min_parameter,
+                shared_max=self.training_dataset.max_parameter,
+                shared_max_strain=self.training_dataset.max_strain,
+                generated=True
+            )
+            
+        elif custom_data is not None:
             # Use custom generated data
             from ..data.ccsn_data import CCSNData
             

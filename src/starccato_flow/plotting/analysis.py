@@ -189,7 +189,7 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
             labels = [
                 r"$\beta_{IC,b}$",
                 r"$\omega_0$",
-                r"$\A$",
+                r"$A$",
                 r"$Y_{e,c,b}$",
             ]
         else:

@@ -403,7 +403,7 @@ class ConditionalVAETrainer:
         print(f"Training Time: {runtime:.2f} minutes")
         print(f"{'='*60}")
         
-        self.save_models()
+        self.save_data()
 
     def generate_signals_with_params(self, target_params: np.ndarray, num_samples: int = 100) -> np.ndarray:
         """Generate signals with specific parameter values.
@@ -481,11 +481,26 @@ class ConditionalVAETrainer:
     def save_fname(self):
         return f"{self.outdir}/cvae_weights.pt"
 
-    def save_models(self):
+    def save_data(self):
         torch.save(self.cvae.state_dict(), self.save_fname)
         print(f"Saved CVAE model to {self.save_fname}")
         
-        # Save validation indices
-        val_indices_path = f"{self.outdir}/cvae_val_indices.npy"
-        np.save(val_indices_path, self.val_indices)
-        print(f"Saved validation indices to {val_indices_path}")
+        # Save validation signals and parameters (real data for final testing)
+        # Format: signals shape (signal_length, num_samples), params shape (num_samples, param_dim)
+        # This matches the format expected by CCSNData custom_data parameter
+        val_signals_path = f"{self.outdir}/cvae_val_signals.npy"
+        val_params_path = f"{self.outdir}/cvae_val_parameters.npy"
+        
+        # Extract validation signals and parameters from validation dataset
+        # validation_dataset.signals has shape (signal_length, num_val_samples)
+        # validation_dataset.parameters has shape (num_val_samples, param_dim)
+        val_signals = self.validation_dataset.signals  # Shape: (signal_length, num_samples)
+        val_params = self.validation_dataset.parameters  # Shape: (num_samples, param_dim)
+        
+        np.save(val_signals_path, val_signals)
+        np.save(val_params_path, val_params)
+        print(f"Saved validation signals to {val_signals_path}")
+        print(f"  Shape: {val_signals.shape} (signal_length, num_samples)")
+        print(f"Saved validation parameters to {val_params_path}")
+        print(f"  Shape: {val_params.shape} (num_samples, param_dim)")
+        print(f"  Validation set: {val_signals.shape[1]} real signals for final testing")
