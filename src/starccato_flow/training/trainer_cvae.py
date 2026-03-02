@@ -14,6 +14,8 @@ from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, D
 
 from . import create_train_val_split, plot_candidate_signal_method, plot_signal_grid
 
+from ..plotting.signals import plot_reconstruction
+
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
     np.random.seed(seed)
@@ -277,6 +279,13 @@ class ConditionalVAETrainer:
             # Checkpoint: generate signals with fixed parameters
             if (epoch + 1) % self.checkpoint_interval == 0:
                 with torch.no_grad():
+                    # plot reconstruction (take first signal from batch)
+                    plot_reconstruction(
+                        original=val_signal[0].cpu().numpy(),
+                        reconstructed=recon[0].cpu().numpy(),
+                        max_value=self.training_dataset.max_strain / TEN_KPC,
+                    )
+
                     # Generate signals conditioned on fixed parameters
                     # Using fixed noise for visualization consistency across epochs
                     generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
