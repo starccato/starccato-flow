@@ -1,5 +1,6 @@
 """Analysis and visualization functions for model evaluation."""
 
+from pathlib import Path
 from typing import List, Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -20,6 +21,178 @@ from ..utils.plotting_defaults import (
 )
 from . import set_plot_style, get_time_axis
 from .signals import plot_signal_grid, plot_candidate_signal
+
+
+def plot_galactic_distribution(
+    galactic_coords: np.ndarray,
+    sun_location: Optional[np.ndarray] = None,
+    fname_3d: Optional[str] = None,
+    fname_xy: Optional[str] = None,
+    fname_xz: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    scatter_size: float = 0.001,
+    sun_marker_size: float = 100,
+    show: bool = False,
+    dpi: int = 150,
+) -> List[plt.Figure]:
+    """Plot galactic supernova locations in 3D, X-Y, and X-Z views.
+
+    Args:
+        galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
+        sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
+        fname_3d (Optional[str]): Output path for the 3D plot
+        fname_xy (Optional[str]): Output path for the X-Y projection plot
+        fname_xz (Optional[str]): Output path for the X-Z projection plot
+        background (str): Plot theme, either "white" or "black"
+        font_family (str): Font family to use
+        font_name (str): Specific font name to use
+        scatter_size (float): Marker size for supernova points
+        sun_marker_size (float): Marker size for the sun marker
+        show (bool): Whether to keep figures open and display them
+        dpi (int): DPI used when saving output files
+
+    Returns:
+        List[plt.Figure]: The created matplotlib figures in [3D, X-Y, X-Z] order
+    """
+    galactic_coords = np.asarray(galactic_coords)
+    if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
+        raise ValueError("galactic_coords must have shape (N, 3).")
+
+    if sun_location is None:
+        sun_location = np.array([0.0, 8.178, 0.0208], dtype=float)
+    else:
+        sun_location = np.asarray(sun_location, dtype=float)
+        if sun_location.shape != (3,):
+            raise ValueError("sun_location must have shape (3,).")
+
+    x, y, z = galactic_coords.T
+    text_color = "white" if background == "black" else "black"
+    legend_facecolor = "black" if background == "black" else "white"
+    grid_color = "gray"
+    transparent = background == "black"
+    facecolor = "none" if transparent else background
+
+    plt.rcParams["font.family"] = font_family
+    plt.rcParams["font.size"] = 18
+    if font_family == "sans-serif":
+        plt.rcParams["font.sans-serif"] = [font_name]
+    elif font_family == "serif":
+        plt.rcParams["font.serif"] = [font_name]
+
+    def _prepare_output_path(path: Optional[str]) -> Optional[Path]:
+        if path is None:
+            return None
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        return output_path
+
+    def _style_2d_axes(axes: plt.Axes) -> None:
+        axes.tick_params(colors=text_color, labelsize=18)
+        for spine in axes.spines.values():
+            spine.set_color(text_color)
+        axes.set_aspect("equal")
+
+    output_3d = _prepare_output_path(fname_3d)
+    output_xy = _prepare_output_path(fname_xy)
+    output_xz = _prepare_output_path(fname_xz)
+
+    figures: List[plt.Figure] = []
+
+    fig1 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
+    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue")
+    ax1.scatter(
+        sun_location[0],
+        sun_location[1],
+        sun_location[2],
+        s=sun_marker_size,
+        c="yellow",
+        marker="*",
+        label="Sun",
+    )
+    ax1.set_xlabel("X (kpc)", color=text_color, fontsize=22)
+    ax1.set_ylabel("Y (kpc)", color=text_color, fontsize=22)
+    ax1.set_zlabel("Z (kpc)", color=text_color, fontsize=22)
+    ax1.tick_params(colors=text_color, labelsize=18)
+    ax1.set_aspect("equal")
+    ax1.set_zticks([])
+    ax1.xaxis.pane.set_facecolor("none")
+    ax1.xaxis.pane.set_alpha(0)
+    ax1.yaxis.pane.set_facecolor("none")
+    ax1.yaxis.pane.set_alpha(0)
+    ax1.zaxis.pane.set_facecolor("none")
+    ax1.zaxis.pane.set_alpha(0)
+    ax1.xaxis.pane.set_edgecolor(text_color)
+    ax1.yaxis.pane.set_edgecolor(text_color)
+    ax1.zaxis.pane.set_edgecolor(text_color)
+    ax1.grid(color=grid_color, alpha=0.2)
+    ax1.zaxis._axinfo["grid"]["color"] = (0, 0, 0, 0)
+    z_max = max(abs(z.min()), abs(z.max()))
+    ax1.set_zlim(-z_max, z_max)
+    ax1.legend(
+        loc="upper right",
+        facecolor=legend_facecolor,
+        edgecolor=text_color,
+        labelcolor=text_color,
+        fontsize=20,
+    )
+    if output_3d is not None:
+        fig1.savefig(output_3d, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    figures.append(fig1)
+
+    fig2 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    ax2 = fig2.add_subplot(111, facecolor=facecolor)
+    ax2.scatter(x, y, s=scatter_size, c="lightblue", alpha=1, marker="o", label="Supernova")
+    ax2.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax2.set_xlabel("X (kpc)", color=text_color, fontsize=22)
+    ax2.set_ylabel("Y (kpc)", color=text_color, fontsize=22)
+    ax2.set_title(
+        "Simulated Galactic Supernova Distribution in X-Y Plane",
+        color=text_color,
+        fontsize=24,
+        pad=20,
+        fontweight="bold",
+    )
+    _style_2d_axes(ax2)
+    ax2.legend(
+        loc="upper right",
+        facecolor=legend_facecolor,
+        edgecolor=text_color,
+        labelcolor=text_color,
+        fontsize=20,
+    )
+    if output_xy is not None:
+        fig2.savefig(output_xy, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    figures.append(fig2)
+
+    fig3 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    ax3 = fig3.add_subplot(111, facecolor=facecolor)
+    ax3.scatter(x, z, s=scatter_size, c="lightblue", alpha=1, label="Supernova")
+    ax3.scatter(sun_location[0], sun_location[2], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax3.set_xlabel("X (kpc)", color=text_color, fontsize=22)
+    ax3.set_ylabel("Z (kpc)", color=text_color, fontsize=22)
+    _style_2d_axes(ax3)
+    ax3.legend(
+        loc="upper right",
+        facecolor=legend_facecolor,
+        edgecolor=text_color,
+        labelcolor=text_color,
+        fontsize=20,
+    )
+    if output_xz is not None:
+        fig3.savefig(output_xz, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    figures.append(fig3)
+
+    if show:
+        plt.show()
+    else:
+        for figure in figures:
+            plt.close(figure)
+
+    plt.rcdefaults()
+    return figures
 
 
 def plot_reconstruction_distribution(

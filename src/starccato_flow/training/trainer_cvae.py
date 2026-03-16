@@ -355,52 +355,71 @@ class ConditionalVAETrainer:
                     num_cols=4,
                     num_rows=4,
                     fname=f"plots/cvae_generated_signals_epoch_{epoch+1}.svg",
-                    background="white",
+                    background="black",
                     generated=True
                 )
                 
-                # Plot latent space
-                fig = plt.figure(figsize=(15, 5))
+                # Plot latent space (dark style)
+                fig = plt.figure(figsize=(15, 5), facecolor='black')
                 
                 # 2D: dims 0-1
-                ax1 = fig.add_subplot(131)
+                ax1 = fig.add_subplot(131, facecolor='black')
                 scatter1 = ax1.scatter(latent_means[:, 0], latent_means[:, 1], 
                                      c=param_denorm[:, 0], cmap='viridis', 
                                      alpha=0.6, s=20)
-                ax1.set_xlabel('Latent Dim 0', fontsize=11)
-                ax1.set_ylabel('Latent Dim 1', fontsize=11)
-                ax1.set_title('Latent Space (0-1)', fontsize=12)
-                ax1.grid(True, alpha=0.3)
+                ax1.set_xlabel('Latent Dim 0', fontsize=11, color='white')
+                ax1.set_ylabel('Latent Dim 1', fontsize=11, color='white')
+                ax1.set_title('Latent Space (0-1)', fontsize=12, color='white')
+                ax1.tick_params(colors='white')
+                for spine in ax1.spines.values():
+                    spine.set_color('white')
+                ax1.grid(True, alpha=0.3, color='gray')
                 cbar1 = plt.colorbar(scatter1, ax=ax1)
-                cbar1.set_label('β', fontsize=11)
+                cbar1.set_label('β', fontsize=11, color='white')
+                cbar1.ax.yaxis.set_tick_params(color='white', labelcolor='white')
+                cbar1.outline.set_edgecolor('white')
                 
                 # 2D: dims 1-2
-                ax2 = fig.add_subplot(132)
+                ax2 = fig.add_subplot(132, facecolor='black')
                 scatter2 = ax2.scatter(latent_means[:, 1], latent_means[:, 2], 
                                      c=param_denorm[:, 0], cmap='viridis', 
                                      alpha=0.6, s=20)
-                ax2.set_xlabel('Latent Dim 1', fontsize=11)
-                ax2.set_ylabel('Latent Dim 2', fontsize=11)
-                ax2.set_title('Latent Space (1-2)', fontsize=12)
-                ax2.grid(True, alpha=0.3)
+                ax2.set_xlabel('Latent Dim 1', fontsize=11, color='white')
+                ax2.set_ylabel('Latent Dim 2', fontsize=11, color='white')
+                ax2.set_title('Latent Space (1-2)', fontsize=12, color='white')
+                ax2.tick_params(colors='white')
+                for spine in ax2.spines.values():
+                    spine.set_color('white')
+                ax2.grid(True, alpha=0.3, color='gray')
                 cbar2 = plt.colorbar(scatter2, ax=ax2)
-                cbar2.set_label('β', fontsize=11)
+                cbar2.set_label('β', fontsize=11, color='white')
+                cbar2.ax.yaxis.set_tick_params(color='white', labelcolor='white')
+                cbar2.outline.set_edgecolor('white')
                 
                 # 3D view
-                ax3 = fig.add_subplot(133, projection='3d')
+                ax3 = fig.add_subplot(133, projection='3d', facecolor='black')
                 scatter3 = ax3.scatter(latent_means[:, 0], latent_means[:, 1], latent_means[:, 2],
                                      c=param_denorm[:, 0], cmap='viridis', 
                                      alpha=0.6, s=20)
-                ax3.set_xlabel('Latent Dim 0', fontsize=9)
-                ax3.set_ylabel('Latent Dim 1', fontsize=9)
-                ax3.set_zlabel('Latent Dim 2', fontsize=9)
-                ax3.set_title('3D Latent Space', fontsize=12)
+                ax3.set_xlabel('Latent Dim 0', fontsize=9, color='white')
+                ax3.set_ylabel('Latent Dim 1', fontsize=9, color='white')
+                ax3.set_zlabel('Latent Dim 2', fontsize=9, color='white')
+                ax3.set_title('3D Latent Space', fontsize=12, color='white')
+                ax3.tick_params(colors='white')
                 cbar3 = plt.colorbar(scatter3, ax=ax3, pad=0.1, shrink=0.8)
-                cbar3.set_label('β', fontsize=11)
+                cbar3.set_label('β', fontsize=11, color='white')
+                cbar3.ax.yaxis.set_tick_params(color='white', labelcolor='white')
+                cbar3.outline.set_edgecolor('white')
                 
-                plt.suptitle(f'CVAE Latent Space (Epoch {epoch+1})', fontsize=14)
+                plt.suptitle(f'CVAE Latent Space (Epoch {epoch+1})', fontsize=14, color='white')
                 plt.tight_layout()
-                plt.savefig(f'plots/cvae_latent_space_epoch_{epoch+1}.svg', bbox_inches='tight', dpi=150)
+                plt.savefig(
+                    f'plots/cvae_latent_space_epoch_{epoch+1}.svg',
+                    bbox_inches='tight',
+                    dpi=150,
+                    facecolor='black',
+                    edgecolor='none'
+                )
                 plt.close()
                 
                 print(f"  Saved latent space plot to plots/cvae_latent_space_epoch_{epoch+1}.svg")

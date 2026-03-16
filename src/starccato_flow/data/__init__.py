@@ -61,3 +61,9 @@ class BaseDataset:
         params = (params_norm + 1) / 2 * param_range + self.min_parameter
         
         return params
+
+
+# Import main dataset classes for easier access
+from .ccsn_data import CCSNData
+
+__all__ = ['BaseDataset', 'CCSNData']

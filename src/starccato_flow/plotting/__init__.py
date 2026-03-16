@@ -90,6 +90,7 @@ from .latent import (
 )
 
 from .analysis import (
+    plot_galactic_distribution,
     plot_reconstruction_distribution,
     p_p_plot,
     plot_corner,
@@ -124,6 +125,7 @@ __all__ = [
     'create_latent_morph_gif',
     'plot_latent_space_3d',
     # Analysis
+    'plot_galactic_distribution',
     'plot_reconstruction_distribution',
     'p_p_plot',
     'plot_corner',
