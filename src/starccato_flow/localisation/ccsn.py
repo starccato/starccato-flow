@@ -13,12 +13,15 @@ class CCSN:
     SUN_LOCATION = np.array([0.0, 8.178, 0.0208]) # Sun is about 8.178 kpc from galactic center, and ~20.8 pc above the galactic plane
     EARTH_LOCATION = np.array([0.0, 0.0, 0.0])  # Assume that the sun and earth are co-located for simplicity in heliocentric coordinates
     
-    def __init__(self, locations_file: Optional[str] = None, rotation_offset: float = 0.0):
+    def __init__(self, locations_file: Optional[str] = None, rotation_offset: float = 0.0, limit: Optional[int] = None):
         """Initialize CCSN location handler.
         
         Args:
             locations_file: Path to CSV file with galactic coordinates (x_kpc, y_kpc, z_kpc)
                           If None, locations will be generated on demand
+            rotation_offset: Additional rotation angle (in radians) to apply to Earth's orientation.
+                           Positive values rotate eastward. Default is 0 (standard J2000 orientation).
+            limit: Maximum number of locations to load (None for all)
             rotation_offset: Additional rotation angle (in radians) to apply to Earth's orientation.
                            Positive values rotate eastward. Default is 0 (standard J2000 orientation).
         """
@@ -29,13 +32,14 @@ class CCSN:
         self._distances = None
         
         if locations_file is not None:
-            self.load_locations(locations_file)
+            self.load_locations(locations_file, limit)
     
-    def load_locations(self, filepath: str) -> None:
+    def load_locations(self, filepath: str, limit: Optional[int] = None) -> None:
         """Load supernova locations from CSV file.
         
         Args:
             filepath: Path to CSV with columns: x_kpc, y_kpc, z_kpc
+            limit: Maximum number of locations to load (None for all)
         """
         data = pd.read_csv(filepath)
         self._galactic_coords = np.column_stack([
@@ -43,6 +47,11 @@ class CCSN:
             data['y_kpc'].values,
             data['z_kpc'].values
         ])
+
+        if limit is not None:
+            # sample a subset of the locations if limit is specified
+            np.random.shuffle(self._galactic_coords)
+            self._galactic_coords = self._galactic_coords[:limit]
         
         # Compute derived quantities
         self._compute_equatorial_coordinates()
@@ -112,13 +121,20 @@ class CCSN:
         
         return self._galactic_coords
     
+    def sample_locations(self, num_supernovae: int, min_kiloparsec: float = 0.0, max_kiloparsec: float = 16800.0) -> np.ndarray:
+        """Sample supernova locations from existing loaded/generate locations.
+        selected_region = self._galactic_coords[(self._distances >= min_kiloparsec) & (self._distances <= max_kiloparsec)]
+        selected_locations = selected_region[np.random.choice(selected_region.shape[0], size=num_supernovae, replace=False)]
+
+        return selected_locations
+    
     def _compute_distances(self) -> None:
         """Compute distances from Earth to each supernova."""
         if self._galactic_coords is None:
             raise ValueError("No galactic coordinates available. Load or generate locations first.")
         
-        # Heliocentric coordinates (relative to Sun)
-        helio_coords = self._galactic_coords - self.EARTH_LOCATION
+        # Heliocentric coordinates (relative to Sun/Earth location in galactocentric frame)
+        helio_coords = self._galactic_coords - self.SUN_LOCATION
         
         # Distance in kpc
         self._distances = np.linalg.norm(helio_coords, axis=1)

@@ -1,7 +1,8 @@
 """Signal plotting functions for waveform visualization."""
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import matplotlib.patches as mpatches
@@ -78,6 +79,89 @@ def plot_signal_grid(
     if fname:
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
+    plt.show()
+    plt.rcdefaults()
+    return fig, axes
+
+
+def plot_detector_signal_channels(
+    signals: np.ndarray,
+    max_value: float,
+    detector_labels: Sequence[str] = ("H1", "L1", "V1"),
+    fname: Optional[str] = None,
+    generated: bool = False,
+    background: str = "black",
+    font_family: str = DEFAULT_FONT_FAMILY,
+    font_name: str = DEFAULT_FONT,
+) -> Tuple[plt.Figure, np.ndarray]:
+    """Plot 3 detector-channel signals with the same style as ``plot_signal_grid``.
+
+    Notes:
+        - This function intentionally duplicates the styling logic from
+          ``plot_signal_grid`` (per request) instead of calling it.
+        - Expected signal shape is either ``(3, signal_length)`` or
+          ``(signal_length, 3)``.
+    """
+    set_plot_style(background, font_family, font_name)
+
+    signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
+    vline_color = "white" if background == "black" else "black"
+
+    sig = np.asarray(signals)
+    if sig.ndim != 2:
+        raise ValueError(f"signals must be 2D, got shape {sig.shape}")
+
+    if sig.shape[0] == 3:
+        channel_signals = sig
+    elif sig.shape[1] == 3:
+        channel_signals = sig.T
+    else:
+        raise ValueError(
+            "signals must have 3 detector channels in axis 0 or axis 1; "
+            f"got shape {sig.shape}"
+        )
+
+    fig, axes = plt.subplots(3, 1, figsize=(15, 8), sharex=True)
+    d = get_time_axis()
+    x_min, x_max = -0.01, 0.05
+    tick_step = 0.01
+    xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
+    y_expand = 2.25
+    y_min = SIGNAL_LIM_LOWER * y_expand
+    y_max = SIGNAL_LIM_UPPER * y_expand
+
+    for i, ax in enumerate(axes):
+        y = channel_signals[i].flatten() * max_value
+        ax.set_ylim(y_min, y_max)
+        ax.set_xlim(x_min, x_max)
+        ax.plot(d, y, color=signal_colour)
+        ax.margins(x=0.0)
+        ax.set_xmargin(0)
+        ax.autoscale(enable=False, axis='x')
+
+        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+        ax.grid(False)
+        ax.set_title(detector_labels[i])
+        ax.tick_params(axis='x', colors=vline_color)
+        ax.tick_params(axis='y', colors=vline_color)
+
+        for spine in ax.spines.values():
+            spine.set_color(vline_color)
+
+        if i < 2:
+            ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
+
+    axes[-1].set_xticks(xticks)
+    axes[-1].tick_params(axis='x', which='both', labelbottom=True, bottom=True, colors=vline_color)
+    axes[-1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+
+    fig.supxlabel('time (s)', fontsize=20)
+    fig.supylabel('h', fontsize=20)
+
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+
     plt.show()
     plt.rcdefaults()
     return fig, axes
