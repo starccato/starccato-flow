@@ -5,8 +5,10 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from ..data.ccsn_data import CCSNData
-from ..localisation.ccsn import CCSN
+from ..data.s_theta_old import CCSNData
+from ..data.h_theta_multi import hThetaMulti
+from ..localisation.supernovae import Supernovae
+from ..localisation.supernovae import Supernovae
 from tqdm.auto import trange
 
 from ..plotting import plot_corner
@@ -32,6 +34,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
+        samples_per_epoch: int = 10000,
         validation_split: float = 0.1,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
@@ -68,6 +71,7 @@ class FlowMatchingTrainerMulti:
         self.seed = seed
         self.batch_size = batch_size
         self.num_epochs = num_epochs
+        self.samples_per_epoch = samples_per_epoch
         self.validation_split = validation_split
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
@@ -81,7 +85,7 @@ class FlowMatchingTrainerMulti:
         self.noise_realizations = noise_realizations
 
 
-        self.ccsn = CCSN(locations_file='../../exploded_supernovae_t100_sf5.csv') # locations of Galactic supernovae
+        self.supernovae = Supernovae(locations_file='../../exploded_supernovae_t100_sf5.csv') # locations of Galactic supernovae
 
         # Load data from files if paths are provided
         if train_data_path is not None and val_data_path is not None:            
@@ -215,21 +219,6 @@ class FlowMatchingTrainerMulti:
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
-    def make_multi_channel(self, signal):
-        """Convert single-channel signal to multi-channel by creating shifted versions."""
-        # signal shape: (batch_size, signal_length)
-        batch_size, signal_length = signal.shape
-        
-        # Create multi-channel by shifting the signal
-        channel_1 = signal  # Original signal
-        channel_2 = torch.roll(signal, shifts=1, dims=1)  # Shifted right by 1
-        channel_3 = torch.roll(signal, shifts=-1, dims=1)  # Shifted left by 1
-        
-        # Stack channels: (batch_size, signal_length) -> (batch_size, 3, signal_length)
-        multi_channel_signal = torch.stack([channel_1, channel_2, channel_3], dim=1)
-        
-        return multi_channel_signal
-
     def train(self):
         t0 = time.time()
 
@@ -244,10 +233,28 @@ class FlowMatchingTrainerMulti:
             self.val_loader.dataset.set_epoch(epoch)
             self.train_loader.dataset.set_epoch(epoch)
 
-            # make new generation of data here
-            
+            # sample supernovae locations for this epoch (if using CCSN data)
+            min_kiloparsec = epoch / self.num_epochs * 20.0  # Linearly increase max distance from 0 to 20 kpc over training
+            max_kiloparsec = epoch / self.num_epochs * 20.0 + 1.0  # Also increase min distance to focus on more distant supernovae
+            sampled_locations = self.supernovae.sample_locations(num_supernovae=self.samples_per_epoch, min_kiloparsec=min_kiloparsec, max_kiloparsec=max_kiloparsec)
+            # print(f"Sampled locations (kpc): {sampled_locations[:, 2]}")
 
-            for signal, noisy_signal, params in self.train_loader:
+            # make new generation of data here
+            signals = []
+            params = []
+            for _ in range(self.samples_per_epoch // self.batch_size):
+                # Your data generation logic here
+                # sample [batch_size] signals from the training dataset
+                sample = self.training_dataset[np.random.choice(len(self.training_dataset), self.batch_size, replace=False)]
+                signal, _, params = sample
+                signals.append(signal)
+                params.append(params)
+
+            # create multi-channel signals
+            self.h_theta_multi = hThetaMulti(s=signals, max_strain=self.training_dataset.max_strain, theta=params, min_max_paramters=(self.training_dataset.min_theta, self.training_dataset.max_theta), ra=sampled_locations[0], dec=sampled_locations[1], d=sampled_locations[2], batch_size=self.batch_size)
+
+            for signal, noisy_signal, params in self.h_theta_multi:
+                print(f"Signal shape: {signal.shape}, Noisy signal shape: {noisy_signal.shape}, Params shape: {params.shape}")
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)

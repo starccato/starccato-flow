@@ -9,9 +9,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .ccsn_data import CCSNData
-from ..localisation.ccsn import CCSN
-from ..localisation.ccsn import CCSNLocations
+from .s_theta_old import CCSNData
+from ..localisation.supernovae import CCSN
+from ..localisation.supernovae import CCSNLocations
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE
 
 

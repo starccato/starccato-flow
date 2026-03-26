@@ -4,8 +4,8 @@ import time
 import numpy as np
 import torch
 
-from ..data.toy_data import ToyData
-from ..data.ccsn_data import CCSNData
+from ..data.s_theta_toy import ToyData
+from ..data.s_theta_old import CCSNData
 from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
 from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
 

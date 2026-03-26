@@ -80,7 +80,7 @@ class FlowMatchingTrainerNew:
 
         # Load data from files if paths are provided
         if train_data_path is not None and val_data_path is not None:
-            from ..data.ccsn_data import CCSNData
+            from ..data.s_theta_old import CCSNData
             
             print(f"\n=== Loading Data from Files ===")
             
@@ -125,7 +125,7 @@ class FlowMatchingTrainerNew:
             
         elif custom_data is not None:
             # Use custom generated data
-            from ..data.ccsn_data import CCSNData
+            from ..data.s_theta_old import CCSNData
             
             signals_array, params_array = custom_data
             num_samples = params_array.shape[0]

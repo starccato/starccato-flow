@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 
-class CCSN:
+class Supernovae:
     """Manages supernova locations in galactic and equatorial coordinates."""
     
     # Earth's position in galactic coordinates (kpc)
@@ -14,7 +14,7 @@ class CCSN:
     EARTH_LOCATION = np.array([0.0, 0.0, 0.0])  # Assume that the sun and earth are co-located for simplicity in heliocentric coordinates
     
     def __init__(self, locations_file: Optional[str] = None, rotation_offset: float = 0.0, limit: Optional[int] = None):
-        """Initialize CCSN location handler.
+        """Initialize supernova location handler.
         
         Args:
             locations_file: Path to CSV file with galactic coordinates (x_kpc, y_kpc, z_kpc)
@@ -122,7 +122,7 @@ class CCSN:
         return self._galactic_coords
     
     def sample_locations(self, num_supernovae: int, min_kiloparsec: float = 0.0, max_kiloparsec: float = 16800.0) -> np.ndarray:
-        """Sample supernova locations from existing loaded/generate locations.
+        """Sample supernova locations from region between min_kiloparsec and max_kiloparsec from Earth.
         selected_region = self._galactic_coords[(self._distances >= min_kiloparsec) & (self._distances <= max_kiloparsec)]
         selected_locations = selected_region[np.random.choice(selected_region.shape[0], size=num_supernovae, replace=False)]
 

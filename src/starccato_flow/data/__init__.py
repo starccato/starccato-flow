@@ -64,7 +64,7 @@ class BaseDataset:
 
 
 # Import main dataset classes for easier access
-from .ccsn_data import CCSNData
-from .ccsn_multi_channel import CCSNDataMultiChannel, create_multi_channel_from_ccsn
+from .s_theta_old import CCSNData
+from .h_theta_multi_old import CCSNDataMultiChannel, create_multi_channel_from_ccsn
 
 __all__ = ['BaseDataset', 'CCSNData', 'CCSNDataMultiChannel', 'create_multi_channel_from_ccsn']

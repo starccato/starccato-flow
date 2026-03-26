@@ -1,5 +1,5 @@
 import numpy as np
-from starccato_flow.data.ccsn_data import CCSNData
+from starccato_flow.data.s_theta_old import CCSNData
 
 def test_ccsn_data_initialization():
     """Test basic initialization and properties of CCSNData"""
