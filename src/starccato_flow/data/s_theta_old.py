@@ -178,6 +178,10 @@ class CCSNData(BaseDataset, Dataset):
             self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
             self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
 
+        # Backward/forward compatible aliases: use theta naming across training code.
+        self.min_theta = self.min_parameter
+        self.max_theta = self.max_parameter
+
         self.PSD = self.AdvLIGOPsd(fourier_freq)
         self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)
 

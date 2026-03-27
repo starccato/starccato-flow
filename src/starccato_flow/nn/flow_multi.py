@@ -4,7 +4,7 @@ from torch import Tensor
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM
 
 class Flow(nn.Module):
-    def __init__(self, dim: int = 2, signal_dim: int = Y_LENGTH, h: int = HIDDEN_DIM):
+    def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM):
         super().__init__()
         # Encode signal separately first
         self.signal_encoder = nn.Sequential(
@@ -19,6 +19,10 @@ class Flow(nn.Module):
         )
     
     def forward(self, x_t: Tensor, t: Tensor, h: Tensor) -> Tensor:
+        # Accept either flattened signals (B, 3*Y_LENGTH) or channel-first (B, 3, Y_LENGTH).
+        if h.dim() == 3:
+            h = h.view(h.size(0), -1)
+
         h_encoded = self.signal_encoder(h)
         return self.net(torch.cat((t, x_t, h_encoded), -1))
     

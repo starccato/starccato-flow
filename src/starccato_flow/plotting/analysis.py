@@ -327,7 +327,7 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
         samples_cpu (np.ndarray): Posterior samples as numpy array, shape (num_samples, num_params)
         true_params (np.ndarray): True parameter values as numpy array, shape (num_params,)
         fname (str): Filename to save plot
-        dataset: Optional dataset object (CCSNData or ToyData) to extract parameter metadata
+        dataset: Optional dataset object (CCSNData or sThetaToy) to extract parameter metadata
         labels (list): Optional custom labels for parameters. If None, will be inferred from dataset or num_params
         ranges (list): Optional custom ranges for parameters as list of tuples [(min, max), ...]
     """

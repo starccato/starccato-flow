@@ -122,7 +122,7 @@ class Supernovae:
         return self._galactic_coords
     
     def sample_locations(self, num_supernovae: int, min_kiloparsec: float = 0.0, max_kiloparsec: float = 16800.0) -> np.ndarray:
-        """Sample supernova locations from region between min_kiloparsec and max_kiloparsec from Earth.
+        """Sample supernova locations from region between min_kiloparsec and max_kiloparsec from Earth."""
         selected_region = self._galactic_coords[(self._distances >= min_kiloparsec) & (self._distances <= max_kiloparsec)]
         selected_locations = selected_region[np.random.choice(selected_region.shape[0], size=num_supernovae, replace=False)]
 
@@ -357,21 +357,3 @@ class Supernovae:
     def __len__(self) -> int:
         """Return number of locations."""
         return len(self._galactic_coords) if self._galactic_coords is not None else 0
-    
-    def __repr__(self) -> str:
-        if self._galactic_coords is None:
-            return "CCSNLocations(no locations loaded)"
-        
-        n = len(self._galactic_coords)
-        ra_range = (np.rad2deg(self.ra.min()), np.rad2deg(self.ra.max()))
-        dec_range = (np.rad2deg(self.dec.min()), np.rad2deg(self.dec.max()))
-        dist_range = (self.distances.min(), self.distances.max())
-        
-        return (f"CCSNLocations({n} supernovae)\n"
-                f"  RA range: [{ra_range[0]:.1f}°, {ra_range[1]:.1f}°]\n"
-                f"  Dec range: [{dec_range[0]:.1f}°, {dec_range[1]:.1f}°]\n"
-                f"  Distance range: [{dist_range[0]:.2f}, {dist_range[1]:.2f}] kpc")
-
-
-# Backward compatibility: older modules import `CCSNLocations`.
-CCSNLocations = CCSN

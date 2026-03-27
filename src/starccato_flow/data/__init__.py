@@ -1,10 +1,19 @@
 """Base classes and utilities for dataset handling."""
 
-import numpy as np
-
 
 class BaseDataset:
     """Base class with shared functionality for all datasets."""
+
+    def _get_parameter_bounds(self):
+        """Return parameter normalization bounds across legacy/new attribute names."""
+        if hasattr(self, "min_theta") and hasattr(self, "max_theta"):
+            return self.min_theta, self.max_theta
+        if hasattr(self, "min_parameter") and hasattr(self, "max_parameter"):
+            return self.min_parameter, self.max_parameter
+        raise AttributeError(
+            "Dataset is missing parameter bounds. Expected either "
+            "(min_theta, max_theta) or (min_parameter, max_parameter)."
+        )
     
     def normalise_signals(self, signal):
         """Normalize signals by dividing by max strain.
@@ -39,9 +48,11 @@ class BaseDataset:
         """
         params_norm = params.copy()
         
+        min_params, max_params = self._get_parameter_bounds()
+
         # Min-max normalization: (x - min) / (max - min) * 2 - 1
-        param_range = self.max_parameter - self.min_parameter
-        params_norm = 2 * (params - self.min_parameter) / param_range - 1
+        param_range = max_params - min_params
+        params_norm = 2 * (params - min_params) / param_range - 1
         
         return params_norm
     
@@ -56,15 +67,17 @@ class BaseDataset:
         """
         params = params_norm.copy()
         
+        min_params, max_params = self._get_parameter_bounds()
+
         # Reverse normalization: x = (x_norm + 1) / 2 * (max - min) + min
-        param_range = self.max_parameter - self.min_parameter
-        params = (params_norm + 1) / 2 * param_range + self.min_parameter
+        param_range = max_params - min_params
+        params = (params_norm + 1) / 2 * param_range + min_params
         
         return params
 
 
 # Import main dataset classes for easier access
-from .s_theta_old import CCSNData
-from .h_theta_multi_old import CCSNDataMultiChannel, create_multi_channel_from_ccsn
+from .h_theta_multi import hThetaMulti
+from .s_theta import sTheta
 
-__all__ = ['BaseDataset', 'CCSNData', 'CCSNDataMultiChannel', 'create_multi_channel_from_ccsn']
+__all__ = ['BaseDataset', 'sTheta']

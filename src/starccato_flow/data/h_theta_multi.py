@@ -9,9 +9,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .s_theta_old import CCSNData
-from ..localisation.supernovae import CCSN
-from ..localisation.supernovae import CCSNLocations
+from .s_theta import sTheta
+from ..localisation.supernovae import Supernovae
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE
 
 class hThetaMulti(Dataset):
@@ -41,22 +40,78 @@ class hThetaMulti(Dataset):
         d: Optional[np.ndarray] = None,
         random_polarization: bool = True,
         gps_time: float = 1457654242.0,
+        seed: int = 99,
+        noise_realizations: int = 1,
+        rho_target: float = 10.0,
+        curriculum: bool = False,
+        num_epochs: int = 1,
+        start_snr: float = 100.0,
+        end_snr: float = 10.0,
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
         self.noise = noise
-        self.s = s
+        self.s = self._coerce_signal_matrix(s)
         self.max_strain = max_strain
-        self.theta = theta
-        self.min_theta = min_theta
-        self.max_theta = max_theta
-        self.min_theta = None
-        self.max_theta = None
-        self.ra = ra
-        self.dec = dec
-        self.d = d
+        self.theta = self._coerce_theta_matrix(theta)
+        self.ra = np.asarray(ra, dtype=np.float32) if ra is not None else None
+        self.dec = np.asarray(dec, dtype=np.float32) if dec is not None else None
+        self.d = np.asarray(d, dtype=np.float32) if d is not None else None
         self.random_polarization = random_polarization
         self.gps_time = float(gps_time)
+        self.seed = seed
+        self.noise_realizations = noise_realizations
+        self.rho_target = rho_target
+        self.curriculum = curriculum
+        self.num_epochs = num_epochs
+        self.start_snr = start_snr
+        self.end_snr = end_snr
+        self._current_epoch = 0
+        self.include_sky_params = True
+
+        n_samples = self.s.shape[1]
+        if self.ra is None or self.dec is None or self.d is None:
+            raise ValueError("hThetaMulti requires ra, dec, and d arrays.")
+        if self.ra.shape[0] != n_samples or self.dec.shape[0] != n_samples or self.d.shape[0] != n_samples:
+            raise ValueError(
+                "Sky parameter lengths must match number of signal samples. "
+                f"Got s={n_samples}, ra={self.ra.shape[0]}, dec={self.dec.shape[0]}, d={self.d.shape[0]}."
+            )
+
+        rng = np.random.default_rng(self.seed)
+        if self.random_polarization:
+            self.polar_angle = rng.uniform(0.0, np.pi, size=n_samples).astype(np.float32)
+        else:
+            self.polar_angle = np.zeros(n_samples, dtype=np.float32)
+
+        sky_params = np.column_stack([self.ra, self.dec, self.d, self.polar_angle]).astype(np.float32)
+        self.parameters = np.concatenate([self.theta, sky_params], axis=1)
+
+        theta_dim = self.theta.shape[1]
+        if min_theta is not None and max_theta is not None:
+            base_min = np.asarray(min_theta, dtype=np.float32)
+            base_max = np.asarray(max_theta, dtype=np.float32)
+        else:
+            base_min = self.theta.min(axis=0).astype(np.float32)
+            base_max = self.theta.max(axis=0).astype(np.float32)
+
+        if base_min.shape[0] == self.parameters.shape[1] and base_max.shape[0] == self.parameters.shape[1]:
+            self.min_theta = base_min
+            self.max_theta = base_max
+        elif base_min.shape[0] == theta_dim and base_max.shape[0] == theta_dim:
+            sky_min = np.array([self.ra.min(), self.dec.min(), self.d.min(), 0.0], dtype=np.float32)
+            sky_max = np.array([self.ra.max(), self.dec.max(), self.d.max(), np.pi], dtype=np.float32)
+            self.min_theta = np.concatenate([base_min, sky_min]).astype(np.float32)
+            self.max_theta = np.concatenate([base_max, sky_max]).astype(np.float32)
+        else:
+            raise ValueError(
+                "min_theta/max_theta dimensions do not match either theta or combined parameter dimensions. "
+                f"theta_dim={theta_dim}, combined_dim={self.parameters.shape[1]}, "
+                f"min_dim={base_min.shape[0]}, max_dim={base_max.shape[0]}"
+            )
+
+        if self.max_strain is None:
+            self.max_strain = np.max(np.abs(self.s))
         
         # Multi-detector setup
         self.detectors = detectors
@@ -64,13 +119,13 @@ class hThetaMulti(Dataset):
         bilby_detector = importlib.import_module("bilby.gw.detector")
         self.ifos = [bilby_detector.get_empty_interferometer(det_name) for det_name in detectors]
         
-        # Set up PSD for noise generation
+        # Set up PSD for noise generation.
         is_even = (Y_LENGTH % 2 == 0)
         half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
         delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
         fourier_freq = np.arange(half_N + 1) * delta_f
         self.PSD = self.AdvLIGOPsd(fourier_freq)
-        self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)
+        self.signal_rfft = np.fft.rfft(self.s / TEN_KPC, axis=0)
         
         # Project signals to multiple detectors
         self.multi_channel_signals = self._project_to_detectors()
@@ -104,13 +159,63 @@ class hThetaMulti(Dataset):
         
         print(f"\n=== Multi-Channel Dataset Info ===")
         print(f"Detectors: {', '.join(self.detectors)} ({self.num_detectors} channels)")
-        print(f"Signals per channel: {self.signals.shape[1]}")
+        print(f"Signals per channel: {self.s.shape[1]}")
         print(f"Multi-channel shape: {self.multi_channel_signals.shape}")
         print(f"Parameter dimension: {self.param_dim}")
         if self.include_sky_params:
-            print(f"Parameters: physical (4) + sky (3) = {self.param_dim}")
-            print(f"Sky parameters included: RA, Dec, distance")
+            print(f"Parameters include theta + sky: [ra, dec, d, polar_angle]")
         print("=" * 50)
+
+    @staticmethod
+    def _coerce_signal_matrix(s):
+        """Convert incoming signals to shape (Y_LENGTH, n_samples)."""
+        if s is None:
+            raise ValueError("hThetaMulti requires non-empty 's' input.")
+
+        if isinstance(s, list):
+            if len(s) == 0:
+                raise ValueError("hThetaMulti received an empty signal list.")
+            s = torch.cat([
+                item.detach().cpu() if isinstance(item, torch.Tensor) else torch.as_tensor(item)
+                for item in s
+            ], dim=0).numpy()
+        elif isinstance(s, torch.Tensor):
+            s = s.detach().cpu().numpy()
+        else:
+            s = np.asarray(s)
+
+        if s.ndim != 2:
+            raise ValueError(f"Expected 2D signal matrix, got shape {s.shape}.")
+
+        if s.shape[0] != Y_LENGTH and s.shape[1] == Y_LENGTH:
+            s = s.T
+        if s.shape[0] != Y_LENGTH:
+            raise ValueError(f"Signal matrix must have Y_LENGTH={Y_LENGTH} rows; got shape {s.shape}.")
+
+        return s.astype(np.float32)
+
+    @staticmethod
+    def _coerce_theta_matrix(theta):
+        """Convert incoming parameters to shape (n_samples, n_params)."""
+        if theta is None:
+            raise ValueError("hThetaMulti requires non-empty 'theta' input.")
+
+        if isinstance(theta, list):
+            if len(theta) == 0:
+                raise ValueError("hThetaMulti received an empty theta list.")
+            theta = torch.cat([
+                item.detach().cpu() if isinstance(item, torch.Tensor) else torch.as_tensor(item)
+                for item in theta
+            ], dim=0).numpy()
+        elif isinstance(theta, torch.Tensor):
+            theta = theta.detach().cpu().numpy()
+        else:
+            theta = np.asarray(theta)
+
+        if theta.ndim != 2:
+            raise ValueError(f"Expected 2D theta matrix, got shape {theta.shape}.")
+
+        return theta.astype(np.float32)
     
     def AdvLIGOPsd(self, f):
         """Advanced LIGO power spectral density."""
@@ -196,15 +301,15 @@ class hThetaMulti(Dataset):
     def normalize_parameters(self, params):
         """Normalize parameters to [-1, 1] range."""
         params_norm = params.copy()
-        param_range = self.max_parameter - self.min_parameter
-        params_norm = 2 * (params - self.min_parameter) / param_range - 1
+        param_range = self.max_theta - self.min_theta
+        params_norm = 2 * (params - self.min_theta) / param_range - 1
         return params_norm
     
     def denormalize_parameters(self, params_norm):
         """Denormalize parameters from [-1, 1] back to original ranges."""
         params = params_norm.copy()
-        param_range = self.max_parameter - self.min_parameter
-        params = (params_norm + 1) / 2 * param_range + self.min_parameter
+        param_range = self.max_theta - self.min_theta
+        params = (params_norm + 1) / 2 * param_range + self.min_theta
         return params
     
     # def _generate_sky_params(self, n_samples: int, seed: Optional[int] = None) -> np.ndarray:
@@ -236,18 +341,17 @@ class hThetaMulti(Dataset):
         Returns:
             Array of shape (n_samples, num_detectors, signal_length)
         """
-        n_samples = self.signals.shape[1]
+        n_samples = self.s.shape[1]
         multi_channel = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
         t = np.arange(Y_LENGTH) * SAMPLING_RATE
         h_cross = np.zeros(Y_LENGTH, dtype=np.float32) # assume cross-polarization is zero for these templates
-        rng = np.random.default_rng(self.seed)
         
         print(f"Projecting signals to {self.num_detectors} detectors...")
         
         for i in range(n_samples):
-            h_plus = self.signals[:, i]  # Shape: (Y_LENGTH,)
+            h_plus = self.s[:, i]  # Shape: (Y_LENGTH,)
 
-            psi = rng.uniform(0, np.pi) if self.random_polarization else 0.0 # random polarisation angle in [0, pi]
+            psi = float(self.polar_angle[i])
             gps = self.gps_time
 
             # compute detector delays first; use relative stream delays.
@@ -304,7 +408,8 @@ class hThetaMulti(Dataset):
         
         # Get multi-channel signal (already projected)
         # Copy so normalization/noise operations do not mutate cached dataset arrays.
-        multi_signal = self.multi_channel_signals[original_idx].copy()  # Shape: (num_detectors, Y_LENGTH)
+        clean_signal = self.multi_channel_signals[original_idx].copy()  # Shape: (num_detectors, Y_LENGTH)
+        noisy_signal = clean_signal.copy()
         
         # Get parameters
         parameters = self.parameters[original_idx]
@@ -313,7 +418,7 @@ class hThetaMulti(Dataset):
         if self.noise:
             for j in range(self.num_detectors):
                 # Get signal for this detector
-                s = multi_signal[j:j+1, :]  # Shape: (1, Y_LENGTH)
+                s = clean_signal[j:j+1, :]  # Shape: (1, Y_LENGTH)
                 
                 # Compute SNR (using base class method)
                 s_normalized = s / TEN_KPC
@@ -329,18 +434,18 @@ class hThetaMulti(Dataset):
                 d = d_normalized * 3.086e+22
                 
                 # Normalize
-                multi_signal[j:j+1, :] = self.normalise_signals(d)
+                noisy_signal[j:j+1, :] = self.normalise_signals(d)
         else:
-            # No noise: normalize clean signals
-            for j in range(self.num_detectors):
-                s = multi_signal[j:j+1, :]
-                multi_signal[j:j+1, :] = self.normalise_signals(s)
+            noisy_signal = self.normalise_signals(noisy_signal)
+
+        clean_signal = self.normalise_signals(clean_signal)
         
         # Normalize parameters
         params_normalized = self.normalize_parameters(parameters.reshape(1, -1))[0]
         
         return (
-            torch.tensor(multi_signal, dtype=torch.float32, device=DEVICE),
+            torch.tensor(clean_signal, dtype=torch.float32, device=DEVICE),
+            torch.tensor(noisy_signal, dtype=torch.float32, device=DEVICE),
             torch.tensor(params_normalized, dtype=torch.float32, device=DEVICE)
         )
     
@@ -367,7 +472,7 @@ class hThetaMulti(Dataset):
     
     def __len__(self) -> int:
         """Return total number of samples (including noise realizations)."""
-        return self.signals.shape[1] * self.noise_realizations
+        return self.s.shape[1] * self.noise_realizations
     
     def set_epoch(self, epoch: int) -> None:
         """Update the current epoch number for curriculum learning."""
@@ -381,7 +486,7 @@ class hThetaMulti(Dataset):
         return self._current_epoch
     
     def __repr__(self) -> str:
-        return (f"CCSNDataMultiChannel({self.signals.shape[1]} samples × {self.num_detectors} detectors)\n"
+        return (f"CCSNDataMultiChannel({self.s.shape[1]} samples × {self.num_detectors} detectors)\n"
                 f"  Detectors: {', '.join(self.detectors)}\n"
                 f"  Multi-channel shape: {self.multi_channel_signals.shape}\n"
                 f"  Parameters: {self.param_dim}D")

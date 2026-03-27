@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from ..data.s_theta_old import CCSNData
+from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
 from ..localisation.supernovae import Supernovae
 from ..localisation.supernovae import Supernovae
@@ -14,7 +14,7 @@ from tqdm.auto import trange
 from ..plotting import plot_corner
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
-from ..nn.flow import Flow
+from ..nn.flow_multi import Flow
 
 from . import create_train_val_split, plot_candidate_signal_method, display_results_method
 
@@ -83,6 +83,7 @@ class FlowMatchingTrainerMulti:
         self.start_snr = start_snr
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
+        self.sky_param_dim = 4
 
 
         self.supernovae = Supernovae(locations_file='../../exploded_supernovae_t100_sf5.csv') # locations of Galactic supernovae
@@ -102,7 +103,7 @@ class FlowMatchingTrainerMulti:
             print(f"Loaded validation data: {val_signals.shape[1]} real signals (CVAE held-out)")
             
             # Create training dataset
-            self.training_dataset = CCSNData(
+            self.training_dataset = sTheta(
                 custom_data=(train_signals, train_params),
                 noise=noise,
                 curriculum=curriculum,
@@ -115,7 +116,7 @@ class FlowMatchingTrainerMulti:
             )
             
             # Create validation dataset sharing normalization from training
-            self.validation_dataset = CCSNData(
+            self.validation_dataset = sTheta(
                 custom_data=(val_signals, val_params),
                 noise=noise,
                 curriculum=False,  # No curriculum for validation
@@ -151,7 +152,7 @@ class FlowMatchingTrainerMulti:
             print(f"Validation samples: {len(val_indices)}")
             
             # Create training dataset with custom data
-            self.training_dataset = CCSNData(
+            self.training_dataset = sTheta(
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
                 noise=noise,
                 curriculum=curriculum,
@@ -163,7 +164,7 @@ class FlowMatchingTrainerMulti:
             )
             
             # Create validation dataset with custom data
-            self.validation_dataset = CCSNData(
+            self.validation_dataset = sTheta(
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
                 noise=noise,
                 curriculum=False,  # No curriculum for validation
@@ -172,8 +173,8 @@ class FlowMatchingTrainerMulti:
                 end_snr=end_snr,
                 noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
-                shared_min=self.training_dataset.min_parameter,
-                shared_max=self.training_dataset.max_parameter,
+                shared_min=self.training_dataset.min_theta,
+                shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain
             )
         else:
@@ -214,8 +215,11 @@ class FlowMatchingTrainerMulti:
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        # Get parameter dimension (2 for toy data with two moons)
-        self.flow = Flow(dim=self.training_dataset.parameters.shape[1]).to(DEVICE)
+        # Multi-detector setup uses 3 channels and appends [ra, dec, d, polar_angle] to theta.
+        base_param_dim = self.training_dataset.parameters.shape[1]
+        self.flow_param_dim = base_param_dim + (self.sky_param_dim if not self.toy else 0)
+        self.flow_signal_dim = Y_LENGTH * 3 if not self.toy else Y_LENGTH
+        self.flow = Flow(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
@@ -236,28 +240,79 @@ class FlowMatchingTrainerMulti:
             # sample supernovae locations for this epoch (if using CCSN data)
             min_kiloparsec = epoch / self.num_epochs * 20.0  # Linearly increase max distance from 0 to 20 kpc over training
             max_kiloparsec = epoch / self.num_epochs * 20.0 + 1.0  # Also increase min distance to focus on more distant supernovae
-            sampled_locations = self.supernovae.sample_locations(num_supernovae=self.samples_per_epoch, min_kiloparsec=min_kiloparsec, max_kiloparsec=max_kiloparsec)
-            # print(f"Sampled locations (kpc): {sampled_locations[:, 2]}")
+            # Sample valid sky parameters (RA, Dec, distance) for this epoch.
+            distance_mask = (
+                (self.supernovae.distances >= min_kiloparsec)
+                & (self.supernovae.distances <= max_kiloparsec)
+            )
+            candidate_indices = np.where(distance_mask)[0]
+            if candidate_indices.size == 0:
+                raise ValueError(
+                    f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
+                )
+            sampled_indices = np.random.choice(
+                candidate_indices,
+                size=self.samples_per_epoch,
+                replace=candidate_indices.size < self.samples_per_epoch,
+            )
+            sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
+            sampled_ra = sampled_sky_params[:, 0]
+            sampled_dec = sampled_sky_params[:, 1]
+            sampled_d = sampled_sky_params[:, 2]
 
             # make new generation of data here
             signals = []
             params = []
-            for _ in range(self.samples_per_epoch // self.batch_size):
-                # Your data generation logic here
-                # sample [batch_size] signals from the training dataset
-                sample = self.training_dataset[np.random.choice(len(self.training_dataset), self.batch_size, replace=False)]
-                signal, _, params = sample
-                signals.append(signal)
-                params.append(params)
+            remaining = self.samples_per_epoch
+            while remaining > 0:
+                current_batch_size = min(self.batch_size, remaining)
+                # Sample scalar indices and assemble a batch manually; Dataset.__getitem__ expects int idx.
+                batch_indices = np.random.choice(
+                    len(self.training_dataset),
+                    current_batch_size,
+                    replace=len(self.training_dataset) < current_batch_size,
+                )
+                batch_samples = [self.training_dataset[int(idx)] for idx in batch_indices]
+
+                batch_signals = torch.cat([sample[0] for sample in batch_samples], dim=0)
+                batch_params = torch.cat([sample[2] for sample in batch_samples], dim=0)
+
+                signals.append(batch_signals)
+                params.append(batch_params)
+                remaining -= current_batch_size
 
             # create multi-channel signals
-            self.h_theta_multi = hThetaMulti(s=signals, max_strain=self.training_dataset.max_strain, theta=params, min_max_paramters=(self.training_dataset.min_theta, self.training_dataset.max_theta), ra=sampled_locations[0], dec=sampled_locations[1], d=sampled_locations[2], batch_size=self.batch_size)
+            self.h_theta_multi = hThetaMulti(
+                s=signals,
+                max_strain=self.training_dataset.max_strain,
+                theta=params,
+                min_theta=self.training_dataset.min_theta,
+                max_theta=self.training_dataset.max_theta,
+                ra=sampled_ra,
+                dec=sampled_dec,
+                d=sampled_d,
+                batch_size=self.batch_size,
+                noise=False
+            )
 
             for signal, noisy_signal, params in self.h_theta_multi:
-                print(f"Signal shape: {signal.shape}, Noisy signal shape: {noisy_signal.shape}, Params shape: {params.shape}")
+                # Iterating the Dataset directly yields single samples (not batches).
+                # Ensure tensors are batch-first before flattening.
+                if signal.dim() == 2:
+                    signal = signal.unsqueeze(0)
+                if noisy_signal.dim() == 2:
+                    noisy_signal = noisy_signal.unsqueeze(0)
+                if params.dim() == 1:
+                    params = params.unsqueeze(0)
+
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
-                noisy_signal = noisy_signal.view(signal.size(0), -1).to(DEVICE)
+                noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
+
+                if params.size(-1) != self.flow_param_dim:
+                    raise ValueError(
+                        f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params.size(-1)}"
+                    )
 
                 x_0 = torch.randn_like(params)  # noise in parameter space
                 t = torch.rand(len(params), 1, device=DEVICE)  # random time values on correct device
@@ -289,6 +344,24 @@ class FlowMatchingTrainerMulti:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
+
+                    # Validation dataset is single-channel theta-only; adapt shape for multi-channel flow model.
+                    if val_noisy_signal.size(1) != self.flow_signal_dim:
+                        repeats = self.flow_signal_dim // val_noisy_signal.size(1)
+                        if repeats * val_noisy_signal.size(1) != self.flow_signal_dim:
+                            raise ValueError(
+                                f"Cannot adapt validation signal dim {val_noisy_signal.size(1)} to {self.flow_signal_dim}"
+                            )
+                        val_noisy_signal = val_noisy_signal.repeat(1, repeats)
+
+                    if val_params.size(1) != self.flow_param_dim:
+                        missing = self.flow_param_dim - val_params.size(1)
+                        if missing < 0:
+                            raise ValueError(
+                                f"Validation parameter dimension {val_params.size(1)} exceeds model dim {self.flow_param_dim}"
+                            )
+                        pad = torch.zeros(val_params.size(0), missing, device=DEVICE, dtype=val_params.dtype)
+                        val_params = torch.cat([val_params, pad], dim=1)
 
                     x_0 = torch.randn_like(val_params)  # noise in parameter space
                     t = torch.rand(len(val_params), 1, device=DEVICE)  # random time values on correct device

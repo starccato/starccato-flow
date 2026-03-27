@@ -20,7 +20,7 @@ def _set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
     return seed
 
-class SThetaToy(BaseDataset):
+class sThetaToy(BaseDataset):
     def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise=True, curriculum=False, noise_level=0.1, 
                  start_snr=200, end_snr=10, rho_target=10,
                  shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):

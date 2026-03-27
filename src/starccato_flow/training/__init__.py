@@ -4,7 +4,7 @@ import time
 import numpy as np
 import torch
 
-from ..data.s_theta_toy import ToyData
+from ..data.s_theta_toy import sThetaToy
 from ..data.s_theta_old import CCSNData
 from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
 from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
@@ -41,7 +41,7 @@ def create_train_val_split(
     """
     if toy:
         # Create full toy dataset
-        full_toy_dataset = ToyData(
+        full_toy_dataset = sThetaToy(
             num_signals=1684, 
             signal_length=y_length, 
             noise=noise
@@ -64,7 +64,7 @@ def create_train_val_split(
         print(f"Validation signals: {len(val_indices)}")
         
         # Create subsets using shared parameter ranges from full dataset
-        training_dataset = ToyData(
+        training_dataset = sThetaToy(
             num_signals=len(train_indices),
             signal_length=y_length,
             noise=noise,
@@ -73,7 +73,7 @@ def create_train_val_split(
             shared_max=full_toy_dataset.max_parameter,
             shared_max_strain=full_toy_dataset.max_strain
         )
-        validation_dataset = ToyData(
+        validation_dataset = sThetaToy(
             num_signals=len(val_indices),
             signal_length=y_length,
             noise=noise,
