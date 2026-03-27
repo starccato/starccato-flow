@@ -24,6 +24,10 @@ class hThetaMulti(Dataset):
     
     Note: This class only works with generated signals (custom_data), not raw CCSN CSV files.
     """
+
+    # Fixed physical bounds for sky parameters: [ra, dec, distance_kpc, psi]
+    SKY_MIN = np.array([0.0, -np.pi / 2.0, 0.0, 0.0], dtype=np.float32)
+    SKY_MAX = np.array([2.0 * np.pi, np.pi / 2.0, 20.0, np.pi], dtype=np.float32)
     
     def __init__(
         self,
@@ -99,10 +103,9 @@ class hThetaMulti(Dataset):
             self.min_theta = base_min
             self.max_theta = base_max
         elif base_min.shape[0] == theta_dim and base_max.shape[0] == theta_dim:
-            sky_min = np.array([self.ra.min(), self.dec.min(), self.d.min(), 0.0], dtype=np.float32)
-            sky_max = np.array([self.ra.max(), self.dec.max(), self.d.max(), np.pi], dtype=np.float32)
-            self.min_theta = np.concatenate([base_min, sky_min]).astype(np.float32)
-            self.max_theta = np.concatenate([base_max, sky_max]).astype(np.float32)
+            # Append fixed sky bounds for consistent normalization across epochs/runs.
+            self.min_theta = np.concatenate([base_min, self.SKY_MIN]).astype(np.float32)
+            self.max_theta = np.concatenate([base_max, self.SKY_MAX]).astype(np.float32)
         else:
             raise ValueError(
                 "min_theta/max_theta dimensions do not match either theta or combined parameter dimensions. "
@@ -415,28 +418,28 @@ class hThetaMulti(Dataset):
         parameters = self.parameters[original_idx]
         
         # Add noise to each detector channel if enabled
-        if self.noise:
-            for j in range(self.num_detectors):
-                # Get signal for this detector
-                s = clean_signal[j:j+1, :]  # Shape: (1, Y_LENGTH)
+        # if self.noise:
+        #     for j in range(self.num_detectors):
+        #         # Get signal for this detector
+        #         s = clean_signal[j:j+1, :]  # Shape: (1, Y_LENGTH)
                 
-                # Compute SNR (using base class method)
-                s_normalized = s / TEN_KPC
-                hf = np.fft.rfft(s_normalized, axis=1)[0]
-                rho = self.calculate_snr_from_fft(hf, self.PSD)
+        #         # Compute SNR (using base class method)
+        #         s_normalized = s / TEN_KPC
+        #         hf = np.fft.rfft(s_normalized, axis=1)[0]
+        #         rho = self.calculate_snr_from_fft(hf, self.PSD)
                 
-                # Generate detector-specific noise
-                n = self.aLIGO_noise(seed_offset=noise_realization_idx + j * 1000)
+        #         # Generate detector-specific noise
+        #         n = self.aLIGO_noise(seed_offset=noise_realization_idx + j * 1000)
                 
-                # Add noise with target SNR
-                s_normalized = s_normalized / 3.086e+22
-                d_normalized = s_normalized + n * (rho / self.rho_target) * 100
-                d = d_normalized * 3.086e+22
+        #         # Add noise with target SNR
+        #         s_normalized = s_normalized / 3.086e+22
+        #         d_normalized = s_normalized + n * (rho / self.rho_target) * 100
+        #         d = d_normalized * 3.086e+22
                 
-                # Normalize
-                noisy_signal[j:j+1, :] = self.normalise_signals(d)
-        else:
-            noisy_signal = self.normalise_signals(noisy_signal)
+        #         # Normalize
+        #         noisy_signal[j:j+1, :] = self.normalise_signals(d)
+        # else:
+        #     noisy_signal = self.normalise_signals(noisy_signal)
 
         clean_signal = self.normalise_signals(clean_signal)
         
