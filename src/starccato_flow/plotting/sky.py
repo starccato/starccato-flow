@@ -7,6 +7,7 @@ from typing import Iterable
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
+from matplotlib.collections import LineCollection
 
 try:
     import astropy.units as u
@@ -18,6 +19,27 @@ except ImportError:
 
 
 ASTROPY_RA_BACKSHIFT_DEG = 60.0
+
+IMPORTANT_CONSTELLATIONS = {
+    "Ori": "Orion",
+    "Tau": "Taurus",
+    "Gem": "Gemini",
+    "CMa": "Canis Major",
+    "UMa": "Ursa Major",
+    "Cas": "Cassiopeia",
+    "Cyg": "Cygnus",
+    "Sco": "Scorpius",
+    "Sgr": "Sagittarius",
+    "Aql": "Aquila",
+    "Lyr": "Lyra",
+    "And": "Andromeda",
+    "Peg": "Pegasus",
+    "Cru": "Crux",
+    "Cen": "Centaurus",
+    "Car": "Carina",
+    "Eri": "Eridanus",
+    "PsA": "Piscis Austrinus",
+}
 
 
 def _backshift_astropy_ra_deg(ra_deg: np.ndarray | float, backshift_deg: float = ASTROPY_RA_BACKSHIFT_DEG) -> np.ndarray | float:
@@ -97,17 +119,16 @@ def _rotate_ra(ra_rad: np.ndarray | float, rotation_rad: float) -> np.ndarray | 
     return np.mod(ra_rad + rotation_rad, 2 * np.pi)
 
 
-def _constellation_border_points(
+def _constellation_border_segments(
     rotation_rad: float,
     n_ra: int = 720,
     n_dec: int = 360,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return projected north/south points that trace constellation borders."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return projected north/south line segments tracing constellation borders."""
     if not _ASTROPY_AVAILABLE:
-        return np.array([]), np.array([]), np.array([]), np.array([])
+        return np.empty((0, 2, 2)), np.empty((0, 2, 2))
 
-    # Sample the sky, classify each point by constellation, then keep only cell edges
-    # where neighboring constellation IDs differ.
+    # Sample the sky and classify each point by constellation.
     ra_deg = np.linspace(0.0, 360.0, n_ra, endpoint=False)
     dec_deg = np.linspace(-89.5, 89.5, n_dec)
     ra_mesh, dec_mesh = np.meshgrid(ra_deg, dec_deg)
@@ -118,6 +139,7 @@ def _constellation_border_points(
     _, inv = np.unique(const_names, return_inverse=True)
     const_id = inv.reshape(const_names.shape)
 
+    # Edge masks where neighboring cells differ in constellation id.
     dh = const_id[:, 1:] != const_id[:, :-1]
     dv = const_id[1:, :] != const_id[:-1, :]
 
@@ -129,26 +151,125 @@ def _constellation_border_points(
     ra_v = np.broadcast_to(ra_deg, dv.shape)[dv]
     dec_v = np.broadcast_to(dec_mid_v[:, None], dv.shape)[dv]
 
-    ra_b = np.concatenate([ra_h, ra_v])
-    dec_b = np.concatenate([dec_h, dec_v])
+    # Segment lengths based on local angular spacing, then projected per midpoint.
+    d_ra = 360.0 / n_ra
+    d_dec = 179.0 / (n_dec - 1)
 
-    ra_b = _backshift_astropy_ra_deg(ra_b)
-    ra_b_rad = np.deg2rad(ra_b)
-    dec_b_rad = np.deg2rad(dec_b)
-    ra_use = np.mod(ra_b_rad + rotation_rad, 2 * np.pi)
+    ra_h0 = ra_h
+    dec_h0 = dec_h - 0.5 * d_dec
+    ra_h1 = ra_h
+    dec_h1 = dec_h + 0.5 * d_dec
 
-    north = dec_b_rad >= 0.0
-    south = ~north
+    ra_v0 = ra_v - 0.5 * d_ra
+    dec_v0 = dec_v
+    ra_v1 = ra_v + 0.5 * d_ra
+    dec_v1 = dec_v
 
-    rr_n = (np.pi / 2 - dec_b_rad[north]) / (np.pi / 2)
-    x_n = rr_n * np.sin(ra_use[north])
-    y_n = rr_n * np.cos(ra_use[north])
+    ra0 = np.concatenate([ra_h0, ra_v0])
+    dec0 = np.concatenate([dec_h0, dec_v0])
+    ra1 = np.concatenate([ra_h1, ra_v1])
+    dec1 = np.concatenate([dec_h1, dec_v1])
 
-    rr_s = (np.pi / 2 + dec_b_rad[south]) / (np.pi / 2)
-    x_s = -rr_s * np.sin(ra_use[south])
-    y_s = rr_s * np.cos(ra_use[south])
+    # Wrap RA and clamp Dec to valid ranges.
+    ra0 = np.mod(ra0, 360.0)
+    ra1 = np.mod(ra1, 360.0)
+    dec0 = np.clip(dec0, -89.9, 89.9)
+    dec1 = np.clip(dec1, -89.9, 89.9)
 
-    return x_n, y_n, x_s, y_s
+    # Avoid very long wrap-around segments near the RA seam.
+    dra_abs = np.abs(ra1 - ra0)
+    seam_cross = np.minimum(dra_abs, 360.0 - dra_abs) > 5.0
+    keep = ~seam_cross
+
+    ra0 = ra0[keep]
+    dec0 = dec0[keep]
+    ra1 = ra1[keep]
+    dec1 = dec1[keep]
+
+    if ra0.size == 0:
+        return np.empty((0, 2, 2)), np.empty((0, 2, 2))
+
+    ra0 = _backshift_astropy_ra_deg(ra0)
+    ra1 = _backshift_astropy_ra_deg(ra1)
+
+    ra0_rad = np.deg2rad(ra0)
+    dec0_rad = np.deg2rad(dec0)
+    ra1_rad = np.deg2rad(ra1)
+    dec1_rad = np.deg2rad(dec1)
+
+    ra0_use = np.mod(ra0_rad + rotation_rad, 2 * np.pi)
+    ra1_use = np.mod(ra1_rad + rotation_rad, 2 * np.pi)
+
+    p0_north = dec0_rad >= 0.0
+    p1_north = dec1_rad >= 0.0
+    north = p0_north & p1_north
+    south = (~p0_north) & (~p1_north)
+
+    def _proj(ra_use_val: np.ndarray, dec_val: np.ndarray, south_hemi: bool) -> tuple[np.ndarray, np.ndarray]:
+        if south_hemi:
+            rr = (np.pi / 2 + dec_val) / (np.pi / 2)
+            x_val = -rr * np.sin(ra_use_val)
+            y_val = rr * np.cos(ra_use_val)
+        else:
+            rr = (np.pi / 2 - dec_val) / (np.pi / 2)
+            x_val = rr * np.sin(ra_use_val)
+            y_val = rr * np.cos(ra_use_val)
+        return x_val, y_val
+
+    x0n, y0n = _proj(ra0_use[north], dec0_rad[north], south_hemi=False)
+    x1n, y1n = _proj(ra1_use[north], dec1_rad[north], south_hemi=False)
+    x0s, y0s = _proj(ra0_use[south], dec0_rad[south], south_hemi=True)
+    x1s, y1s = _proj(ra1_use[south], dec1_rad[south], south_hemi=True)
+
+    seg_n = np.stack([np.column_stack([x0n, y0n]), np.column_stack([x1n, y1n])], axis=1) if x0n.size else np.empty((0, 2, 2))
+    seg_s = np.stack([np.column_stack([x0s, y0s]), np.column_stack([x1s, y1s])], axis=1) if x0s.size else np.empty((0, 2, 2))
+
+    # Deduplicate overlapping segments so lines do not appear stacked.
+    def _dedupe_segments(seg: np.ndarray) -> np.ndarray:
+        if seg.size == 0:
+            return seg
+        a = np.round(seg[:, 0, :], 5)
+        b = np.round(seg[:, 1, :], 5)
+        flip = (a[:, 0] > b[:, 0]) | ((a[:, 0] == b[:, 0]) & (a[:, 1] > b[:, 1]))
+        p = np.where(flip[:, None], b, a)
+        q = np.where(flip[:, None], a, b)
+        key = np.hstack([p, q])
+        _, idx = np.unique(key, axis=0, return_index=True)
+        return seg[np.sort(idx)]
+
+    seg_n = _dedupe_segments(seg_n)
+    seg_s = _dedupe_segments(seg_s)
+
+    return seg_n, seg_s
+
+
+def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[str, tuple[float, float]]:
+    """Estimate constellation label centers (RA, Dec deg) from an ICRS sampling grid."""
+    if not _ASTROPY_AVAILABLE:
+        return {}
+
+    ra_deg = np.linspace(0.0, 360.0, n_ra, endpoint=False)
+    dec_deg = np.linspace(-89.5, 89.5, n_dec)
+    ra_mesh, dec_mesh = np.meshgrid(ra_deg, dec_deg)
+
+    sky = SkyCoord(ra=ra_mesh.ravel() * u.deg, dec=dec_mesh.ravel() * u.deg, frame="icrs")
+    const_names = np.asarray(sky.get_constellation(short_name=True))
+    dec_flat = dec_mesh.ravel()
+    ra_flat = ra_mesh.ravel()
+
+    centers: dict[str, tuple[float, float]] = {}
+    for short_name in np.unique(const_names):
+        mask = const_names == short_name
+        if not np.any(mask):
+            continue
+
+        # Circular mean for RA avoids a seam artifact around 0/360 deg.
+        ra_rad = np.deg2rad(ra_flat[mask])
+        mean_ra = np.mod(np.rad2deg(np.arctan2(np.mean(np.sin(ra_rad)), np.mean(np.cos(ra_rad)))), 360.0)
+        mean_dec = float(np.mean(dec_flat[mask]))
+        centers[str(short_name)] = (float(mean_ra), mean_dec)
+
+    return centers
 
 
 def plot_galactic_supernovae_polar_hemispheres(
@@ -156,6 +277,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     fname: str = "plots/galactic_supernovae_polar_hemispheres.png",
     rotation_deg: float = 60.0,
     show_constellation_borders: bool = False,
+    show_important_constellation_labels: bool = True,
     show: bool = True,
     dpi: int = 160,
 ) -> None:
@@ -167,6 +289,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         fname: Output image path.
         rotation_deg: Global RA view rotation in degrees.
         show_constellation_borders: If True, overlay IAU constellation boundaries.
+        show_important_constellation_labels: If True and constellation borders are enabled,
+            annotate key constellations with labels.
         show: If True, call ``plt.show()``.
         dpi: Image save DPI.
     """
@@ -244,7 +368,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     top_shared = max(levels_shared[-1] * 1.001, np.max(combined_vals) * 1.001)
     fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
 
-    blue_bases = ["#1d4ed8", "#3b82f6", "#60a5fa", "#bfdbfe"]
+    blue_bases = ["#325dd3", "#3b82f6", "#60a5fa", "#bfdbfe"]
     # Contourf colors are mapped outer->inner because levels are ascending.
     fill_colors = [
         to_rgba(blue_bases[0], alpha=0.20),
@@ -291,9 +415,38 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     if show_constellation_borders:
         if _ASTROPY_AVAILABLE:
-            x_n, y_n, x_s, y_s = _constellation_border_points(rotation)
-            ax_l.scatter(x_n, y_n, s=0.55, c="#f8fafc", alpha=0.62, linewidths=0, zorder=4)
-            ax_r.scatter(x_s, y_s, s=0.55, c="#f8fafc", alpha=0.62, linewidths=0, zorder=4)
+            seg_n, seg_s = _constellation_border_segments(rotation)
+            if seg_n.size:
+                ax_l.add_collection(
+                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.36, alpha=0.34, zorder=4)
+                )
+            if seg_s.size:
+                ax_r.add_collection(
+                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.36, alpha=0.34, zorder=4)
+                )
+
+            if show_important_constellation_labels:
+                centers = _constellation_centers_icrs_deg()
+                for short_name, label in IMPORTANT_CONSTELLATIONS.items():
+                    if short_name not in centers:
+                        continue
+                    ra_c_deg, dec_c_deg = centers[short_name]
+                    ra_c_deg = float(_backshift_astropy_ra_deg(ra_c_deg))
+                    panel, cx, cy = _project_to_hemisphere(np.deg2rad(ra_c_deg), np.deg2rad(dec_c_deg), rotation)
+                    if cx * cx + cy * cy > 0.97 * 0.97:
+                        continue
+                    lbl_ax = ax_l if panel == "north" else ax_r
+                    lbl_ax.text(
+                        cx,
+                        cy,
+                        label,
+                        color="#e2e8f0",
+                        fontsize=7.0,
+                        ha="center",
+                        va="center",
+                        alpha=0.8,
+                        zorder=6,
+                    )
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
@@ -468,6 +621,79 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=9,
         )
 
+    # Taurus stick figure (head + horns) using Astropy-resolved named stars.
+    taurus_star_names = [
+        "Aldebaran",
+        "Elnath",
+        "Zeta Tauri",
+        "Gamma Tauri",
+        "Delta Tauri",
+        "Epsilon Tauri",
+    ]
+    taurus_edges = [
+        ("Aldebaran", "Epsilon Tauri"),
+        ("Epsilon Tauri", "Gamma Tauri"),
+        ("Gamma Tauri", "Delta Tauri"),
+        ("Aldebaran", "Delta Tauri"),
+        ("Gamma Tauri", "Elnath"),
+        ("Delta Tauri", "Zeta Tauri"),
+    ]
+
+    taurus_proj: dict[str, tuple[str, float, float]] = {}
+    for star_name in taurus_star_names:
+        resolved = _resolve_named_star_icrs_deg(star_name)
+        if resolved is None:
+            continue
+        star_ra_deg, star_dec_deg = resolved
+        taurus_proj[star_name] = _project_to_hemisphere(
+            np.deg2rad(star_ra_deg),
+            np.deg2rad(star_dec_deg),
+            rotation,
+        )
+
+    for a_name, b_name in taurus_edges:
+        if a_name not in taurus_proj or b_name not in taurus_proj:
+            continue
+        a_panel, axx, ayy = taurus_proj[a_name]
+        b_panel, bxx, byy = taurus_proj[b_name]
+        if a_panel != b_panel:
+            continue
+        taur_ax = ax_l if a_panel == "north" else ax_r
+        taur_ax.plot(
+            [axx, bxx],
+            [ayy, byy],
+            color="#fca5a5",
+            alpha=0.9,
+            lw=1.05,
+            zorder=8,
+        )
+
+    for star_name, (panel, sx, sy) in taurus_proj.items():
+        taur_ax = ax_l if panel == "north" else ax_r
+        taur_ax.scatter(
+            [sx],
+            [sy],
+            s=16,
+            c="#fecaca",
+            edgecolors="none",
+            alpha=0.95,
+            zorder=9,
+        )
+
+    if "Aldebaran" in taurus_proj:
+        panel, tx, ty = taurus_proj["Aldebaran"]
+        taur_lbl_ax = ax_l if panel == "north" else ax_r
+        taur_lbl_ax.text(
+            tx + 0.03,
+            ty + 0.016,
+            "Taurus",
+            color="#fecaca",
+            fontsize=8.2,
+            ha="left",
+            va="center",
+            zorder=10,
+        )
+
     # Southern Cross (Crux), pointer stars, Achernar, and Pleiades.
     scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
     scx_edges = [
@@ -478,7 +704,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         ("Gacrux", "Mimosa"),
     ]
     pointer_names = ["Alpha Centauri", "Beta Centauri"]
-    extra_names = ["Achernar", "Pleiades"]
+    extra_names = ["Achernar", "Pleiades", "Antares"]
 
     south_proj: dict[str, tuple[str, float, float]] = {}
     for star_name in scx_star_names + pointer_names + extra_names:
@@ -547,6 +773,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         "Beta Centauri": ("#fde68a", 20),
         "Achernar": ("#a5f3fc", 24),
         "Pleiades": ("#c4b5fd", 24),
+        "Antares": ("#fca5a5", 24),
     }
     for star_name, (panel, sx, sy) in south_proj.items():
         color, size = marker_styles.get(star_name, ("#f8fafc", 14))
@@ -561,7 +788,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=9,
         )
 
-    for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#bbf7d0")):
+    for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#bbf7d0"), ("Antares", "#fca5a5")):
         if label_name not in south_proj:
             continue
         panel, lx, ly = south_proj[label_name]
@@ -619,6 +846,10 @@ def plot_galactic_supernovae_polar_hemispheres(
         f"{sum(1 for a_name, b_name in orion_edges if a_name in orion_proj and b_name in orion_proj and orion_proj[a_name][0] == orion_proj[b_name][0])} edges."
     )
     print(
+        f"Taurus stick figure drew {len(taurus_proj)} resolved stars and "
+        f"{sum(1 for a_name, b_name in taurus_edges if a_name in taurus_proj and b_name in taurus_proj and taurus_proj[a_name][0] == taurus_proj[b_name][0])} edges."
+    )
+    print(
         f"Southern-sky overlay resolved {len(south_proj)} named targets "
         "(Southern Cross, pointers, Achernar, Pleiades)."
     )
@@ -627,4 +858,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         "Milky Way RA handling is unchanged."
     )
     print("South hemisphere mirrored in x so the shared seam RA aligns across both panels.")
+    if show_constellation_borders:
+        print("Rendered all IAU constellation boundaries.")
+        if show_important_constellation_labels:
+            print("Annotated important constellations with labels for orientation.")
 
