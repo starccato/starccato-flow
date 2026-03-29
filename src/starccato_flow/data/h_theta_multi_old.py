@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .s_theta_old import CCSNData
+from .s_theta_old import sThetaOld
 from ..localisation.supernovae import Supernovae
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE
 
@@ -42,7 +42,7 @@ def create_multi_channel_from_ccsn(
     3) gathers `[RA, Dec, distance]` sky parameters,
     4) returns `CCSNDataMultiChannel` with detector-projected channels.
     """
-    ccsn_data = CCSNData(
+    ccsn_data = sThetaOld(
         batch_size=batch_size,
         num_epochs=num_epochs,
         noise=False,
@@ -90,8 +90,8 @@ def create_multi_channel_from_ccsn(
         end_snr=end_snr,
         rho_target=rho_target,
         noise_realizations=noise_realizations,
-        shared_min=ccsn_data.min_parameter,
-        shared_max=ccsn_data.max_parameter,
+        shared_min=ccsn_data.min_theta,
+        shared_max=ccsn_data.max_theta,
         shared_max_strain=ccsn_data.max_strain,
         seed=seed,
         random_polarization=random_polarization,

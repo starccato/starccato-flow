@@ -117,8 +117,6 @@ class sTheta(BaseDataset, Dataset):
         # Select parameter subset before filtering
         if multi_param:
             parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
-            # parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)"]
-            # parameter_set = ["beta1_IC_b"]
         else: 
             parameter_set = ["beta1_IC_b"]
 

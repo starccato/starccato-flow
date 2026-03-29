@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ..data.s_theta_toy import sThetaToy
-from ..data.s_theta_old import CCSNData
+from ..data.s_theta import sTheta
 from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
 from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
 
@@ -20,7 +20,8 @@ def create_train_val_split(
     start_snr: int,
     end_snr: int,
     curriculum: bool,
-    noise_realizations: int
+    noise_realizations: int,
+    multi_param: bool = True,
 ):
     """Create training and validation datasets with proper splitting.
     
@@ -84,13 +85,14 @@ def create_train_val_split(
         )
     else:
         # Create a temporary dataset to get the number of base signals (before augmentation)
-        temp_dataset = CCSNData(
+        temp_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
             curriculum=False, 
-            noise_realizations=1
+            noise_realizations=1,
+            multi_param=multi_param,
         )
         num_base_signals = temp_dataset.signals.shape[1]
         
@@ -113,30 +115,32 @@ def create_train_val_split(
         
         # Create SEPARATE dataset instances with disjoint base indices
         # Training: with curriculum and multiple noise realizations
-        training_dataset = CCSNData(
+        training_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
             curriculum=curriculum,
             noise_realizations=noise_realizations,
+            multi_param=multi_param,
             indices=train_base_indices,
-            shared_min=temp_dataset.min_parameter,
-            shared_max=temp_dataset.max_parameter,
+            shared_min=temp_dataset.min_theta,
+            shared_max=temp_dataset.max_theta,
             shared_max_strain=temp_dataset.max_strain
         )
         
         # Validation: FIXED SNR (no curriculum) with single noise realization
-        validation_dataset = CCSNData(
+        validation_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=end_snr,
             end_snr=end_snr,
             noise=noise,
             curriculum=curriculum, 
             noise_realizations=1,
+            multi_param=multi_param,
             indices=val_base_indices,
-            shared_min=temp_dataset.min_parameter,
-            shared_max=temp_dataset.max_parameter,
+            shared_min=temp_dataset.min_theta,
+            shared_max=temp_dataset.max_theta,
             shared_max_strain=temp_dataset.max_strain
         )
     

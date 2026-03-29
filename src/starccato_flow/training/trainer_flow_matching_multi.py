@@ -1,6 +1,7 @@
 import os
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import nn
@@ -11,9 +12,9 @@ from ..localisation.supernovae import Supernovae
 from ..localisation.supernovae import Supernovae
 from tqdm.auto import trange
 
-from ..plotting import plot_corner
+from ..plotting import plot_corner, plot_sky_localisation
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE
 from ..nn.flow_multi import Flow
 
 from . import create_train_val_split, plot_candidate_signal_method, display_results_method
@@ -46,6 +47,7 @@ class FlowMatchingTrainerMulti:
         start_snr: int = 100,
         end_snr: int = 10,
         noise_realizations: int = 1,  # Number of noise realizations per signal
+        multi_param: bool = True,
         custom_data: tuple = None,  # (signals_array, params_array) for generated data
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None  # Path to validation data files (real CVAE val set)
@@ -83,6 +85,7 @@ class FlowMatchingTrainerMulti:
         self.start_snr = start_snr
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
+        self.multi_param = multi_param
         self.sky_param_dim = 4
 
 
@@ -112,6 +115,7 @@ class FlowMatchingTrainerMulti:
                 end_snr=end_snr,
                 noise_realizations=noise_realizations,
                 batch_size=batch_size,
+                multi_param=multi_param,
                 generated=True
             )
             
@@ -125,8 +129,9 @@ class FlowMatchingTrainerMulti:
                 end_snr=end_snr,
                 noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
-                shared_min=self.training_dataset.min_parameter,
-                shared_max=self.training_dataset.max_parameter,
+                multi_param=multi_param,
+                shared_min=self.training_dataset.min_theta,
+                shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain,
                 generated=True
             )
@@ -160,7 +165,8 @@ class FlowMatchingTrainerMulti:
                 start_snr=start_snr,
                 end_snr=end_snr,
                 noise_realizations=noise_realizations,
-                batch_size=batch_size
+                batch_size=batch_size,
+                multi_param=multi_param,
             )
             
             # Create validation dataset with custom data
@@ -173,6 +179,7 @@ class FlowMatchingTrainerMulti:
                 end_snr=end_snr,
                 noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
+                multi_param=multi_param,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain
@@ -189,7 +196,8 @@ class FlowMatchingTrainerMulti:
                 start_snr=start_snr,
                 end_snr=end_snr,
                 curriculum=self.curriculum,
-                noise_realizations=self.noise_realizations
+                noise_realizations=self.noise_realizations,
+                multi_param=self.multi_param,
             )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
@@ -223,6 +231,99 @@ class FlowMatchingTrainerMulti:
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
+    def _save_epoch_data_plots(self, epoch: int) -> None:
+        """Save signal and parameter snapshots for the current epoch."""
+        if not hasattr(self, "h_theta_multi"):
+            return
+
+        epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
+        os.makedirs(epoch_dir, exist_ok=True)
+
+        # Plot 1: first generated multi-channel signal for this epoch.
+        signals = self.h_theta_multi.multi_channel_signals
+        time_axis = np.arange(Y_LENGTH) * SAMPLING_RATE
+        fig_sig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+        detector_labels = getattr(self.h_theta_multi, "detectors", ["H1", "L1", "V1"])
+        first_signal = signals[0]
+
+        for i, ax in enumerate(axes):
+            ax.plot(time_axis, first_signal[i], lw=1.5)
+            ax.set_ylabel("h")
+            ax.set_title(f"{detector_labels[i]}")
+            ax.grid(alpha=0.2)
+
+        axes[-1].set_xlabel("time (s)")
+        fig_sig.suptitle(f"Epoch {epoch + 1}: First Multi-Channel Sample")
+        fig_sig.tight_layout()
+        fig_sig.savefig(
+            os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_signals.png"),
+            dpi=180,
+            bbox_inches="tight",
+        )
+        plt.close(fig_sig)
+
+        # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi].
+        params = self.h_theta_multi.parameters
+        fig_par, axes = plt.subplots(2, 2, figsize=(10, 8))
+        param_labels = ["ra", "dec", "d", "psi"]
+
+        for i, ax in enumerate(axes.flatten()):
+            ax.hist(params[:, -4 + i], bins=40, alpha=0.85)
+            ax.set_title(param_labels[i])
+            ax.grid(alpha=0.2)
+
+        fig_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions")
+        fig_par.tight_layout()
+        fig_par.savefig(
+            os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_params.png"),
+            dpi=180,
+            bbox_inches="tight",
+        )
+        plt.close(fig_par)
+
+    def _sample_sky_params_for_epoch(self, epoch: int, n_samples: int):
+        """Sample RA/Dec/d sky parameters for an epoch distance shell."""
+        min_kiloparsec = epoch / self.num_epochs * 20.0
+        max_kiloparsec = min_kiloparsec + 1.0
+        distance_mask = (
+            (self.supernovae.distances >= min_kiloparsec)
+            & (self.supernovae.distances <= max_kiloparsec)
+        )
+        candidate_indices = np.where(distance_mask)[0]
+        if candidate_indices.size == 0:
+            raise ValueError(
+                f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
+            )
+        sampled_indices = np.random.choice(
+            candidate_indices,
+            size=n_samples,
+            replace=candidate_indices.size < n_samples,
+        )
+        sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
+        return sampled_sky_params[:, 0], sampled_sky_params[:, 1], sampled_sky_params[:, 2]
+
+    def _sample_dataset_batches(self, dataset, n_samples: int):
+        """Sample n_samples from a base dataset and return batched signal/parameter lists."""
+        signals = []
+        params = []
+        remaining = n_samples
+        while remaining > 0:
+            current_batch_size = min(self.batch_size, remaining)
+            batch_indices = np.random.choice(
+                len(dataset),
+                current_batch_size,
+                replace=len(dataset) < current_batch_size,
+            )
+            batch_samples = [dataset[int(idx)] for idx in batch_indices]
+
+            batch_signals = torch.cat([sample[0] for sample in batch_samples], dim=0)
+            batch_params = torch.cat([sample[2] for sample in batch_samples], dim=0)
+
+            signals.append(batch_signals)
+            params.append(batch_params)
+            remaining -= current_batch_size
+        return signals, params
+
     def train(self):
         t0 = time.time()
 
@@ -237,49 +338,11 @@ class FlowMatchingTrainerMulti:
             self.val_loader.dataset.set_epoch(epoch)
             self.train_loader.dataset.set_epoch(epoch)
 
-            # sample supernovae locations for this epoch (if using CCSN data)
-            min_kiloparsec = epoch / self.num_epochs * 20.0  # Linearly increase max distance from 0 to 20 kpc over training
-            max_kiloparsec = epoch / self.num_epochs * 20.0 + 1.0  # Also increase min distance to focus on more distant supernovae
-            # Sample valid sky parameters (RA, Dec, distance) for this epoch.
-            distance_mask = (
-                (self.supernovae.distances >= min_kiloparsec)
-                & (self.supernovae.distances <= max_kiloparsec)
+            sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
+                epoch,
+                self.samples_per_epoch,
             )
-            candidate_indices = np.where(distance_mask)[0]
-            if candidate_indices.size == 0:
-                raise ValueError(
-                    f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
-                )
-            sampled_indices = np.random.choice(
-                candidate_indices,
-                size=self.samples_per_epoch,
-                replace=candidate_indices.size < self.samples_per_epoch,
-            )
-            sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
-            sampled_ra = sampled_sky_params[:, 0]
-            sampled_dec = sampled_sky_params[:, 1]
-            sampled_d = sampled_sky_params[:, 2]
-
-            # make new generation of data here
-            signals = []
-            params = []
-            remaining = self.samples_per_epoch
-            while remaining > 0:
-                current_batch_size = min(self.batch_size, remaining)
-                # Sample scalar indices and assemble a batch manually; Dataset.__getitem__ expects int idx.
-                batch_indices = np.random.choice(
-                    len(self.training_dataset),
-                    current_batch_size,
-                    replace=len(self.training_dataset) < current_batch_size,
-                )
-                batch_samples = [self.training_dataset[int(idx)] for idx in batch_indices]
-
-                batch_signals = torch.cat([sample[0] for sample in batch_samples], dim=0)
-                batch_params = torch.cat([sample[2] for sample in batch_samples], dim=0)
-
-                signals.append(batch_signals)
-                params.append(batch_params)
-                remaining -= current_batch_size
+            signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
             # create multi-channel signals
             self.h_theta_multi = hThetaMulti(
@@ -294,6 +357,7 @@ class FlowMatchingTrainerMulti:
                 batch_size=self.batch_size,
                 noise=False
             )
+            self._save_epoch_data_plots(epoch)
 
             for signal, noisy_signal, params in self.h_theta_multi:
                 # Iterating the Dataset directly yields single samples (not batches).
@@ -339,34 +403,42 @@ class FlowMatchingTrainerMulti:
             val_total_loss = 0
             val_samples = 0
             with torch.no_grad():
-                for val_signal, val_noisy_signal, val_params in self.val_loader:
-                    # Match training: evaluate VAE on noisy inputs for a fair comparison
+                val_target_samples = min(self.samples_per_epoch, len(self.validation_dataset))
+                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, val_target_samples)
+                val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, val_target_samples)
+                self.h_theta_multi_val = hThetaMulti(
+                    s=val_signals,
+                    max_strain=self.validation_dataset.max_strain,
+                    theta=val_params,
+                    min_theta=self.validation_dataset.min_theta,
+                    max_theta=self.validation_dataset.max_theta,
+                    ra=val_ra,
+                    dec=val_dec,
+                    d=val_d,
+                    batch_size=self.batch_size,
+                    noise=False,
+                )
+
+                for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val:
+                    if val_signal.dim() == 2:
+                        val_signal = val_signal.unsqueeze(0)
+                    if val_noisy_signal.dim() == 2:
+                        val_noisy_signal = val_noisy_signal.unsqueeze(0)
+                    if val_params.dim() == 1:
+                        val_params = val_params.unsqueeze(0)
+
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
-                    val_signal = val_signal.view(val_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
 
-                    # Validation dataset is single-channel theta-only; adapt shape for multi-channel flow model.
-                    if val_noisy_signal.size(1) != self.flow_signal_dim:
-                        repeats = self.flow_signal_dim // val_noisy_signal.size(1)
-                        if repeats * val_noisy_signal.size(1) != self.flow_signal_dim:
-                            raise ValueError(
-                                f"Cannot adapt validation signal dim {val_noisy_signal.size(1)} to {self.flow_signal_dim}"
-                            )
-                        val_noisy_signal = val_noisy_signal.repeat(1, repeats)
+                    if val_params.size(-1) != self.flow_param_dim:
+                        raise ValueError(
+                            f"Validation parameter dimension mismatch: expected {self.flow_param_dim}, got {val_params.size(-1)}"
+                        )
 
-                    if val_params.size(1) != self.flow_param_dim:
-                        missing = self.flow_param_dim - val_params.size(1)
-                        if missing < 0:
-                            raise ValueError(
-                                f"Validation parameter dimension {val_params.size(1)} exceeds model dim {self.flow_param_dim}"
-                            )
-                        pad = torch.zeros(val_params.size(0), missing, device=DEVICE, dtype=val_params.dtype)
-                        val_params = torch.cat([val_params, pad], dim=1)
-
-                    x_0 = torch.randn_like(val_params)  # noise in parameter space
-                    t = torch.rand(len(val_params), 1, device=DEVICE)  # random time values on correct device
-                    x_t = (1 - t) * x_0 + t * val_params  # interpolated parameters
-                    dx_t = val_params - x_0  # true velocity direction in parameter space
+                    x_0 = torch.randn_like(val_params)
+                    t = torch.rand(len(val_params), 1, device=DEVICE)
+                    x_t = (1 - t) * x_0 + t * val_params
+                    dx_t = val_params - x_0
 
                     loss = self.loss_fn(self.flow(x_t, t, val_noisy_signal), dx_t)
                     val_total_loss += loss.item()
@@ -374,6 +446,21 @@ class FlowMatchingTrainerMulti:
             
             avg_total_loss_val = val_total_loss / val_samples
             self.avg_mse_losses_val.append(avg_total_loss_val)
+
+            corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
+            os.makedirs(corner_epoch_dir, exist_ok=True)
+            self.plot_corner_sampled_signal(
+                epoch=epoch,
+                num_samples=2000,
+                n_steps=20,
+                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_corner.png"),
+            )
+            self.plot_sky_localisation_sampled_signal(
+                epoch=epoch,
+                num_samples=2000,
+                n_steps=20,
+                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_sky.png"),
+            )
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
@@ -458,6 +545,144 @@ class FlowMatchingTrainerMulti:
         # Call plotting function with samples and dataset for automatic label extraction
         plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname, 
                    dataset=self.val_loader.dataset)
+
+    def plot_corner_sampled_signal(
+        self,
+        epoch: int = 0,
+        num_samples: int = 5000,
+        n_steps: int = 20,
+        fname: str = "plots/corner_plot_sampled_signal.png",
+    ):
+        """Generate a corner plot for one sampled multi-channel validation signal.
+
+        This samples one validation waveform and one sky location (RA/Dec/d), appends
+        sky parameters (including psi), and plots the posterior over the full parameter vector.
+        """
+        self.flow.eval()
+
+        # Build one sampled validation example with sky parameters.
+        val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch=epoch, n_samples=1)
+        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_samples=1)
+        val_multi = hThetaMulti(
+            s=val_signals,
+            max_strain=self.validation_dataset.max_strain,
+            theta=val_params,
+            min_theta=self.validation_dataset.min_theta,
+            max_theta=self.validation_dataset.max_theta,
+            ra=val_ra,
+            dec=val_dec,
+            d=val_d,
+            batch_size=1,
+            noise=False,
+        )
+
+        _, noisy_signal, params = val_multi[0]
+
+        with torch.no_grad():
+            noisy_signal = noisy_signal.view(1, -1).to(DEVICE).float()
+            params = params.view(1, -1).to(DEVICE).float()
+
+            posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
+            repeated_signal = noisy_signal.repeat(num_samples, 1)
+
+            time_steps = torch.linspace(0, 1.0, n_steps + 1)
+            for i in range(n_steps):
+                posterior_samples = self.flow.step(
+                    posterior_samples,
+                    time_steps[i],
+                    time_steps[i + 1],
+                    repeated_signal,
+                )
+
+            samples_cpu = posterior_samples.detach().cpu().numpy()
+            true_params_norm = params.detach().cpu().numpy().flatten()
+
+        # Denormalize into physical units using the sampled multi-channel dataset bounds.
+        samples_cpu = val_multi.denormalize_parameters(samples_cpu)
+        true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+
+        base_labels = list(getattr(self.validation_dataset, "parameter_names", []))
+        sky_labels = ["ra", "dec", "d", "psi"]
+        labels = base_labels + sky_labels
+        ranges = [
+            (float(val_multi.min_theta[i]), float(val_multi.max_theta[i]))
+            for i in range(val_multi.param_dim)
+        ]
+
+        plot_corner(
+            samples_cpu=samples_cpu,
+            true_params=true_params,
+            fname=fname,
+            labels=labels,
+            ranges=ranges,
+        )
+
+    def plot_sky_localisation_sampled_signal(
+        self,
+        epoch: int = 0,
+        num_samples: int = 5000,
+        n_steps: int = 20,
+        fname: str = "plots/sky_localisation_sampled_signal.png",
+    ):
+        """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal."""
+        self.flow.eval()
+
+        # Build one sampled validation example with sky parameters.
+        val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch=epoch, n_samples=1)
+        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_samples=1)
+        val_multi = hThetaMulti(
+            s=val_signals,
+            max_strain=self.validation_dataset.max_strain,
+            theta=val_params,
+            min_theta=self.validation_dataset.min_theta,
+            max_theta=self.validation_dataset.max_theta,
+            ra=val_ra,
+            dec=val_dec,
+            d=val_d,
+            batch_size=1,
+            noise=False,
+        )
+
+        _, noisy_signal, params = val_multi[0]
+
+        with torch.no_grad():
+            noisy_signal = noisy_signal.view(1, -1).to(DEVICE).float()
+            params = params.view(1, -1).to(DEVICE).float()
+
+            posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
+            repeated_signal = noisy_signal.repeat(num_samples, 1)
+
+            time_steps = torch.linspace(0, 1.0, n_steps + 1)
+            for i in range(n_steps):
+                posterior_samples = self.flow.step(
+                    posterior_samples,
+                    time_steps[i],
+                    time_steps[i + 1],
+                    repeated_signal,
+                )
+
+            samples_cpu = posterior_samples.detach().cpu().numpy()
+            true_params_norm = params.detach().cpu().numpy().flatten()
+
+        # Denormalize into physical units and extract sky coordinates.
+        samples_cpu = val_multi.denormalize_parameters(samples_cpu)
+        true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+
+        ra_samples = samples_cpu[:, -4]
+        dec_samples = samples_cpu[:, -3]
+        true_ra = true_params[-4]
+        true_dec = true_params[-3]
+
+        plot_sky_localisation(
+            ra_samples=ra_samples,
+            dec_samples=dec_samples,
+            true_ra=true_ra,
+            true_dec=true_dec,
+            fname=fname,
+            background="black",
+            font_family="sans-serif",
+            font_name="Avenir",
+        )
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""

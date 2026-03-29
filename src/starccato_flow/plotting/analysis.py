@@ -673,6 +673,8 @@ def create_snr_variation_gif(
 def plot_sky_localisation(
     ra_samples: np.ndarray,
     dec_samples: np.ndarray,
+    true_ra: Optional[float] = None,
+    true_dec: Optional[float] = None,
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
@@ -683,6 +685,8 @@ def plot_sky_localisation(
     Args:
         ra_samples (np.ndarray): Right Ascension samples in radians
         dec_samples (np.ndarray): Declination samples in radians
+        true_ra (Optional[float]): True Right Ascension in radians
+        true_dec (Optional[float]): True Declination in radians
         fname (Optional[str]): Filename to save the plot
         background (str): Background color ("white" or "black")
         font_family (str): Font family for labels
@@ -701,9 +705,16 @@ def plot_sky_localisation(
         grid_color = "black"
         grid_alpha = 0.5
     
-    # Create figure with ligo.skymap projection
+    # Create figure with robust projection fallback.
     fig = plt.figure(figsize=(12, 7))
-    ax = plt.axes(projection='geo aitoff')
+    try:
+        ax = plt.axes(projection='geo aitoff')
+    except Exception:
+        try:
+            ax = plt.axes(projection='aitoff')
+        except Exception:
+            # Last-resort fallback to regular Cartesian axes.
+            ax = plt.axes()
     
     # Set background color
     fig.patch.set_facecolor(background)
@@ -784,6 +795,19 @@ def plot_sky_localisation(
             color=star_color, markeredgecolor=star_edge,
             markeredgewidth=2, zorder=5)
     print(f"Median position: RA={ra_median:.3f} rad, Dec={dec_median:.3f} rad")
+
+    # Plot true location if provided.
+    if true_ra is not None and true_dec is not None:
+        true_color = '#00BCD4' if background == "white" else '#00E5FF'
+        ax.plot(
+            float(true_ra),
+            float(true_dec),
+            marker='x',
+            markersize=14,
+            color=true_color,
+            markeredgewidth=3,
+            zorder=6,
+        )
     
     # Add detector locations for reference
     detector_coords = [

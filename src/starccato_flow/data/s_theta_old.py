@@ -20,7 +20,7 @@ half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
 delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
-class CCSNData(BaseDataset, Dataset):
+class sThetaOld(BaseDataset, Dataset):
     # Default LaTeX labels for parameters
     PARAMETER_LABELS = {
         'beta1_IC_b': r'$\beta_{IC,b}$',
