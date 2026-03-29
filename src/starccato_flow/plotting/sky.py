@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.collections import LineCollection
+from matplotlib.patches import Circle
+
+from . import set_plot_style
 
 try:
     import astropy.units as u
@@ -31,13 +34,9 @@ IMPORTANT_CONSTELLATIONS = {
     "Sco": "Scorpius",
     "Sgr": "Sagittarius",
     "Aql": "Aquila",
-    "Lyr": "Lyra",
     "Peg": "Pegasus",
     "Cru": "Crux",
-    "Cen": "Centaurus",
-    "Car": "Carina",
-    "Eri": "Eridanus",
-    "PsA": "Piscis Austrinus",
+    "Cen": "Centaurus"
 }
 
 
@@ -279,6 +278,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     show_important_constellation_labels: bool = True,
     show: bool = True,
     dpi: int = 160,
+    background: str = "black",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -292,7 +294,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             annotate key constellations with labels.
         show: If True, call ``plt.show()``.
         dpi: Image save DPI.
+        background: Background color theme ("white" or "black").
+        font_family: Font family to use.
+        font_name: Specific font name.
     """
+    set_plot_style(background, font_family, font_name)
     ra = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
     dec = np.asarray(ccsn.dec)
 
@@ -418,17 +424,17 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_label_deg = np.arange(0, 360, 60)
     for ra_deg in ra_tick_deg:
         ang = np.deg2rad(float(ra_deg))
-        x_in = 0.965 * np.sin(ang)
-        y_in = 0.965 * np.cos(ang)
-        x_out = 1.000 * np.sin(ang)
-        y_out = 1.000 * np.cos(ang)
+        x_in = 1.00 * np.sin(ang)
+        y_in = 1.00 * np.cos(ang)
+        x_out = 1.045 * np.sin(ang)
+        y_out = 1.045 * np.cos(ang)
         for ax in (ax_l, ax_r):
             ax.plot([x_in, x_out], [y_in, y_out], color="white", alpha=0.45, lw=0.75, zorder=6)
 
     for ra_deg in ra_label_deg:
         ang = np.deg2rad(float(ra_deg))
-        x_lbl = 0.915 * np.sin(ang)
-        y_lbl = 0.915 * np.cos(ang)
+        x_lbl = 1.085 * np.sin(ang)
+        y_lbl = 1.085 * np.cos(ang)
         ra_hours = int((ra_deg // 15) % 24)
         label = f"{ra_hours}h"
         for ax in (ax_l, ax_r):
@@ -518,9 +524,20 @@ def plot_galactic_supernovae_polar_hemispheres(
                     if cx * cx + cy * cy > 0.97 * 0.97:
                         continue
                     lbl_ax = ax_l if panel == "north" else ax_r
+
+                    dx = 0.0
+                    dy = 0.0
+                    if short_name == "Ori":
+                        dx = -0.022
+                        dy = 0.062
+                    elif short_name == "Tau":
+                        dx = 0.085
+                    elif short_name == "CMa":
+                        dy = 0.024
+
                     lbl_ax.text(
-                        cx,
-                        cy,
+                        cx + dx,
+                        cy + dy,
                         label,
                         color="#e2e8f0",
                         fontsize=7.0,
@@ -545,7 +562,18 @@ def plot_galactic_supernovae_polar_hemispheres(
             spine.set_visible(False)
 
     gc_ra, gc_dec = ccsn.get_galactic_center_direction()
-    gc_panel, gc_x, gc_y = _project_to_hemisphere(gc_ra, gc_dec, rotation)
+
+    # Use the true galactic center for black hole visualization.
+    true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec, rotation)
+
+    # Select a CCSN star as the center for the red accretion blob.
+    star_idx = len(ra) // 2  # Use middle star, or could randomize: np.random.randint(0, len(ra))
+    blob_ra = ra_rot[star_idx] - 60 * np.pi / 180
+    blob_dec = dec[star_idx]
+    blob_panel, blob_x, blob_y = _project_to_hemisphere(blob_ra, blob_dec, rotation)
+
+    # For plotting purposes, gc_* now represents the blob center (CCSN star).
+    gc_panel, gc_x, gc_y = blob_panel, blob_x, blob_y
 
     # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
     betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg()
@@ -608,6 +636,21 @@ def plot_galactic_supernovae_polar_hemispheres(
         zorder=7,
     )
 
+    # Black hole visualization at the true galactic center.
+    bh_ax = ax_l if true_gc_panel == "north" else ax_r
+
+    # Red accretion disk (outer ring).
+    bh_disk_outer = Circle(
+        (true_gc_x, true_gc_y), 0.015, color="#dc2626", alpha=0.8, zorder=8
+    )
+    bh_ax.add_patch(bh_disk_outer)
+
+    # Black hole interior (event horizon).
+    bh_interior = Circle(
+        (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
+    )
+    bh_ax.add_patch(bh_interior)
+
     if betel_panel is not None:
         betel_ax = ax_l if betel_panel == "north" else ax_r
         betel_ax.scatter(
@@ -620,12 +663,12 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
         betel_ax.text(
-            betel_x + 0.035,
+            betel_x - 0.035,
             betel_y + 0.02,
             "Betelgeuse",
             color="#fde68a",
             fontsize=8.5,
-            ha="left",
+            ha="right",
             va="center",
             zorder=8,
         )
@@ -682,24 +725,68 @@ def plot_galactic_supernovae_polar_hemispheres(
             continue
         a_panel, axx, ayy = orion_proj[a_name]
         b_panel, bxx, byy = orion_proj[b_name]
-        if a_panel != b_panel:
-            continue
-        orion_ax = ax_l if a_panel == "north" else ax_r
-        orion_ax.plot(
-            [axx, bxx],
-            [ayy, byy],
-            color="#e5e7eb",
-            alpha=0.85,
-            lw=1.0,
-            zorder=8,
-        )
+        
+        if a_panel == b_panel:
+            # Both stars on same hemisphere: simple connection
+            orion_ax = ax_l if a_panel == "north" else ax_r
+            orion_ax.plot(
+                [axx, bxx],
+                [ayy, byy],
+                color="#e5e7eb",
+                alpha=0.85,
+                lw=1.0,
+                zorder=8,
+            )
+        else:
+            # Stars on different hemispheres: connect through the seam
+            # North is on ax_l (left panel), South is on ax_r (right panel)
+            # Seam at x=1.00 on left (north), x=-1.00 on right (south)
+            seam_y = 0.5 * (ayy + byy)
+            
+            # Draw on north hemisphere from star to right edge seam
+            if a_panel == "north":
+                ax_l.plot(
+                    [axx, 1.00],
+                    [ayy, seam_y],
+                    color="#e5e7eb",
+                    alpha=0.85,
+                    lw=1.0,
+                    zorder=8,
+                )
+                # Draw on south hemisphere from left edge seam to star
+                ax_r.plot(
+                    [-1.00, bxx],
+                    [seam_y, byy],
+                    color="#e5e7eb",
+                    alpha=0.85,
+                    lw=1.0,
+                    zorder=8,
+                )
+            else:
+                # A is south, B is north: reverse
+                ax_r.plot(
+                    [axx, -1.00],
+                    [ayy, seam_y],
+                    color="#e5e7eb",
+                    alpha=0.85,
+                    lw=1.0,
+                    zorder=8,
+                )
+                ax_l.plot(
+                    [1.00, bxx],
+                    [seam_y, byy],
+                    color="#e5e7eb",
+                    alpha=0.85,
+                    lw=1.0,
+                    zorder=8,
+                )
 
     for star_name, (panel, sx, sy) in orion_proj.items():
         orion_ax = ax_l if panel == "north" else ax_r
         orion_ax.scatter(
             [sx],
             [sy],
-            s=14,
+            s=9,
             c="#f8fafc",
             edgecolors="none",
             alpha=0.95,
@@ -768,16 +855,16 @@ def plot_galactic_supernovae_polar_hemispheres(
     if "Aldebaran" in taurus_proj:
         panel, tx, ty = taurus_proj["Aldebaran"]
         taur_lbl_ax = ax_l if panel == "north" else ax_r
-        taur_lbl_ax.text(
-            tx + 0.03,
-            ty + 0.016,
-            "Taurus",
-            color="#fecaca",
-            fontsize=8.2,
-            ha="left",
-            va="center",
-            zorder=10,
-        )
+        # taur_lbl_ax.text(
+        #     tx + 0.03,
+        #     ty + 0.016,
+        #     "Taurus",
+        #     color="#fecaca",
+        #     fontsize=8.2,
+        #     ha="left",
+        #     va="center",
+        #     zorder=10,
+        # )
 
     # Southern Cross (Crux), pointer stars, Achernar, and Pleiades.
     scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
@@ -878,9 +965,12 @@ def plot_galactic_supernovae_polar_hemispheres(
             continue
         panel, lx, ly = south_proj[label_name]
         lbl_ax = ax_l if panel == "north" else ax_r
+        y_offset = 0.018
+        if label_name == "Acrux":
+            y_offset = 0.040
         lbl_ax.text(
             lx + 0.03,
-            ly + 0.018,
+            ly + y_offset,
             label_name,
             color=label_color,
             fontsize=8.2,
@@ -889,12 +979,178 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=10,
         )
 
-    ax_r.plot([], [], color=fill_colors[0], lw=6, label="Blue 100% contour")
-    ax_r.plot([], [], color=fill_colors[1], lw=6, label="Blue 75% contour")
-    ax_r.plot([], [], color=fill_colors[2], lw=6, label="Blue 50% contour")
-    ax_r.plot([], [], color=fill_colors[3], lw=6, label="Blue 25% contour")
-    ax_r.plot([], [], color=red_fill_colors[2], lw=6, label="Red GC blob")
-    # ax_r.legend(loc="lower right", facecolor="black", edgecolor="white", labelcolor="white", fontsize=8.5)
+    # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
+    extra_visible_star_names = [
+        "Sirius",
+        "Canopus",
+        "Rigil Kentaurus",
+        "Hadar",
+        "Achernar",
+        "Acrux",
+        "Mimosa",
+        "Gacrux",
+        "Altair",
+        "Aldebaran",
+        "Antares",
+        "Spica",
+        "Regulus",
+        "Deneb",
+        "Polaris",
+        "Alphard",
+        "Alkaid",
+        "Dubhe",
+        "Merak",
+        "Phecda",
+        "Megrez",
+        "Alioth",
+        "Mizar",
+        "Kochab",
+        "Pherkad",
+        "Mirfak",
+        "Algol",
+        "Hamal",
+        "Almach",
+        "Schedar",
+        "Caph",
+        "Ruchbah",
+        "Segin",
+        "Alpheratz",
+        "Mirach",
+        "Markab",
+        "Scheat",
+        "Enif",
+        "Ankaa",
+        "Menkar",
+        "Diphda",
+        "Fomalhaut",
+        "Deneb Algedi",
+        "Sadalmelik",
+        "Sadalsuud",
+        "Skat",
+        "Nashira",
+        "Albali",
+        "Alnair",
+        "Peacock",
+        "Atria",
+        "Avior",
+        "Miaplacidus",
+        "Alsephina",
+        "Suhail",
+        "Wezen",
+        "Adhara",
+        "Mirzam",
+        "Bellatrix",
+        "Saiph",
+        "Rigel",
+        "Mintaka",
+        "Alnilam",
+        "Alnitak",
+        "Meissa",
+        "Procyon",
+        "Gomeisa",
+        "Castor",
+        "Pollux",
+        "Alhena",
+        "Elnath",
+        "Capella",
+        "Menkalinan",
+        "Alnath",
+        "Rasalhague",
+        "Cebalrai",
+        "Sabik",
+        "Kaus Australis",
+        "Nunki",
+        "Ascella",
+        "Alnasl",
+        "Arkab Prior",
+        "Arkab Posterior",
+        "Vega",
+        "Sheliak",
+        "Sulafat",
+        "Rasalgethi",
+        "Kornephoros",
+        "Izar",
+        "Nekkar",
+        "Seginus",
+        "Arcturus",
+        "Muphrid",
+        "Porrima",
+        "Zubenelgenubi",
+        "Zubeneschamali",
+        "Denebola",
+        "Algieba",
+        "Ras Elased Australis",
+        "Rasalas",
+        "Algenubi",
+        "Chertan",
+        "Alphard",
+        "Cor Caroli",
+        "Menkent",
+        "Alphirk",
+        "Errai",
+        "Alderamin",
+        "Alfirk",
+        "Sadr",
+        "Albireo",
+        "Gienah",
+        "Aljanah",
+        "Rukh",
+        "Tarazed",
+        "Alshain",
+        "Deneb Kaitos",
+        "Mira",
+        "Rigel Kentaurus",
+        "Canopus",
+        "Spica",
+        "Vega",
+        "Deneb",
+        "Altair",
+    ]
+    excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
+    seen_extra_stars: set[str] = set()
+    for star_name in extra_visible_star_names:
+        if star_name in seen_extra_stars:
+            continue
+        seen_extra_stars.add(star_name)
+        if star_name in excluded_named_stars:
+            continue
+        resolved = _resolve_named_star_icrs_deg(star_name)
+        if resolved is None:
+            continue
+        star_ra_deg, star_dec_deg = resolved
+        panel, sx, sy = _project_to_hemisphere(
+            np.deg2rad(star_ra_deg),
+            np.deg2rad(star_dec_deg),
+            rotation,
+        )
+        star_ax = ax_l if panel == "north" else ax_r
+        star_ax.scatter(
+            [sx],
+            [sy],
+            s=5,
+            c="#f8fafc",
+            edgecolors="none",
+            alpha=0.78,
+            zorder=8,
+        )
+
+    ax_r.plot(
+        [],
+        [],
+        marker="o",
+        linestyle="None",
+        markersize=7,
+        markerfacecolor="black",
+        markeredgecolor="#dc2626",
+        markeredgewidth=1.3,
+        label="Galactic Center",
+    )
+    ax_r.legend(
+        loc="lower right",
+        frameon=False,
+        labelcolor="white",
+        fontsize=8.5,
+    )
 
     plt.savefig(
         fname,
@@ -910,6 +1166,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         plt.show()
     else:
         plt.close(fig)
+
+    plt.rcdefaults()
 
     print(f"Plotted {len(ra)} supernovae stars from CCSN class coordinates.")
     print(f"Saved: {fname}")
