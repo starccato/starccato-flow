@@ -99,6 +99,10 @@ from .analysis import (
     plot_sky_localisation
 )
 
+from .sky import (
+    plot_galactic_supernovae_polar_hemispheres,
+)
+
 __all__ = [
     # Utility functions
     'set_plot_style',
@@ -131,5 +135,7 @@ __all__ = [
     'plot_corner',
     'create_signal_grid_gif',
     'create_snr_variation_gif',
-    'plot_sky_localisation'
+    'plot_sky_localisation',
+    # Sky
+    'plot_galactic_supernovae_polar_hemispheres',
 ]
