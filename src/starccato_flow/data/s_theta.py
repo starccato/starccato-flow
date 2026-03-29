@@ -49,6 +49,7 @@ class sTheta(BaseDataset, Dataset):
         rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
         multi_param: bool = True,
+        include_beta: bool = True,
         noise_realizations: int = 1,
         shared_min: Optional[np.ndarray] = None,
         shared_max: Optional[np.ndarray] = None,
@@ -66,6 +67,7 @@ class sTheta(BaseDataset, Dataset):
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
+            include_beta (bool): Whether to include beta1_IC_b in target parameters
             noise_realizations (int): Number of different noise realizations per signal (multiplies dataset size)
             custom_data (Optional[tuple[np.ndarray, np.ndarray]]): Pre-generated (signals, parameters) arrays.
                 signals: shape (signal_length, num_samples) or (num_samples, signal_length)
@@ -114,11 +116,15 @@ class sTheta(BaseDataset, Dataset):
         self.rho_target = rho_target
         self.noise_realizations = noise_realizations
 
+        # Build the filtering mask from the full parameter table before column selection.
+        beta_keep_idx = params_df["beta1_IC_b"].values > 0
+
         # Select parameter subset before filtering
+        all_parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
         if multi_param:
-            parameter_set = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
-        else: 
-            parameter_set = ["beta1_IC_b"]
+            parameter_set = all_parameters if include_beta else all_parameters[1:]
+        else:
+            parameter_set = ["beta1_IC_b"] if include_beta else ["omega_0(rad|s)"]
 
         # keep only the parameters we want
         params_df = params_df[parameter_set]
@@ -126,8 +132,8 @@ class sTheta(BaseDataset, Dataset):
         # Store parameter names for reference
         self.parameter_names = parameter_set
         
-        # Remove unusual parameters and corresponding signals (after selecting columns)
-        keep_idx = params_df["beta1_IC_b"].values > 0
+        # Remove unusual parameters and corresponding signals using beta positivity.
+        keep_idx = beta_keep_idx
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         params_df = params_df[keep_idx]
         

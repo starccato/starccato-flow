@@ -22,6 +22,7 @@ def create_train_val_split(
     curriculum: bool,
     noise_realizations: int,
     multi_param: bool = True,
+    include_beta: bool = True,
 ):
     """Create training and validation datasets with proper splitting.
     
@@ -93,12 +94,15 @@ def create_train_val_split(
             curriculum=False, 
             noise_realizations=1,
             multi_param=multi_param,
+            include_beta=include_beta,
         )
         num_base_signals = temp_dataset.signals.shape[1]
         
         # Split on BASE signal indices (before augmentation)
         base_indices = list(range(num_base_signals))
         split = int(np.floor(validation_split * num_base_signals))
+        if num_base_signals > 1:
+            split = max(1, min(split, num_base_signals - 1))
         
         # Deterministic split with fixed seed
         rng = np.random.RandomState(seed)
@@ -123,6 +127,7 @@ def create_train_val_split(
             curriculum=curriculum,
             noise_realizations=noise_realizations,
             multi_param=multi_param,
+            include_beta=include_beta,
             indices=train_base_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,
@@ -138,6 +143,7 @@ def create_train_val_split(
             curriculum=curriculum, 
             noise_realizations=1,
             multi_param=multi_param,
+            include_beta=include_beta,
             indices=val_base_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,

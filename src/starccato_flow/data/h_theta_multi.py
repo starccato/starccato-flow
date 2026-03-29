@@ -204,8 +204,8 @@ class hThetaMulti(Dataset):
             raise ValueError("hThetaMulti requires non-empty 'theta' input.")
 
         if isinstance(theta, list):
-            if len(theta) == 0:
-                raise ValueError("hThetaMulti received an empty theta list.")
+            # if len(theta) == 0:
+            #     raise ValueError("hThetaMulti received an empty theta list.")
             theta = torch.cat([
                 item.detach().cpu() if isinstance(item, torch.Tensor) else torch.as_tensor(item)
                 for item in theta

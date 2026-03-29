@@ -12,7 +12,10 @@ from ..localisation.supernovae import Supernovae
 from ..localisation.supernovae import Supernovae
 from tqdm.auto import trange
 
-from ..plotting import plot_corner, plot_sky_localisation
+from ..plotting import (
+    plot_corner,
+    plot_galactic_supernovae_polar_hemispheres,
+)
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE
 from ..nn.flow_multi import Flow
@@ -25,6 +28,19 @@ def _set_seed(seed: int):
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
     return seed
+
+
+class _PosteriorSkyMapData:
+    """Lightweight container so sky.py can plot posterior RA/Dec samples."""
+
+    def __init__(self, ra_samples: np.ndarray, dec_samples: np.ndarray, true_ra: float, true_dec: float):
+        self.ra = np.asarray(ra_samples, dtype=np.float64)
+        self.dec = np.asarray(dec_samples, dtype=np.float64)
+        self._true_ra = float(true_ra)
+        self._true_dec = float(true_dec)
+
+    def get_galactic_center_direction(self) -> tuple[float, float]:
+        return self._true_ra, self._true_dec
 
 class FlowMatchingTrainerMulti:
     def __init__(
@@ -48,6 +64,8 @@ class FlowMatchingTrainerMulti:
         end_snr: int = 10,
         noise_realizations: int = 1,  # Number of noise realizations per signal
         multi_param: bool = True,
+        include_beta: bool = True,
+        estimate_intrinsic_params: bool = False,
         custom_data: tuple = None,  # (signals_array, params_array) for generated data
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None  # Path to validation data files (real CVAE val set)
@@ -86,6 +104,8 @@ class FlowMatchingTrainerMulti:
         self.end_snr = end_snr
         self.noise_realizations = noise_realizations
         self.multi_param = multi_param
+        self.include_beta = include_beta
+        self.estimate_intrinsic_params = estimate_intrinsic_params
         self.sky_param_dim = 4
 
 
@@ -116,6 +136,7 @@ class FlowMatchingTrainerMulti:
                 noise_realizations=noise_realizations,
                 batch_size=batch_size,
                 multi_param=multi_param,
+                include_beta=include_beta,
                 generated=True
             )
             
@@ -130,6 +151,7 @@ class FlowMatchingTrainerMulti:
                 noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
                 multi_param=multi_param,
+                include_beta=include_beta,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain,
@@ -167,6 +189,7 @@ class FlowMatchingTrainerMulti:
                 noise_realizations=noise_realizations,
                 batch_size=batch_size,
                 multi_param=multi_param,
+                include_beta=include_beta,
             )
             
             # Create validation dataset with custom data
@@ -180,6 +203,7 @@ class FlowMatchingTrainerMulti:
                 noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
                 multi_param=multi_param,
+                include_beta=include_beta,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain
@@ -198,6 +222,7 @@ class FlowMatchingTrainerMulti:
                 curriculum=self.curriculum,
                 noise_realizations=self.noise_realizations,
                 multi_param=self.multi_param,
+                include_beta=self.include_beta,
             )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
@@ -217,19 +242,47 @@ class FlowMatchingTrainerMulti:
         print(f"Validation samples: {len(self.validation_dataset)}")
         print("=" * 50)
 
+        if len(self.training_dataset) == 0:
+            raise ValueError(
+                "Training dataset is empty after filtering/splitting. "
+                "Beta filtering is active; check data availability and split settings."
+            )
+        if len(self.validation_dataset) == 0:
+            raise ValueError(
+                "Validation dataset is empty after filtering/splitting. "
+                "Increase dataset size or reduce validation_split."
+            )
+
         self.checkpoint_interval = checkpoint_interval
 
         os.makedirs(outdir, exist_ok=True)
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        # Multi-detector setup uses 3 channels and appends [ra, dec, d, polar_angle] to theta.
+        # Multi-detector setup appends [ra, dec, d, polar_angle] to theta.
+        # By default we estimate only sky parameters while keeping intrinsic params in the dataset.
         base_param_dim = self.training_dataset.parameters.shape[1]
-        self.flow_param_dim = base_param_dim + (self.sky_param_dim if not self.toy else 0)
+        if self.toy:
+            self.flow_param_dim = base_param_dim
+        elif self.estimate_intrinsic_params:
+            self.flow_param_dim = base_param_dim + self.sky_param_dim
+        else:
+            self.flow_param_dim = self.sky_param_dim
         self.flow_signal_dim = Y_LENGTH * 3 if not self.toy else Y_LENGTH
         self.flow = Flow(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
+
+    def _select_estimation_targets(self, params: torch.Tensor) -> torch.Tensor:
+        """Select the parameter subspace used as flow-matching targets."""
+        if self.toy or self.estimate_intrinsic_params:
+            return params
+        return params[:, -self.sky_param_dim:]
+
+    @staticmethod
+    def _denormalize_with_bounds(params_norm: np.ndarray, min_vals: np.ndarray, max_vals: np.ndarray) -> np.ndarray:
+        """Denormalize parameters from [-1, 1] using explicit min/max bounds."""
+        return (params_norm + 1.0) / 2.0 * (max_vals - min_vals) + min_vals
 
     def _save_epoch_data_plots(self, epoch: int) -> None:
         """Save signal and parameter snapshots for the current epoch."""
@@ -343,6 +396,7 @@ class FlowMatchingTrainerMulti:
                 self.samples_per_epoch,
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
+            params = torch.empty((self.samples_per_epoch, 0), device=DEVICE) # put this in temporarily -- we don't want to estimate beta yet
 
             # create multi-channel signals
             self.h_theta_multi = hThetaMulti(
@@ -372,16 +426,17 @@ class FlowMatchingTrainerMulti:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
+                params_target = self._select_estimation_targets(params)
 
-                if params.size(-1) != self.flow_param_dim:
+                if params_target.size(-1) != self.flow_param_dim:
                     raise ValueError(
-                        f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params.size(-1)}"
+                        f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params_target.size(-1)}"
                     )
 
-                x_0 = torch.randn_like(params)  # noise in parameter space
+                x_0 = torch.randn_like(params_target)  # noise in parameter space
                 t = torch.rand(len(params), 1, device=DEVICE)  # random time values on correct device
-                x_t = (1 - t) * x_0 + t * params  # interpolated parameters
-                dx_t = params - x_0  # true velocity direction in parameter space
+                x_t = (1 - t) * x_0 + t * params_target  # interpolated parameters
+                dx_t = params_target - x_0  # true velocity direction in parameter space
 
                 self.optimizer.zero_grad()
                 loss = self.loss_fn(self.flow(x_t, t, noisy_signal), dx_t)
@@ -429,16 +484,17 @@ class FlowMatchingTrainerMulti:
 
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
+                    val_params_target = self._select_estimation_targets(val_params)
 
-                    if val_params.size(-1) != self.flow_param_dim:
+                    if val_params_target.size(-1) != self.flow_param_dim:
                         raise ValueError(
-                            f"Validation parameter dimension mismatch: expected {self.flow_param_dim}, got {val_params.size(-1)}"
+                            f"Validation parameter dimension mismatch: expected {self.flow_param_dim}, got {val_params_target.size(-1)}"
                         )
 
-                    x_0 = torch.randn_like(val_params)
+                    x_0 = torch.randn_like(val_params_target)
                     t = torch.rand(len(val_params), 1, device=DEVICE)
-                    x_t = (1 - t) * x_0 + t * val_params
-                    dx_t = val_params - x_0
+                    x_t = (1 - t) * x_0 + t * val_params_target
+                    dx_t = val_params_target - x_0
 
                     loss = self.loss_fn(self.flow(x_t, t, val_noisy_signal), dx_t)
                     val_total_loss += loss.item()
@@ -597,17 +653,26 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        # Denormalize into physical units using the sampled multi-channel dataset bounds.
-        samples_cpu = val_multi.denormalize_parameters(samples_cpu)
-        true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
-
-        base_labels = list(getattr(self.validation_dataset, "parameter_names", []))
-        sky_labels = ["ra", "dec", "d", "psi"]
-        labels = base_labels + sky_labels
-        ranges = [
-            (float(val_multi.min_theta[i]), float(val_multi.max_theta[i]))
-            for i in range(val_multi.param_dim)
-        ]
+        if self.toy or self.estimate_intrinsic_params:
+            # Denormalize full parameter vector.
+            samples_cpu = val_multi.denormalize_parameters(samples_cpu)
+            true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+            base_labels = list(getattr(self.validation_dataset, "parameter_names", []))
+            sky_labels = ["ra", "dec", "d", "psi"]
+            labels = base_labels + sky_labels if not self.toy else base_labels
+            ranges = [
+                (float(val_multi.min_theta[i]), float(val_multi.max_theta[i]))
+                for i in range(samples_cpu.shape[1])
+            ]
+        else:
+            # Denormalize sky-only posterior using fixed sky bounds from multi-channel dataset.
+            sky_min = val_multi.min_theta[-self.sky_param_dim:]
+            sky_max = val_multi.max_theta[-self.sky_param_dim:]
+            samples_cpu = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
+            true_sky_norm = true_params_norm[-self.sky_param_dim:]
+            true_params = self._denormalize_with_bounds(true_sky_norm.reshape(1, -1), sky_min, sky_max).flatten()
+            labels = ["ra", "dec", "d", "psi"]
+            ranges = [(float(sky_min[i]), float(sky_max[i])) for i in range(self.sky_param_dim)]
 
         plot_corner(
             samples_cpu=samples_cpu,
@@ -664,24 +729,44 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        # Denormalize into physical units and extract sky coordinates.
-        samples_cpu = val_multi.denormalize_parameters(samples_cpu)
-        true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+        if self.toy or self.estimate_intrinsic_params:
+            # Full-vector denormalization; sky parameters remain the trailing coordinates.
+            samples_cpu = val_multi.denormalize_parameters(samples_cpu)
+            true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+            ra_samples = samples_cpu[:, -4]
+            dec_samples = samples_cpu[:, -3]
+            true_ra = true_params[-4]
+            true_dec = true_params[-3]
+        else:
+            sky_min = val_multi.min_theta[-self.sky_param_dim:]
+            sky_max = val_multi.max_theta[-self.sky_param_dim:]
+            sky_samples = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
+            true_sky = self._denormalize_with_bounds(
+                true_params_norm[-self.sky_param_dim:].reshape(1, -1),
+                sky_min,
+                sky_max,
+            ).flatten()
+            ra_samples = sky_samples[:, 0]
+            dec_samples = sky_samples[:, 1]
+            true_ra = true_sky[0]
+            true_dec = true_sky[1]
 
-        ra_samples = samples_cpu[:, -4]
-        dec_samples = samples_cpu[:, -3]
-        true_ra = true_params[-4]
-        true_dec = true_params[-3]
-
-        plot_sky_localisation(
+        posterior_map = _PosteriorSkyMapData(
             ra_samples=ra_samples,
             dec_samples=dec_samples,
             true_ra=true_ra,
             true_dec=true_dec,
+        )
+        plot_galactic_supernovae_polar_hemispheres(
+            ccsn=posterior_map,
             fname=fname,
+            show_constellation_borders=True,
+            show_important_constellation_labels=True,
+            show=False,
             background="black",
             font_family="sans-serif",
             font_name="Avenir",
+            red_blob_mode="density_peak",
         )
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):

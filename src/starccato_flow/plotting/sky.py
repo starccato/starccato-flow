@@ -30,7 +30,6 @@ IMPORTANT_CONSTELLATIONS = {
     "CMa": "Canis Major",
     "UMa": "Ursa Major",
     "Cas": "Cassiopeia",
-    "Cyg": "Cygnus",
     "Sco": "Scorpius",
     "Sgr": "Sagittarius",
     "Aql": "Aquila",
@@ -281,6 +280,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     background: str = "black",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
+    red_blob_mode: str = "middle_star",
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -297,6 +297,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         background: Background color theme ("white" or "black").
         font_family: Font family to use.
         font_name: Specific font name.
+        red_blob_mode: Red contour center mode. One of
+            ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
     """
     set_plot_style(background, font_family, font_name)
     ra = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
@@ -374,7 +376,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     top_shared = max(levels_shared[-1] * 1.001, np.max(combined_vals) * 1.001)
     fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
 
-    blue_bases = ["#325dd3", "#3b82f6", "#60a5fa", "#bfdbfe"]
+    blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
     # Contourf colors are mapped outer->inner because levels are ascending.
     fill_colors = [
         to_rgba(blue_bases[0], alpha=0.20),
@@ -534,6 +536,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                         dx = 0.085
                     elif short_name == "CMa":
                         dy = 0.024
+                    elif short_name == "Cru":
+                        dy = -0.060
 
                     lbl_ax.text(
                         cx + dx,
@@ -566,14 +570,33 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Use the true galactic center for black hole visualization.
     true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec, rotation)
 
-    # Select a CCSN star as the center for the red accretion blob.
-    star_idx = len(ra) // 2  # Use middle star, or could randomize: np.random.randint(0, len(ra))
-    blob_ra = ra_rot[star_idx] - 60 * np.pi / 180
-    blob_dec = dec[star_idx]
-    blob_panel, blob_x, blob_y = _project_to_hemisphere(blob_ra, blob_dec, rotation)
-
-    # For plotting purposes, gc_* now represents the blob center (CCSN star).
-    gc_panel, gc_x, gc_y = blob_panel, blob_x, blob_y
+    # Choose the red contour center for the accretion-blob style overlay.
+    if red_blob_mode == "true_center":
+        gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
+    elif red_blob_mode == "density_peak":
+        # Use the highest posterior-density pixel across both hemispheres.
+        n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
+        s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
+        n_max = float(np.max(n_plot.filled(-np.inf)))
+        s_max = float(np.max(s_plot.filled(-np.inf)))
+        if n_max >= s_max and np.isfinite(n_max):
+            iy, ix = np.unravel_index(np.argmax(n_plot.filled(-np.inf)), n_plot.shape)
+            gc_panel = "north"
+            gc_x = float(xcenters[ix])
+            gc_y = float(ycenters[iy])
+        elif np.isfinite(s_max):
+            iy, ix = np.unravel_index(np.argmax(s_plot.filled(-np.inf)), s_plot.shape)
+            gc_panel = "south"
+            gc_x = float(xcenters[ix])
+            gc_y = float(ycenters[iy])
+        else:
+            gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
+    else:
+        # Default keeps legacy behavior: center red blob on the middle sample.
+        star_idx = len(ra) // 2
+        blob_ra = ra[star_idx]
+        blob_dec = dec[star_idx]
+        gc_panel, gc_x, gc_y = _project_to_hemisphere(blob_ra, blob_dec, rotation)
 
     # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
     betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg()
@@ -966,6 +989,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         panel, lx, ly = south_proj[label_name]
         lbl_ax = ax_l if panel == "north" else ax_r
         y_offset = 0.018
+        if label_name == "Achernar":
+            y_offset = 0.030
         if label_name == "Acrux":
             y_offset = 0.040
         lbl_ax.text(
@@ -1175,7 +1200,12 @@ def plot_galactic_supernovae_polar_hemispheres(
     print("Rendered filled blue contours (lighter = denser) for shared 95%, 75%, 50%, and 25% regions across both hemispheres.")
     print("Added latitude guide circles every 10 degrees in both hemispheres.")
     print("Placed North Pole and South Pole labels at the true pole positions.")
-    print("Added a red density blob centered on the Galactic Center with matching contour style.")
+    if red_blob_mode == "density_peak":
+        print("Added a red density blob centered on the posterior peak with matching contour style.")
+    elif red_blob_mode == "true_center":
+        print("Added a red density blob centered on the true sky location with matching contour style.")
+    else:
+        print("Added a red density blob centered on the selected sample location with matching contour style.")
     if betel_source == "astropy":
         print(
             f"Plotted Betelgeuse at RA={betelgeuse_ra_deg:.3f} deg, Dec={betelgeuse_dec_deg:.3f} deg "
