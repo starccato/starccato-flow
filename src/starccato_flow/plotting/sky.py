@@ -32,7 +32,6 @@ IMPORTANT_CONSTELLATIONS = {
     "Sgr": "Sagittarius",
     "Aql": "Aquila",
     "Lyr": "Lyra",
-    "And": "Andromeda",
     "Peg": "Pegasus",
     "Cru": "Crux",
     "Cen": "Centaurus",
@@ -302,8 +301,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_rot = _rotate_ra(ra, rotation)
 
     fig = plt.figure(figsize=(12, 6.8), facecolor="black")
-    ax_l = fig.add_axes([0.00, 0.00, 0.50, 1.00], facecolor="black")
-    ax_r = fig.add_axes([0.50, 0.00, 0.50, 1.00], facecolor="black")
+    # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
+    ax_l = fig.add_axes([0.03, 0.03, 0.47, 0.94], facecolor="black")
+    ax_r = fig.add_axes([0.50, 0.03, 0.47, 0.94], facecolor="black")
 
     north_mask = dec >= 0
     ra_n = ra_rot[north_mask]
@@ -413,6 +413,88 @@ def plot_galactic_supernovae_polar_hemispheres(
         alpha=0.95,
     )
 
+    # RA/Dec ticks for orientation in each hemisphere panel.
+    ra_tick_deg = np.arange(0, 360, 30)
+    ra_label_deg = np.arange(0, 360, 60)
+    for ra_deg in ra_tick_deg:
+        ang = np.deg2rad(float(ra_deg))
+        x_in = 0.965 * np.sin(ang)
+        y_in = 0.965 * np.cos(ang)
+        x_out = 1.000 * np.sin(ang)
+        y_out = 1.000 * np.cos(ang)
+        for ax in (ax_l, ax_r):
+            ax.plot([x_in, x_out], [y_in, y_out], color="white", alpha=0.45, lw=0.75, zorder=6)
+
+    for ra_deg in ra_label_deg:
+        ang = np.deg2rad(float(ra_deg))
+        x_lbl = 0.915 * np.sin(ang)
+        y_lbl = 0.915 * np.cos(ang)
+        ra_hours = int((ra_deg // 15) % 24)
+        label = f"{ra_hours}h"
+        for ax in (ax_l, ax_r):
+            ax.text(
+                x_lbl,
+                y_lbl,
+                label,
+                color="white",
+                fontsize=7.0,
+                ha="center",
+                va="center",
+                alpha=0.75,
+                zorder=6,
+            )
+
+    dec_abs_ticks = [80, 60, 40, 20]
+    # Place Dec ticks on the 0h/24h RA meridian.
+    ux = 0.0
+    uy = 1.0
+    for dec_abs in dec_abs_ticks:
+        r_tick = (90.0 - float(dec_abs)) / 90.0
+        x0 = r_tick * ux
+        y0 = r_tick * uy
+
+        # North: positive Dec labels.
+        ax_l.plot(
+            [x0 - 0.012, x0 + 0.012],
+            [y0, y0],
+            color="white",
+            alpha=0.45,
+            lw=0.75,
+            zorder=6,
+        )
+        ax_l.text(
+            x0 + 0.020,
+            y0,
+            f"+{dec_abs}°",
+            color="white",
+            fontsize=7.0,
+            ha="left",
+            va="center",
+            alpha=0.75,
+            zorder=6,
+        )
+
+        # South: negative Dec labels.
+        ax_r.plot(
+            [x0 - 0.012, x0 + 0.012],
+            [y0, y0],
+            color="white",
+            alpha=0.45,
+            lw=0.75,
+            zorder=6,
+        )
+        ax_r.text(
+            x0 + 0.020,
+            y0,
+            f"-{dec_abs}°",
+            color="white",
+            fontsize=7.0,
+            ha="left",
+            va="center",
+            alpha=0.75,
+            zorder=6,
+        )
+
     if show_constellation_borders:
         if _ASTROPY_AVAILABLE:
             seg_n, seg_s = _constellation_border_segments(rotation)
@@ -450,10 +532,13 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
+    # Make circles touch at center seam while keeping extra margin on outer edges.
+    ax_l.set_xlim(-1.03, 1.00)
+    ax_r.set_xlim(-1.00, 1.03)
+
     for ax in (ax_l, ax_r):
         ax.set_aspect("equal", adjustable="box")
-        ax.set_xlim(-1.0, 1.0)
-        ax.set_ylim(-1.0, 1.0)
+        ax.set_ylim(-1.03, 1.03)
         ax.set_xticks([])
         ax.set_yticks([])
         for spine in ax.spines.values():
