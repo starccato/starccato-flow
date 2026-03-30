@@ -404,8 +404,8 @@ class FlowMatchingTrainerMulti:
             )
             self._save_epoch_data_plots(epoch)
 
-            # print(self.h_theta_multi_train.max_theta) # correct
-            # print(self.h_theta_multi_train.min_theta) # correct
+            print(self.h_theta_multi_train.max_theta) # correct
+            print(self.h_theta_multi_train.min_theta) # correct
 
             for signal, noisy_signal, params in self.h_theta_multi_train:
                 # Iterating the Dataset directly yields single samples (not batches).
@@ -595,22 +595,22 @@ class FlowMatchingTrainerMulti:
 
         labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
 
-        # # Build robust ranges from both posterior samples and truths so truth markers
-        # # (notably beta) are never clipped outside visible bounds.
-        # mins = np.minimum(np.min(samples_cpu, axis=0), true_params)
-        # maxs = np.maximum(np.max(samples_cpu, axis=0), true_params)
-        # span = np.maximum(maxs - mins, 1e-8)
-        # pad = 0.03 * span
-        # ranges = [
-        #     (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
-        #     for i in range(samples_cpu.shape[1])
-        # ]
+        # Calculate axis ranges from unnormalized dataset values
+        mins = np.min(self.h_theta_multi_val.parameters, axis=0)
+        maxs = np.max(self.h_theta_multi_val.parameters, axis=0)
+        span = np.maximum(maxs - mins, 1e-8)
+        pad = 0.03 * span
+        ranges = [
+            (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
+            for i in range(samples_cpu.shape[1])
+        ]
 
         plot_corner(
             samples_cpu=samples_cpu,
             true_params=true_params,
             fname=fname,
-            labels=labels
+            labels=labels,
+            ranges=ranges
         )
 
     def plot_sky_localisation_sampled_signal(
