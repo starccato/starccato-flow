@@ -13,17 +13,20 @@ class Supernovae:
     SUN_LOCATION = np.array([0.0, 8.178, 0.0208]) # Sun is about 8.178 kpc from galactic center, and ~20.8 pc above the galactic plane
     EARTH_LOCATION = np.array([0.0, 0.0, 0.0])  # Assume that the sun and earth are co-located for simplicity in heliocentric coordinates
     
-    def __init__(self, locations_file: Optional[str] = None, rotation_offset: float = 0.0, limit: Optional[int] = None):
+    def __init__(
+        self,
+        locations_file: Optional[str] = None,
+        rotation_offset: float = np.deg2rad(60.0),
+        limit: Optional[int] = None,
+    ):
         """Initialize supernova location handler.
         
         Args:
             locations_file: Path to CSV file with galactic coordinates (x_kpc, y_kpc, z_kpc)
                           If None, locations will be generated on demand
             rotation_offset: Additional rotation angle (in radians) to apply to Earth's orientation.
-                           Positive values rotate eastward. Default is 0 (standard J2000 orientation).
+                           Positive values rotate eastward. Default is +60 degrees.
             limit: Maximum number of locations to load (None for all)
-            rotation_offset: Additional rotation angle (in radians) to apply to Earth's orientation.
-                           Positive values rotate eastward. Default is 0 (standard J2000 orientation).
         """
         self.locations_file = locations_file
         self.rotation_offset = rotation_offset
@@ -127,6 +130,7 @@ class Supernovae:
         selected_locations = selected_region[np.random.choice(selected_region.shape[0], size=num_supernovae, replace=False)]
 
         return selected_locations
+
     
     def _compute_distances(self) -> None:
         """Compute distances from Earth to each supernova."""

@@ -30,18 +30,6 @@ def _set_seed(seed: int):
     return seed
 
 
-class _PosteriorSkyMapData:
-    """Lightweight container so sky.py can plot posterior RA/Dec samples."""
-
-    def __init__(self, ra_samples: np.ndarray, dec_samples: np.ndarray, true_ra: float, true_dec: float):
-        self.ra = np.asarray(ra_samples, dtype=np.float64)
-        self.dec = np.asarray(dec_samples, dtype=np.float64)
-        self._true_ra = float(true_ra)
-        self._true_dec = float(true_dec)
-
-    def get_galactic_center_direction(self) -> tuple[float, float]:
-        return self._true_ra, self._true_dec
-
 class FlowMatchingTrainerMulti:
     def __init__(
         self,
@@ -109,7 +97,10 @@ class FlowMatchingTrainerMulti:
         self.sky_param_dim = 4
 
 
-        self.supernovae = Supernovae(locations_file='../../exploded_supernovae_t100_sf5.csv') # locations of Galactic supernovae
+        self.supernovae = Supernovae(
+            locations_file='../../exploded_supernovae_t100_sf5.csv',
+            rotation_offset=np.deg2rad(60.0),
+        )  # locations of Galactic supernovae
 
         # Load data from files if paths are provided
         if train_data_path is not None and val_data_path is not None:            
@@ -273,12 +264,6 @@ class FlowMatchingTrainerMulti:
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
-    def _select_estimation_targets(self, params: torch.Tensor) -> torch.Tensor:
-        """Select the parameter subspace used as flow-matching targets."""
-        if self.toy or self.estimate_intrinsic_params:
-            return params
-        return params[:, -self.sky_param_dim:]
-
     @staticmethod
     def _denormalize_with_bounds(params_norm: np.ndarray, min_vals: np.ndarray, max_vals: np.ndarray) -> np.ndarray:
         """Denormalize parameters from [-1, 1] using explicit min/max bounds."""
@@ -359,18 +344,26 @@ class FlowMatchingTrainerMulti:
         """Sample n_samples from a base dataset and return batched signal/parameter lists."""
         signals = []
         params = []
+        base_size = int(dataset.parameters.shape[0])
         remaining = n_samples
         while remaining > 0:
             current_batch_size = min(self.batch_size, remaining)
             batch_indices = np.random.choice(
-                len(dataset),
+                base_size,
                 current_batch_size,
-                replace=len(dataset) < current_batch_size,
+                replace=base_size < current_batch_size,
             )
-            batch_samples = [dataset[int(idx)] for idx in batch_indices]
 
-            batch_signals = torch.cat([sample[0] for sample in batch_samples], dim=0)
-            batch_params = torch.cat([sample[2] for sample in batch_samples], dim=0)
+            # Pull raw (unnormalized) arrays directly so hThetaMulti performs
+            # the only normalization step for combined theta+sky parameters.
+            batch_signals = torch.tensor(
+                dataset.signals[:, batch_indices].T,
+                dtype=torch.float32,
+            )
+            batch_params = torch.tensor(
+                dataset.parameters[batch_indices],
+                dtype=torch.float32,
+            )
 
             signals.append(batch_signals)
             params.append(batch_params)
@@ -388,18 +381,16 @@ class FlowMatchingTrainerMulti:
             total_loss = 0
             total_samples = 0
 
-            self.val_loader.dataset.set_epoch(epoch)
-            self.train_loader.dataset.set_epoch(epoch)
-
             sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
                 epoch,
                 self.samples_per_epoch,
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
-            params = torch.empty((self.samples_per_epoch, 0), device=DEVICE) # put this in temporarily -- we don't want to estimate beta yet
+
+            print(params)
 
             # create multi-channel signals
-            self.h_theta_multi = hThetaMulti(
+            self.h_theta_multi_train = hThetaMulti(
                 s=signals,
                 max_strain=self.training_dataset.max_strain,
                 theta=params,
@@ -413,7 +404,10 @@ class FlowMatchingTrainerMulti:
             )
             self._save_epoch_data_plots(epoch)
 
-            for signal, noisy_signal, params in self.h_theta_multi:
+            print(self.h_theta_multi_train.max_theta)
+            print(self.h_theta_multi_train.min_theta)
+
+            for signal, noisy_signal, params in self.h_theta_multi_train:
                 # Iterating the Dataset directly yields single samples (not batches).
                 # Ensure tensors are batch-first before flattening.
                 if signal.dim() == 2:
@@ -426,7 +420,10 @@ class FlowMatchingTrainerMulti:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
                 noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE)
                 params = params.view(params.size(0), -1).to(DEVICE)
-                params_target = self._select_estimation_targets(params)
+                if self.toy or self.estimate_intrinsic_params:
+                    params_target = params
+                else:
+                    params_target = params[:, -self.sky_param_dim:]
 
                 if params_target.size(-1) != self.flow_param_dim:
                     raise ValueError(
@@ -434,7 +431,7 @@ class FlowMatchingTrainerMulti:
                     )
 
                 x_0 = torch.randn_like(params_target)  # noise in parameter space
-                t = torch.rand(len(params), 1, device=DEVICE)  # random time values on correct device
+                t = torch.rand(len(params_target), 1, device=DEVICE)  # random time values on correct device
                 x_t = (1 - t) * x_0 + t * params_target  # interpolated parameters
                 dx_t = params_target - x_0  # true velocity direction in parameter space
 
@@ -458,13 +455,13 @@ class FlowMatchingTrainerMulti:
             val_total_loss = 0
             val_samples = 0
             with torch.no_grad():
-                val_target_samples = min(self.samples_per_epoch, len(self.validation_dataset))
-                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, val_target_samples)
-                val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, val_target_samples)
+                n_val_signals = int(self.validation_dataset.signals.shape[1])
+                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals)
+                signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
                 self.h_theta_multi_val = hThetaMulti(
-                    s=val_signals,
+                    s=signals_val,
                     max_strain=self.validation_dataset.max_strain,
-                    theta=val_params,
+                    theta=params_val,
                     min_theta=self.validation_dataset.min_theta,
                     max_theta=self.validation_dataset.max_theta,
                     ra=val_ra,
@@ -473,6 +470,8 @@ class FlowMatchingTrainerMulti:
                     batch_size=self.batch_size,
                     noise=False,
                 )
+
+                print()
 
                 for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val:
                     if val_signal.dim() == 2:
@@ -484,7 +483,10 @@ class FlowMatchingTrainerMulti:
 
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
-                    val_params_target = self._select_estimation_targets(val_params)
+                    if self.toy or self.estimate_intrinsic_params:
+                        val_params_target = val_params
+                    else:
+                        val_params_target = val_params[:, -self.sky_param_dim:]
 
                     if val_params_target.size(-1) != self.flow_param_dim:
                         raise ValueError(
@@ -492,7 +494,7 @@ class FlowMatchingTrainerMulti:
                         )
 
                     x_0 = torch.randn_like(val_params_target)
-                    t = torch.rand(len(val_params), 1, device=DEVICE)
+                    t = torch.rand(len(val_params_target), 1, device=DEVICE)
                     x_t = (1 - t) * x_0 + t * val_params_target
                     dx_t = val_params_target - x_0
 
@@ -505,46 +507,25 @@ class FlowMatchingTrainerMulti:
 
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
+
+            # Use a single sampled validation case so corner and sky plots compare
+            # against the exact same truth values (including beta when enabled).
+            plot_case = self.h_theta_multi_val[0]  # First sample from validation set for consistent plotting
+            print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
             self.plot_corner_sampled_signal(
-                epoch=epoch,
-                num_samples=2000,
+                num_samples=5000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_corner.png"),
+                sampled_case=plot_case,
             )
             self.plot_sky_localisation_sampled_signal(
-                epoch=epoch,
-                num_samples=2000,
+                num_samples=5000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_sky.png"),
+                sampled_case=plot_case,
             )
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
-
-            # Optionally: add plotting or checkpointing here
-            # if (epoch + 1) % self.checkpoint_interval == 0:
-                # # gridded plots
-                # with torch.no_grad():
-                #     generated_signals = self.vae.decoder(self.fixed_noise).cpu().detach().numpy()
-                # print(f"Generated signals shape: {generated_signals.shape}")
-                # # plot_waveform_grid(signals=generated_signals, max_value=self.training_dataset.max_strain, generated=True)
-                # if self.vae_parameter_test:
-                #     print("Parameter values:", generated_signals)
-                # else:
-                #     plot_signal_grid(
-                #         signals=generated_signals/TEN_KPC,
-                #         noisy_signals=None,
-                #         max_value=self.training_dataset.max_strain,
-                #         num_cols=3,
-                #         num_rows=1,
-                #         fname="plots/ccsn_generated_signal_grid.svg",
-                #         background="white",
-                #         generated=True
-                #     )
-                # plot_latent_space_3d(
-                #     model=self.vae,
-                #     dataloader=self.train_loader
-                # )
-        
 
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
@@ -591,12 +572,19 @@ class FlowMatchingTrainerMulti:
             
             # Convert to CPU numpy for corner plot
             samples_cpu = posterior_samples.detach().cpu().numpy()
-            true_params = params.detach().cpu() if torch.is_tensor(params) else params
-            true_params = true_params.flatten().numpy()
+            true_params_norm = params.detach().cpu() if torch.is_tensor(params) else params
+            true_params_norm = true_params_norm.flatten().numpy()
             
-            # Denormalize parameters for visualization
-            samples_cpu = self.val_loader.dataset.denormalize_parameters(samples_cpu)
-            true_params = self.val_loader.dataset.denormalize_parameters(true_params.reshape(1, -1)).flatten()
+            # Denormalize parameters for visualization using explicit bounds.
+            # This avoids ambiguity and keeps beta handling consistent.
+            min_theta = np.asarray(self.val_loader.dataset.min_theta)
+            max_theta = np.asarray(self.val_loader.dataset.max_theta)
+            samples_cpu = self._denormalize_with_bounds(samples_cpu, min_theta, max_theta)
+            true_params = self._denormalize_with_bounds(
+                true_params_norm.reshape(1, -1),
+                min_theta,
+                max_theta,
+            ).flatten()
         
         # Call plotting function with samples and dataset for automatic label extraction
         plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname, 
@@ -608,6 +596,7 @@ class FlowMatchingTrainerMulti:
         num_samples: int = 5000,
         n_steps: int = 20,
         fname: str = "plots/corner_plot_sampled_signal.png",
+        sampled_case=None,
     ):
         """Generate a corner plot for one sampled multi-channel validation signal.
 
@@ -616,28 +605,18 @@ class FlowMatchingTrainerMulti:
         """
         self.flow.eval()
 
-        # Build one sampled validation example with sky parameters.
-        val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch=epoch, n_samples=1)
-        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_samples=1)
-        val_multi = hThetaMulti(
-            s=val_signals,
-            max_strain=self.validation_dataset.max_strain,
-            theta=val_params,
-            min_theta=self.validation_dataset.min_theta,
-            max_theta=self.validation_dataset.max_theta,
-            ra=val_ra,
-            dec=val_dec,
-            d=val_d,
-            batch_size=1,
-            noise=False,
-        )
+        # sample one signal from self.multi_channel_val dataset for corner plotting, ensuring it has the same sky parameters as the sky plot
+        signal, noisy_signal, params = sampled_case
 
-        _, noisy_signal, params = val_multi[0]
+        if noisy_signal.dim() == 2:
+            noisy_signal = noisy_signal.unsqueeze(0)
+        if params.dim() == 1:
+            params = params.unsqueeze(0)
+
+        noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
+        params = params.view(params.size(0), -1).to(DEVICE).float()
 
         with torch.no_grad():
-            noisy_signal = noisy_signal.view(1, -1).to(DEVICE).float()
-            params = params.view(1, -1).to(DEVICE).float()
-
             posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
             repeated_signal = noisy_signal.repeat(num_samples, 1)
 
@@ -653,26 +632,28 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        if self.toy or self.estimate_intrinsic_params:
-            # Denormalize full parameter vector.
-            samples_cpu = val_multi.denormalize_parameters(samples_cpu)
-            true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
-            base_labels = list(getattr(self.validation_dataset, "parameter_names", []))
-            sky_labels = ["ra", "dec", "d", "psi"]
-            labels = base_labels + sky_labels if not self.toy else base_labels
-            ranges = [
-                (float(val_multi.min_theta[i]), float(val_multi.max_theta[i]))
-                for i in range(samples_cpu.shape[1])
-            ]
-        else:
-            # Denormalize sky-only posterior using fixed sky bounds from multi-channel dataset.
-            sky_min = val_multi.min_theta[-self.sky_param_dim:]
-            sky_max = val_multi.max_theta[-self.sky_param_dim:]
-            samples_cpu = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
-            true_sky_norm = true_params_norm[-self.sky_param_dim:]
-            true_params = self._denormalize_with_bounds(true_sky_norm.reshape(1, -1), sky_min, sky_max).flatten()
-            labels = ["ra", "dec", "d", "psi"]
-            ranges = [(float(sky_min[i]), float(sky_max[i])) for i in range(self.sky_param_dim)]
+        print("Normalised parameters for corner plot...:", samples_cpu)
+        print("Normalised true parameters:", true_params_norm)
+        samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
+        true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+        print("Min theta:", self.h_theta_multi_val.min_theta)
+        print("Max theta:", self.h_theta_multi_val.max_theta)
+        print("Denormalized parameters for corner plot...:", samples_cpu)
+        print("Denormalized true parameters:", true_params)
+
+
+        labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
+
+        # Build robust ranges from both posterior samples and truths so truth markers
+        # (notably beta) are never clipped outside visible bounds.
+        mins = np.minimum(np.min(samples_cpu, axis=0), true_params)
+        maxs = np.maximum(np.max(samples_cpu, axis=0), true_params)
+        span = np.maximum(maxs - mins, 1e-8)
+        pad = 0.03 * span
+        ranges = [
+            (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
+            for i in range(samples_cpu.shape[1])
+        ]
 
         plot_corner(
             samples_cpu=samples_cpu,
@@ -688,32 +669,25 @@ class FlowMatchingTrainerMulti:
         num_samples: int = 5000,
         n_steps: int = 20,
         fname: str = "plots/sky_localisation_sampled_signal.png",
+        sampled_case=None,
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal."""
         self.flow.eval()
 
-        # Build one sampled validation example with sky parameters.
-        val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch=epoch, n_samples=1)
-        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_samples=1)
-        val_multi = hThetaMulti(
-            s=val_signals,
-            max_strain=self.validation_dataset.max_strain,
-            theta=val_params,
-            min_theta=self.validation_dataset.min_theta,
-            max_theta=self.validation_dataset.max_theta,
-            ra=val_ra,
-            dec=val_dec,
-            d=val_d,
-            batch_size=1,
-            noise=False,
-        )
+        if sampled_case is None:
+            _, noisy_signal, params = self._sample_validation_plot_case(epoch)
+        else:
+            _, noisy_signal, params = sampled_case
 
-        _, noisy_signal, params = val_multi[0]
+        if noisy_signal.dim() == 2:
+            noisy_signal = noisy_signal.unsqueeze(0)
+        if params.dim() == 1:
+            params = params.unsqueeze(0)
+
+        noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
+        params = params.view(params.size(0), -1).to(DEVICE).float()
 
         with torch.no_grad():
-            noisy_signal = noisy_signal.view(1, -1).to(DEVICE).float()
-            params = params.view(1, -1).to(DEVICE).float()
-
             posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
             repeated_signal = noisy_signal.repeat(num_samples, 1)
 
@@ -731,15 +705,15 @@ class FlowMatchingTrainerMulti:
 
         if self.toy or self.estimate_intrinsic_params:
             # Full-vector denormalization; sky parameters remain the trailing coordinates.
-            samples_cpu = val_multi.denormalize_parameters(samples_cpu)
-            true_params = val_multi.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+            samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
+            true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
             ra_samples = samples_cpu[:, -4]
             dec_samples = samples_cpu[:, -3]
             true_ra = true_params[-4]
             true_dec = true_params[-3]
         else:
-            sky_min = val_multi.min_theta[-self.sky_param_dim:]
-            sky_max = val_multi.max_theta[-self.sky_param_dim:]
+            sky_min = self.h_theta_multi_val.min_theta[-self.sky_param_dim:]
+            sky_max = self.h_theta_multi_val.max_theta[-self.sky_param_dim:]
             sky_samples = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
             true_sky = self._denormalize_with_bounds(
                 true_params_norm[-self.sky_param_dim:].reshape(1, -1),
@@ -751,15 +725,13 @@ class FlowMatchingTrainerMulti:
             true_ra = true_sky[0]
             true_dec = true_sky[1]
 
-        posterior_map = _PosteriorSkyMapData(
-            ra_samples=ra_samples,
-            dec_samples=dec_samples,
-            true_ra=true_ra,
-            true_dec=true_dec,
-        )
         plot_galactic_supernovae_polar_hemispheres(
-            ccsn=posterior_map,
+            ccsn=self.supernovae,
             fname=fname,
+            posterior_ra_samples=ra_samples,
+            posterior_dec_samples=dec_samples,
+            true_ra_override=true_ra,
+            true_dec_override=true_dec,
             show_constellation_borders=True,
             show_important_constellation_labels=True,
             show=False,
@@ -778,33 +750,6 @@ class FlowMatchingTrainerMulti:
             index=index,
             fname=fname
         )
-
-    # def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
-    #     signal, noisy_signal, params = self.val_loader.dataset[index]
-
-    #     # Generate reconstructions
-    #     self.vae.eval()
-    #     noisy_signal = noisy_signal.unsqueeze(0)
-    #     reconstructed_signals = []
-        
-    #     with torch.no_grad():
-    #         for _ in range(num_samples):
-    #             reconstruction, _, _ = self.vae(noisy_signal)
-    #             reconstructed_signals.append(
-    #                 reconstruction.squeeze().cpu().numpy() * self.val_loader.dataset.max_strain
-    #             )
-
-    #     plot_reconstruction_distribution(
-    #         reconstructed_signals=reconstructed_signals/TEN_KPC,
-    #         noisy_signal=noisy_signal/TEN_KPC,
-    #         true_signal=signal/TEN_KPC,
-    #         max_value=self.val_loader.dataset.max_strain,
-    #         num_samples=num_samples,
-    #         background=background,
-    #         font_family=font_family,
-    #         font_name=font_name,
-    #         fname=fname
-    #     )
 
     def display_results(self, background="black"):
         """Display training results."""

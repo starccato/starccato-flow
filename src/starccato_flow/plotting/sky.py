@@ -12,6 +12,13 @@ from matplotlib.patches import Circle
 
 from . import set_plot_style
 
+from ..utils.plotting_defaults import (
+    SIGNAL_COLOUR,
+    GENERATED_SIGNAL_COLOUR,
+    SIGNAL_LIM_UPPER,
+    SIGNAL_LIM_LOWER
+)
+
 try:
     import astropy.units as u
     from astropy.coordinates import SkyCoord
@@ -20,8 +27,6 @@ try:
 except ImportError:
     _ASTROPY_AVAILABLE = False
 
-
-ASTROPY_RA_BACKSHIFT_DEG = 60.0
 
 IMPORTANT_CONSTELLATIONS = {
     "Ori": "Orion",
@@ -39,32 +44,35 @@ IMPORTANT_CONSTELLATIONS = {
 }
 
 
-def _backshift_astropy_ra_deg(ra_deg: np.ndarray | float, backshift_deg: float = ASTROPY_RA_BACKSHIFT_DEG) -> np.ndarray | float:
-    """Shift Astropy-resolved RA values back by a fixed degree offset."""
-    return np.mod(ra_deg - backshift_deg, 360.0)
+def _apply_astropy_ra_rotation_deg(
+    ra_deg: np.ndarray | float,
+    rotation_offset_deg: float = 0.0,
+) -> np.ndarray | float:
+    """Apply Supernovae RA rotation offset to Astropy-resolved RA values."""
+    return np.mod(ra_deg + rotation_offset_deg, 360.0)
 
 
-def _get_betelgeuse_icrs_deg() -> tuple[float, float, str]:
+def _get_betelgeuse_icrs_deg(rotation_offset_deg: float = 0.0) -> tuple[float, float, str]:
     """Return Betelgeuse ICRS (RA, Dec) in degrees and a source label."""
     if not _ASTROPY_AVAILABLE:
         return np.nan, np.nan, "unavailable"
 
     try:
         coord = SkyCoord.from_name("Betelgeuse")
-        ra_deg = float(_backshift_astropy_ra_deg(float(coord.ra.deg)))
+        ra_deg = float(_apply_astropy_ra_rotation_deg(float(coord.ra.deg), rotation_offset_deg))
         return ra_deg, float(coord.dec.deg), "astropy"
     except Exception:
         return np.nan, np.nan, "unavailable"
 
 
-def _resolve_named_star_icrs_deg(name: str) -> tuple[float, float] | None:
+def _resolve_named_star_icrs_deg(name: str, rotation_offset_deg: float = 0.0) -> tuple[float, float] | None:
     """Resolve a star name to ICRS RA/Dec degrees using Astropy only."""
     if not _ASTROPY_AVAILABLE:
         return None
 
     try:
         coord = SkyCoord.from_name(name)
-        ra_deg = float(_backshift_astropy_ra_deg(float(coord.ra.deg)))
+        ra_deg = float(_apply_astropy_ra_rotation_deg(float(coord.ra.deg), rotation_offset_deg))
         return ra_deg, float(coord.dec.deg)
     except Exception:
         return None
@@ -95,10 +103,9 @@ def _hpd_thresholds(
 def _project_to_hemisphere(
     ra_val: float,
     dec_val: float,
-    rotation_rad: float,
 ) -> tuple[str, float, float]:
     """Project a single (RA, Dec) point into north/south hemisphere panel coordinates."""
-    ra_use = _rotate_ra(ra_val, rotation_rad)
+    ra_use = ra_val
     if dec_val >= 0.0:
         rr = (np.pi / 2 - dec_val) / (np.pi / 2)
         xx = rr * np.sin(ra_use)
@@ -111,13 +118,8 @@ def _project_to_hemisphere(
     return "south", float(xx), float(yy)
 
 
-def _rotate_ra(ra_rad: np.ndarray | float, rotation_rad: float) -> np.ndarray | float:
-    """Apply the shared sky-view RA rotation used by all plotted objects."""
-    return np.mod(ra_rad + rotation_rad, 2 * np.pi)
-
-
 def _constellation_border_segments(
-    rotation_rad: float,
+    astropy_rotation_offset_deg: float = 0.0,
     n_ra: int = 720,
     n_dec: int = 360,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -186,16 +188,16 @@ def _constellation_border_segments(
     if ra0.size == 0:
         return np.empty((0, 2, 2)), np.empty((0, 2, 2))
 
-    ra0 = _backshift_astropy_ra_deg(ra0)
-    ra1 = _backshift_astropy_ra_deg(ra1)
+    ra0 = _apply_astropy_ra_rotation_deg(ra0, astropy_rotation_offset_deg)
+    ra1 = _apply_astropy_ra_rotation_deg(ra1, astropy_rotation_offset_deg)
 
     ra0_rad = np.deg2rad(ra0)
     dec0_rad = np.deg2rad(dec0)
     ra1_rad = np.deg2rad(ra1)
     dec1_rad = np.deg2rad(dec1)
 
-    ra0_use = np.mod(ra0_rad + rotation_rad, 2 * np.pi)
-    ra1_use = np.mod(ra1_rad + rotation_rad, 2 * np.pi)
+    ra0_use = ra0_rad
+    ra1_use = ra1_rad
 
     p0_north = dec0_rad >= 0.0
     p1_north = dec1_rad >= 0.0
@@ -272,7 +274,10 @@ def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[s
 def plot_galactic_supernovae_polar_hemispheres(
     ccsn,
     fname: str = "plots/galactic_supernovae_polar_hemispheres.png",
-    rotation_deg: float = 60.0,
+    posterior_ra_samples: np.ndarray | None = None,
+    posterior_dec_samples: np.ndarray | None = None,
+    true_ra_override: float | None = None,
+    true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     show_important_constellation_labels: bool = True,
     show: bool = True,
@@ -288,7 +293,12 @@ def plot_galactic_supernovae_polar_hemispheres(
         ccsn: Supernovae-like object exposing ``ra``, ``dec`` and
             ``get_galactic_center_direction()``.
         fname: Output image path.
-        rotation_deg: Global RA view rotation in degrees.
+        posterior_ra_samples: Optional posterior RA samples (radians). If provided
+            with ``posterior_dec_samples``, red sky-location contours are built from these.
+        posterior_dec_samples: Optional posterior Dec samples (radians).
+        true_ra_override: Optional true RA (radians) to override
+            ``ccsn.get_galactic_center_direction()`` for center marker logic.
+        true_dec_override: Optional true Dec (radians).
         show_constellation_borders: If True, overlay IAU constellation boundaries.
         show_important_constellation_labels: If True and constellation borders are enabled,
             annotate key constellations with labels.
@@ -301,28 +311,37 @@ def plot_galactic_supernovae_polar_hemispheres(
             ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
     """
     set_plot_style(background, font_family, font_name)
-    ra = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
-    dec = np.asarray(ccsn.dec)
+    astropy_rotation_offset_deg = 0.0
+    ra_supernovae = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
+    dec_supernovae = np.asarray(ccsn.dec)
 
-    rotation = np.deg2rad(rotation_deg)
-    # Milky Way stars and Astropy-resolved objects use the same RA rotation.
-    ra_rot = _rotate_ra(ra, rotation)
+    use_posterior_samples = (
+        posterior_ra_samples is not None
+        and posterior_dec_samples is not None
+        and np.asarray(posterior_ra_samples).size > 0
+        and np.asarray(posterior_dec_samples).size > 0
+    )
+    ra_posterior = np.mod(np.asarray(posterior_ra_samples), 2 * np.pi) if use_posterior_samples else None
+    dec_posterior = np.asarray(posterior_dec_samples) if use_posterior_samples else None
+
+    # Build the galactic streak directly from Supernovae RA/Dec.
+    ra_rot_supernovae = ra_supernovae
 
     fig = plt.figure(figsize=(12, 6.8), facecolor="black")
     # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
     ax_l = fig.add_axes([0.03, 0.03, 0.47, 0.94], facecolor="black")
     ax_r = fig.add_axes([0.50, 0.03, 0.47, 0.94], facecolor="black")
 
-    north_mask = dec >= 0
-    ra_n = ra_rot[north_mask]
-    dec_n = dec[north_mask]
+    north_mask = dec_supernovae >= 0
+    ra_n = ra_rot_supernovae[north_mask]
+    dec_n = dec_supernovae[north_mask]
     r_n = (np.pi / 2 - dec_n) / (np.pi / 2)
     x_n = r_n * np.sin(ra_n)
     y_n = r_n * np.cos(ra_n)
 
-    south_mask = dec <= 0
-    ra_s = ra_rot[south_mask]
-    dec_s = dec[south_mask]
+    south_mask = dec_supernovae <= 0
+    ra_s = ra_rot_supernovae[south_mask]
+    dec_s = dec_supernovae[south_mask]
     r_s = (np.pi / 2 + dec_s) / (np.pi / 2)
     x_s = -r_s * np.sin(ra_s)
     y_s = r_s * np.cos(ra_s)
@@ -505,7 +524,9 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     if show_constellation_borders:
         if _ASTROPY_AVAILABLE:
-            seg_n, seg_s = _constellation_border_segments(rotation)
+            seg_n, seg_s = _constellation_border_segments(
+                astropy_rotation_offset_deg=astropy_rotation_offset_deg
+            )
             if seg_n.size:
                 ax_l.add_collection(
                     LineCollection(seg_n, colors="#e2e8f0", linewidths=0.36, alpha=0.34, zorder=4)
@@ -521,8 +542,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                     if short_name not in centers:
                         continue
                     ra_c_deg, dec_c_deg = centers[short_name]
-                    ra_c_deg = float(_backshift_astropy_ra_deg(ra_c_deg))
-                    panel, cx, cy = _project_to_hemisphere(np.deg2rad(ra_c_deg), np.deg2rad(dec_c_deg), rotation)
+                    ra_c_deg = float(_apply_astropy_ra_rotation_deg(ra_c_deg, astropy_rotation_offset_deg))
+                    panel, cx, cy = _project_to_hemisphere(np.deg2rad(ra_c_deg), np.deg2rad(dec_c_deg))
                     if cx * cx + cy * cy > 0.97 * 0.97:
                         continue
                     lbl_ax = ax_l if panel == "north" else ax_r
@@ -565,18 +586,111 @@ def plot_galactic_supernovae_polar_hemispheres(
         for spine in ax.spines.values():
             spine.set_visible(False)
 
+    # Keep Galactic Center fixed to the physical galactic center direction.
     gc_ra, gc_dec = ccsn.get_galactic_center_direction()
 
     # Use the true galactic center for black hole visualization.
-    true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec, rotation)
+    true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)
 
-    # Choose the red contour center for the accretion-blob style overlay.
-    if red_blob_mode == "true_center":
-        gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
-    elif red_blob_mode == "density_peak":
-        # Use the highest posterior-density pixel across both hemispheres.
-        n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
-        s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
+    # Optional true event location marker (independent of Galactic Center).
+    true_loc_panel = None
+    true_loc_x = np.nan
+    true_loc_y = np.nan
+    if true_ra_override is not None and true_dec_override is not None:
+        true_loc_panel, true_loc_x, true_loc_y = _project_to_hemisphere(
+            float(true_ra_override),
+            float(true_dec_override),
+        )
+
+    # Choose red sky-location density: posterior contour map if provided, otherwise legacy blob.
+    red_bases = ["#7f1d1d", "#dc2626", "#f87171", "#fecaca"]
+    red_fill_colors = [
+        to_rgba(red_bases[0], alpha=0.20),
+        to_rgba(red_bases[1], alpha=0.40),
+        to_rgba(red_bases[2], alpha=0.62),
+        to_rgba(red_bases[3], alpha=0.88),
+    ]
+
+    if use_posterior_samples:
+        ra_rot_posterior = ra_posterior
+        post_north = dec_posterior >= 0
+        post_south = dec_posterior <= 0
+
+        ra_pn = ra_rot_posterior[post_north]
+        dec_pn = dec_posterior[post_north]
+        r_pn = (np.pi / 2 - dec_pn) / (np.pi / 2)
+        x_pn = r_pn * np.sin(ra_pn)
+        y_pn = r_pn * np.cos(ra_pn)
+
+        ra_ps = ra_rot_posterior[post_south]
+        dec_ps = dec_posterior[post_south]
+        r_ps = (np.pi / 2 + dec_ps) / (np.pi / 2)
+        x_ps = -r_ps * np.sin(ra_ps)
+        y_ps = r_ps * np.cos(ra_ps)
+
+        # Use coarser bins and stronger smoothing for readable posterior contours.
+        post_bins = 180
+        h_pn, pxedges, pyedges = np.histogram2d(x_pn, y_pn, bins=post_bins, range=hist_range)
+        h_ps, _, _ = np.histogram2d(x_ps, y_ps, bins=post_bins, range=hist_range)
+
+        post_k_radius = 5
+        post_k_sigma = 2.4
+        post_k_axis = np.arange(-post_k_radius, post_k_radius + 1)
+        post_kernel = np.exp(-(post_k_axis**2) / (2.0 * post_k_sigma**2))
+        post_kernel /= post_kernel.sum()
+
+        h_pn_smooth = np.apply_along_axis(lambda m: np.convolve(m, post_kernel, mode="same"), axis=0, arr=h_pn)
+        h_pn_smooth = np.apply_along_axis(lambda m: np.convolve(m, post_kernel, mode="same"), axis=1, arr=h_pn_smooth)
+        h_ps_smooth = np.apply_along_axis(lambda m: np.convolve(m, post_kernel, mode="same"), axis=0, arr=h_ps)
+        h_ps_smooth = np.apply_along_axis(lambda m: np.convolve(m, post_kernel, mode="same"), axis=1, arr=h_ps_smooth)
+
+        pxcenters = 0.5 * (pxedges[:-1] + pxedges[1:])
+        pycenters = 0.5 * (pyedges[:-1] + pyedges[1:])
+        pxxc, pyyc = np.meshgrid(pxcenters, pycenters)
+        post_inside_circle = (pxxc**2 + pyyc**2) <= 1.0
+
+        h_pn_plot = np.ma.array(h_pn_smooth.T, mask=~post_inside_circle)
+        h_ps_plot = np.ma.array(h_ps_smooth.T, mask=~post_inside_circle)
+        post_vals = np.concatenate([
+            h_pn_smooth.T[post_inside_circle],
+            h_ps_smooth.T[post_inside_circle],
+        ])
+        post_vals = post_vals[post_vals > 0]
+
+        if post_vals.size > 0:
+            vals = np.sort(post_vals)[::-1]
+            cdf = np.cumsum(vals) / np.sum(vals)
+            post_thr = []
+            # Use the same probability bands and palette as the legacy red blob,
+            # but sourced from posterior samples.
+            for p in probs:
+                idx = np.searchsorted(cdf, p, side="left")
+                idx = min(idx, vals.size - 1)
+                post_thr.append(float(vals[idx]))
+            post_levels = np.sort(np.array(post_thr, dtype=float))
+            post_top = max(post_levels[-1] * 1.001, np.max(post_vals) * 1.001)
+            post_fill_levels = np.concatenate([post_levels, [post_top]])
+
+            ax_l.contourf(
+                pxcenters,
+                pycenters,
+                h_pn_plot,
+                levels=post_fill_levels,
+                colors=red_fill_colors,
+                antialiased=True,
+            )
+            ax_r.contourf(
+                pxcenters,
+                pycenters,
+                h_ps_plot,
+                levels=post_fill_levels,
+                colors=red_fill_colors,
+                antialiased=True,
+            )
+
+        # Marker at posterior peak.
+        n_plot = np.ma.array(h_pn_smooth.T, mask=~post_inside_circle)
+        s_plot = np.ma.array(h_ps_smooth.T, mask=~post_inside_circle)
         n_max = float(np.max(n_plot.filled(-np.inf)))
         s_max = float(np.max(s_plot.filled(-np.inf)))
         if n_max >= s_max and np.isfinite(n_max):
@@ -592,72 +706,75 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
     else:
-        # Default keeps legacy behavior: center red blob on the middle sample.
-        star_idx = len(ra) // 2
-        blob_ra = ra[star_idx]
-        blob_dec = dec[star_idx]
-        gc_panel, gc_x, gc_y = _project_to_hemisphere(blob_ra, blob_dec, rotation)
+        # Fallback: legacy red blob behavior when no posterior samples are provided.
+        if red_blob_mode == "true_center":
+            gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
+        elif red_blob_mode == "density_peak":
+            n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
+            s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
+            n_max = float(np.max(n_plot.filled(-np.inf)))
+            s_max = float(np.max(s_plot.filled(-np.inf)))
+            if n_max >= s_max and np.isfinite(n_max):
+                iy, ix = np.unravel_index(np.argmax(n_plot.filled(-np.inf)), n_plot.shape)
+                gc_panel = "north"
+                gc_x = float(xcenters[ix])
+                gc_y = float(ycenters[iy])
+            elif np.isfinite(s_max):
+                iy, ix = np.unravel_index(np.argmax(s_plot.filled(-np.inf)), s_plot.shape)
+                gc_panel = "south"
+                gc_x = float(xcenters[ix])
+                gc_y = float(ycenters[iy])
+            else:
+                gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
+        else:
+            star_idx = len(ra_supernovae) // 2
+            blob_ra = ra_supernovae[star_idx]
+            blob_dec = dec_supernovae[star_idx]
+            gc_panel, gc_x, gc_y = _project_to_hemisphere(blob_ra, blob_dec)
 
     # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
-    betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg()
+    betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg(
+        rotation_offset_deg=astropy_rotation_offset_deg
+    )
     if np.isfinite(betelgeuse_ra_deg) and np.isfinite(betelgeuse_dec_deg):
         betel_panel, betel_x, betel_y = _project_to_hemisphere(
             np.deg2rad(betelgeuse_ra_deg),
             np.deg2rad(betelgeuse_dec_deg),
-            rotation,
         )
     else:
         betel_panel, betel_x, betel_y = None, np.nan, np.nan
 
-    blob_sigma = 0.12
-    blob_radius = 3.0 * blob_sigma
-    dist2_gc = (xxc - gc_x) ** 2 + (yyc - gc_y) ** 2
-    gc_blob = np.exp(-0.5 * dist2_gc / (blob_sigma**2))
-    gc_blob[dist2_gc > blob_radius**2] = 0.0
+    if not use_posterior_samples:
+        blob_sigma = 0.12
+        blob_radius = 3.0 * blob_sigma
+        dist2_gc = (xxc - gc_x) ** 2 + (yyc - gc_y) ** 2
+        gc_blob = np.exp(-0.5 * dist2_gc / (blob_sigma**2))
+        gc_blob[dist2_gc > blob_radius**2] = 0.0
 
-    gc_mask = inside_circle & (gc_blob > 0.0)
-    gc_thr = _hpd_thresholds(gc_blob, gc_mask, probs)
-    gc_levels = np.sort(np.array(gc_thr, dtype=float))
-    gc_top = max(gc_levels[-1] * 1.001, np.max(gc_blob[gc_mask]) * 1.001)
-    gc_fill_levels = np.concatenate([gc_levels, [gc_top]])
-    red_bases = ["#7f1d1d", "#dc2626", "#f87171", "#fecaca"]
-    red_fill_colors = [
-        to_rgba(red_bases[0], alpha=0.20),
-        to_rgba(red_bases[1], alpha=0.40),
-        to_rgba(red_bases[2], alpha=0.62),
-        to_rgba(red_bases[3], alpha=0.88),
-    ]
-
-    gc_blob_plot = np.ma.array(gc_blob, mask=~inside_circle)
-    if gc_panel == "north":
-        ax_l.contourf(
-            xcenters,
-            ycenters,
-            gc_blob_plot,
-            levels=gc_fill_levels,
-            colors=red_fill_colors,
-            antialiased=True,
-        )
-    else:
-        ax_r.contourf(
-            xcenters,
-            ycenters,
-            gc_blob_plot,
-            levels=gc_fill_levels,
-            colors=red_fill_colors,
-            antialiased=True,
-        )
-
-    gc_ax = ax_l if gc_panel == "north" else ax_r
-    gc_ax.scatter(
-        [gc_x],
-        [gc_y],
-        s=28,
-        c="#fee2e2",
-        edgecolors="#7f1d1d",
-        linewidths=0.8,
-        zorder=7,
-    )
+        gc_mask = inside_circle & (gc_blob > 0.0)
+        gc_thr = _hpd_thresholds(gc_blob, gc_mask, probs)
+        gc_levels = np.sort(np.array(gc_thr, dtype=float))
+        gc_top = max(gc_levels[-1] * 1.001, np.max(gc_blob[gc_mask]) * 1.001)
+        gc_fill_levels = np.concatenate([gc_levels, [gc_top]])
+        gc_blob_plot = np.ma.array(gc_blob, mask=~inside_circle)
+        if gc_panel == "north":
+            ax_l.contourf(
+                xcenters,
+                ycenters,
+                gc_blob_plot,
+                levels=gc_fill_levels,
+                colors=red_fill_colors,
+                antialiased=True,
+            )
+        else:
+            ax_r.contourf(
+                xcenters,
+                ycenters,
+                gc_blob_plot,
+                levels=gc_fill_levels,
+                colors=red_fill_colors,
+                antialiased=True,
+            )
 
     # Black hole visualization at the true galactic center.
     bh_ax = ax_l if true_gc_panel == "north" else ax_r
@@ -673,6 +790,19 @@ def plot_galactic_supernovae_polar_hemispheres(
         (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
     )
     bh_ax.add_patch(bh_interior)
+
+    # Plot true event sky location as an X marker when provided.
+    if true_loc_panel is not None:
+        true_ax = ax_l if true_loc_panel == "north" else ax_r
+        true_ax.scatter(
+            [true_loc_x],
+            [true_loc_y],
+            s=72,
+            marker="x",
+            c=SIGNAL_COLOUR,
+            linewidths=1.8,
+            zorder=10,
+        )
 
     if betel_panel is not None:
         betel_ax = ax_l if betel_panel == "north" else ax_r
@@ -695,17 +825,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             va="center",
             zorder=8,
         )
-
-        if betel_panel == gc_panel:
-            betel_ax.plot(
-                [gc_x, betel_x],
-                [gc_y, betel_y],
-                color="#f59e0b",
-                alpha=0.55,
-                lw=0.9,
-                ls="--",
-                zorder=6,
-            )
 
     # Orion stick figure using Astropy-resolved named stars only.
     orion_star_names = [
@@ -733,14 +852,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     orion_proj: dict[str, tuple[str, float, float]] = {}
     for star_name in orion_star_names:
-        resolved = _resolve_named_star_icrs_deg(star_name)
+        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
         if resolved is None:
             continue
         star_ra_deg, star_dec_deg = resolved
         orion_proj[star_name] = _project_to_hemisphere(
             np.deg2rad(star_ra_deg),
             np.deg2rad(star_dec_deg),
-            rotation,
         )
 
     for a_name, b_name in orion_edges:
@@ -836,14 +954,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     taurus_proj: dict[str, tuple[str, float, float]] = {}
     for star_name in taurus_star_names:
-        resolved = _resolve_named_star_icrs_deg(star_name)
+        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
         if resolved is None:
             continue
         star_ra_deg, star_dec_deg = resolved
         taurus_proj[star_name] = _project_to_hemisphere(
             np.deg2rad(star_ra_deg),
             np.deg2rad(star_dec_deg),
-            rotation,
         )
 
     for a_name, b_name in taurus_edges:
@@ -903,14 +1020,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     south_proj: dict[str, tuple[str, float, float]] = {}
     for star_name in scx_star_names + pointer_names + extra_names:
-        resolved = _resolve_named_star_icrs_deg(star_name)
+        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
         if resolved is None:
             continue
         star_ra_deg, star_dec_deg = resolved
         south_proj[star_name] = _project_to_hemisphere(
             np.deg2rad(star_ra_deg),
             np.deg2rad(star_dec_deg),
-            rotation,
         )
 
     for a_name, b_name in scx_edges:
@@ -1139,14 +1255,13 @@ def plot_galactic_supernovae_polar_hemispheres(
         seen_extra_stars.add(star_name)
         if star_name in excluded_named_stars:
             continue
-        resolved = _resolve_named_star_icrs_deg(star_name)
+        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
         if resolved is None:
             continue
         star_ra_deg, star_dec_deg = resolved
         panel, sx, sy = _project_to_hemisphere(
             np.deg2rad(star_ra_deg),
             np.deg2rad(star_dec_deg),
-            rotation,
         )
         star_ax = ax_l if panel == "north" else ax_r
         star_ax.scatter(
@@ -1170,6 +1285,18 @@ def plot_galactic_supernovae_polar_hemispheres(
         markeredgewidth=1.3,
         label="Galactic Center",
     )
+    if true_loc_panel is not None:
+        ax_r.plot(
+            [],
+            [],
+            marker="x",
+            linestyle="None",
+            markersize=7,
+            markeredgecolor=SIGNAL_COLOUR,
+            markerfacecolor="none",
+            markeredgewidth=1.6,
+            label="Supernova Location",
+        )
     ax_r.legend(
         loc="lower right",
         frameon=False,
@@ -1194,13 +1321,18 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     plt.rcdefaults()
 
-    print(f"Plotted {len(ra)} supernovae stars from CCSN class coordinates.")
+    if use_posterior_samples:
+        print(f"Plotted {len(ra_supernovae)} galactic supernovae with {len(ra_posterior)} posterior samples.")
+    else:
+        print(f"Plotted {len(ra_supernovae)} supernovae stars from CCSN class coordinates.")
     print(f"Saved: {fname}")
-    print(f"Applied view rotation: +{rotation_deg:.0f} deg to both hemispheres.")
+    print("Applied Supernovae coordinate rotation (if configured); no extra sky-map view rotation applied.")
     print("Rendered filled blue contours (lighter = denser) for shared 95%, 75%, 50%, and 25% regions across both hemispheres.")
     print("Added latitude guide circles every 10 degrees in both hemispheres.")
     print("Placed North Pole and South Pole labels at the true pole positions.")
-    if red_blob_mode == "density_peak":
+    if use_posterior_samples:
+        print("Added red sky-location contours from posterior samples.")
+    elif red_blob_mode == "density_peak":
         print("Added a red density blob centered on the posterior peak with matching contour style.")
     elif red_blob_mode == "true_center":
         print("Added a red density blob centered on the true sky location with matching contour style.")
@@ -1209,7 +1341,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     if betel_source == "astropy":
         print(
             f"Plotted Betelgeuse at RA={betelgeuse_ra_deg:.3f} deg, Dec={betelgeuse_dec_deg:.3f} deg "
-            f"in the same +{rotation_deg:.0f} deg rotated reference frame ({betel_panel} hemisphere)."
+            f"in the same plotted reference frame ({betel_panel} hemisphere)."
         )
         print("Betelgeuse coordinates resolved with astropy SkyCoord.from_name('Betelgeuse').")
     else:
@@ -1227,8 +1359,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         "(Southern Cross, pointers, Achernar, Pleiades)."
     )
     print(
-        f"Applied Astropy RA backshift of {ASTROPY_RA_BACKSHIFT_DEG:.0f} deg before the shared sky-map rotation; "
-        "Milky Way RA handling is unchanged."
+        f"Applied Astropy RA rotation offset of {astropy_rotation_offset_deg:+.0f} deg from Supernovae.rotation_offset "
+        "for named-star overlays; Milky Way RA handling is unchanged."
     )
     print("South hemisphere mirrored in x so the shared seam RA aligns across both panels.")
     if show_constellation_borders:

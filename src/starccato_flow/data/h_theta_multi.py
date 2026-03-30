@@ -415,7 +415,7 @@ class hThetaMulti(Dataset):
         noisy_signal = clean_signal.copy()
         
         # Get parameters
-        parameters = self.parameters[original_idx]
+        parameters = self.parameters[original_idx].copy()
         
         # Add noise to each detector channel if enabled
         # if self.noise:
