@@ -387,7 +387,7 @@ class FlowMatchingTrainerMulti:
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
-            print(params)
+            # print(params)  # correct
 
             # create multi-channel signals
             self.h_theta_multi_train = hThetaMulti(
@@ -404,8 +404,8 @@ class FlowMatchingTrainerMulti:
             )
             self._save_epoch_data_plots(epoch)
 
-            print(self.h_theta_multi_train.max_theta)
-            print(self.h_theta_multi_train.min_theta)
+            # print(self.h_theta_multi_train.max_theta) # correct
+            # print(self.h_theta_multi_train.min_theta) # correct
 
             for signal, noisy_signal, params in self.h_theta_multi_train:
                 # Iterating the Dataset directly yields single samples (not batches).
@@ -429,6 +429,8 @@ class FlowMatchingTrainerMulti:
                     raise ValueError(
                         f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params_target.size(-1)}"
                     )
+
+                # print(params_target) # correct
 
                 x_0 = torch.randn_like(params_target)  # noise in parameter space
                 t = torch.rand(len(params_target), 1, device=DEVICE)  # random time values on correct device
@@ -458,6 +460,8 @@ class FlowMatchingTrainerMulti:
                 n_val_signals = int(self.validation_dataset.signals.shape[1])
                 val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals)
                 signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
+                # print("Validation parameters (unnormalized):")
+                # print(params_val) # corrrect
                 self.h_theta_multi_val = hThetaMulti(
                     s=signals_val,
                     max_strain=self.validation_dataset.max_strain,
@@ -471,7 +475,11 @@ class FlowMatchingTrainerMulti:
                     noise=False,
                 )
 
-                print()
+                print("Validation max_theta:")
+                print(self.h_theta_multi_val.max_theta)
+                print("Validation min_theta:")
+                print(self.h_theta_multi_val.min_theta)
+
 
                 for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val:
                     if val_signal.dim() == 2:
@@ -511,15 +519,16 @@ class FlowMatchingTrainerMulti:
             # Use a single sampled validation case so corner and sky plots compare
             # against the exact same truth values (including beta when enabled).
             plot_case = self.h_theta_multi_val[0]  # First sample from validation set for consistent plotting
+            print("case params:", plot_case[2])
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
             self.plot_corner_sampled_signal(
-                num_samples=5000,
+                num_samples=1000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_corner.png"),
                 sampled_case=plot_case,
             )
             self.plot_sky_localisation_sampled_signal(
-                num_samples=5000,
+                num_samples=1000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_sky.png"),
                 sampled_case=plot_case,
@@ -531,64 +540,6 @@ class FlowMatchingTrainerMulti:
         print(f"Training Time: {runtime:.2f}min")
         # Optionally: plot final results or save model
         # self.save_models()
-    
-    def plot_corner(self, index=0, num_samples=5000, fname="plots/corner_plot.png"):
-        """Generate corner plot with posterior samples for a validation signal.
-        
-        Args:
-            index (int): Index of validation signal to use
-            num_samples (int): Number of posterior samples to generate
-            fname (str): Filename to save plot
-        """
-        # Get signal from validation dataset
-        signal, noisy_signal, params = self.val_loader.dataset[index] # signal and parameters are normalized
-        
-        self.flow.eval()
-        
-        with torch.no_grad():
-            # Ensure proper device and shape
-            noisy_signal = noisy_signal.to(DEVICE).float()
-            
-            # Flatten to 1D if needed, then reshape for batch processing
-            if noisy_signal.dim() > 1:
-                noisy_signal = noisy_signal.flatten()
-            
-            # Generate posterior samples by flowing from noise
-            posterior_samples = torch.randn(num_samples, params.shape[-1], device=DEVICE)
-            # Repeat signal for all samples: (signal_dim,) -> (1, signal_dim) -> (num_samples, signal_dim)
-            repeated_signal = noisy_signal.unsqueeze(0).repeat(num_samples, 1)
-            
-            # Flow the samples to get posterior distribution
-            n_steps = 20
-            time_steps = torch.linspace(0, 1.0, n_steps + 1)
-            
-            for i in range(n_steps):
-                posterior_samples = self.flow.step(
-                    posterior_samples, 
-                    time_steps[i], 
-                    time_steps[i + 1], 
-                    repeated_signal
-                )
-            
-            # Convert to CPU numpy for corner plot
-            samples_cpu = posterior_samples.detach().cpu().numpy()
-            true_params_norm = params.detach().cpu() if torch.is_tensor(params) else params
-            true_params_norm = true_params_norm.flatten().numpy()
-            
-            # Denormalize parameters for visualization using explicit bounds.
-            # This avoids ambiguity and keeps beta handling consistent.
-            min_theta = np.asarray(self.val_loader.dataset.min_theta)
-            max_theta = np.asarray(self.val_loader.dataset.max_theta)
-            samples_cpu = self._denormalize_with_bounds(samples_cpu, min_theta, max_theta)
-            true_params = self._denormalize_with_bounds(
-                true_params_norm.reshape(1, -1),
-                min_theta,
-                max_theta,
-            ).flatten()
-        
-        # Call plotting function with samples and dataset for automatic label extraction
-        plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname, 
-                   dataset=self.val_loader.dataset)
 
     def plot_corner_sampled_signal(
         self,
@@ -644,23 +595,22 @@ class FlowMatchingTrainerMulti:
 
         labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
 
-        # Build robust ranges from both posterior samples and truths so truth markers
-        # (notably beta) are never clipped outside visible bounds.
-        mins = np.minimum(np.min(samples_cpu, axis=0), true_params)
-        maxs = np.maximum(np.max(samples_cpu, axis=0), true_params)
-        span = np.maximum(maxs - mins, 1e-8)
-        pad = 0.03 * span
-        ranges = [
-            (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
-            for i in range(samples_cpu.shape[1])
-        ]
+        # # Build robust ranges from both posterior samples and truths so truth markers
+        # # (notably beta) are never clipped outside visible bounds.
+        # mins = np.minimum(np.min(samples_cpu, axis=0), true_params)
+        # maxs = np.maximum(np.max(samples_cpu, axis=0), true_params)
+        # span = np.maximum(maxs - mins, 1e-8)
+        # pad = 0.03 * span
+        # ranges = [
+        #     (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
+        #     for i in range(samples_cpu.shape[1])
+        # ]
 
         plot_corner(
             samples_cpu=samples_cpu,
             true_params=true_params,
             fname=fname,
-            labels=labels,
-            ranges=ranges,
+            labels=labels
         )
 
     def plot_sky_localisation_sampled_signal(
