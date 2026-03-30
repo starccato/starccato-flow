@@ -439,8 +439,8 @@ class hThetaMulti(Dataset):
         #         # Normalize
         #         noisy_signal[j:j+1, :] = self.normalise_signals(d)
         # else:
-        #     noisy_signal = self.normalise_signals(noisy_signal)
-
+        
+        noisy_signal = self.normalise_signals(noisy_signal)
         clean_signal = self.normalise_signals(clean_signal)
         
         # Normalize parameters

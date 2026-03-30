@@ -387,7 +387,7 @@ class FlowMatchingTrainerMulti:
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
-            # print(params)  # correct
+            # print(signals[0], params[0])  # correct, unnormalised.
 
             # create multi-channel signals
             self.h_theta_multi_train = hThetaMulti(
@@ -402,10 +402,12 @@ class FlowMatchingTrainerMulti:
                 batch_size=self.batch_size,
                 noise=False
             )
-            self._save_epoch_data_plots(epoch)
+            # self._save_epoch_data_plots(epoch)
 
             print(self.h_theta_multi_train.max_theta) # correct
             print(self.h_theta_multi_train.min_theta) # correct
+
+            print(self.h_theta_multi_train.max_strain) # correct, unnormalised
 
             for signal, noisy_signal, params in self.h_theta_multi_train:
                 # Iterating the Dataset directly yields single samples (not batches).
@@ -430,6 +432,7 @@ class FlowMatchingTrainerMulti:
                         f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params_target.size(-1)}"
                     )
 
+                # print(noisy_signal) # the signal is normalised...
                 # print(params_target) # correct
 
                 x_0 = torch.randn_like(params_target)  # noise in parameter space
