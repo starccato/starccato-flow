@@ -39,7 +39,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
-        samples_per_epoch: int = 10000,
+        samples_per_epoch: int = 30000,
         validation_split: float = 0.1,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
@@ -376,10 +376,18 @@ class FlowMatchingTrainerMulti:
         self.avg_mse_losses = []
         self.avg_mse_losses_val = []
 
-        for epoch in trange(self.num_epochs, desc="Epochs", position=0, leave=True):
+        epoch_bar = trange(self.num_epochs, desc="Epochs", position=0, leave=True)
+        for epoch in epoch_bar:
             self.flow.train()
             total_loss = 0
             total_samples = 0
+            use_cuda = str(DEVICE).startswith("cuda")
+            loader_kwargs = {
+                "batch_size": self.batch_size,
+                "num_workers": 0,
+                "pin_memory": use_cuda,
+                "persistent_workers": False,
+            }
 
             sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
                 epoch,
@@ -387,7 +395,6 @@ class FlowMatchingTrainerMulti:
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
-            # print(signals[0], params[0])  # correct, unnormalised.
 
             # create multi-channel signals
             self.h_theta_multi_train = hThetaMulti(
@@ -402,26 +409,17 @@ class FlowMatchingTrainerMulti:
                 batch_size=self.batch_size,
                 noise=False
             )
+            self.h_theta_multi_train_loader = DataLoader(
+                self.h_theta_multi_train,
+                shuffle=True,
+                **loader_kwargs,
+            )
             # self._save_epoch_data_plots(epoch)
 
-            print(self.h_theta_multi_train.max_theta) # correct
-            print(self.h_theta_multi_train.min_theta) # correct
-
-            print(self.h_theta_multi_train.max_strain) # correct, unnormalised
-
-            for signal, noisy_signal, params in self.h_theta_multi_train:
-                # Iterating the Dataset directly yields single samples (not batches).
-                # Ensure tensors are batch-first before flattening.
-                if signal.dim() == 2:
-                    signal = signal.unsqueeze(0)
-                if noisy_signal.dim() == 2:
-                    noisy_signal = noisy_signal.unsqueeze(0)
-                if params.dim() == 1:
-                    params = params.unsqueeze(0)
-
-                signal = signal.view(signal.size(0), -1).to(DEVICE)
-                noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE)
-                params = params.view(params.size(0), -1).to(DEVICE)
+            for signal, noisy_signal, params in self.h_theta_multi_train_loader:
+                signal = signal.view(signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
+                noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
+                params = params.view(params.size(0), -1).to(DEVICE, non_blocking=use_cuda)
                 if self.toy or self.estimate_intrinsic_params:
                     params_target = params
                 else:
@@ -431,9 +429,6 @@ class FlowMatchingTrainerMulti:
                     raise ValueError(
                         f"Parameter dimension mismatch: expected {self.flow_param_dim}, got {params_target.size(-1)}"
                     )
-
-                # print(noisy_signal) # the signal is normalised...
-                # print(params_target) # correct
 
                 x_0 = torch.randn_like(params_target)  # noise in parameter space
                 t = torch.rand(len(params_target), 1, device=DEVICE)  # random time values on correct device
@@ -463,8 +458,6 @@ class FlowMatchingTrainerMulti:
                 n_val_signals = int(self.validation_dataset.signals.shape[1])
                 val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals)
                 signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
-                # print("Validation parameters (unnormalized):")
-                # print(params_val) # corrrect
                 self.h_theta_multi_val = hThetaMulti(
                     s=signals_val,
                     max_strain=self.validation_dataset.max_strain,
@@ -477,23 +470,16 @@ class FlowMatchingTrainerMulti:
                     batch_size=self.batch_size,
                     noise=False,
                 )
+                self.h_theta_multi_val_loader = DataLoader(
+                    self.h_theta_multi_val,
+                    shuffle=False,
+                    **loader_kwargs,
+                )
 
-                print("Validation max_theta:")
-                print(self.h_theta_multi_val.max_theta)
-                print("Validation min_theta:")
-                print(self.h_theta_multi_val.min_theta)
 
-
-                for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val:
-                    if val_signal.dim() == 2:
-                        val_signal = val_signal.unsqueeze(0)
-                    if val_noisy_signal.dim() == 2:
-                        val_noisy_signal = val_noisy_signal.unsqueeze(0)
-                    if val_params.dim() == 1:
-                        val_params = val_params.unsqueeze(0)
-
-                    val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE)
-                    val_params = val_params.view(val_params.size(0), -1).to(DEVICE)
+                for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val_loader:
+                    val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
+                    val_params = val_params.view(val_params.size(0), -1).to(DEVICE, non_blocking=use_cuda)
                     if self.toy or self.estimate_intrinsic_params:
                         val_params_target = val_params
                     else:
@@ -515,6 +501,10 @@ class FlowMatchingTrainerMulti:
             
             avg_total_loss_val = val_total_loss / val_samples
             self.avg_mse_losses_val.append(avg_total_loss_val)
+            epoch_bar.set_postfix(
+                train_loss=f"{avg_total_loss:.4f}",
+                val_loss=f"{avg_total_loss_val:.4f}",
+            )
 
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
@@ -522,16 +512,15 @@ class FlowMatchingTrainerMulti:
             # Use a single sampled validation case so corner and sky plots compare
             # against the exact same truth values (including beta when enabled).
             plot_case = self.h_theta_multi_val[0]  # First sample from validation set for consistent plotting
-            print("case params:", plot_case[2])
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
             self.plot_corner_sampled_signal(
-                num_samples=1000,
+                num_samples=3000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_corner.png"),
                 sampled_case=plot_case,
             )
             self.plot_sky_localisation_sampled_signal(
-                num_samples=1000,
+                num_samples=3000,
                 n_steps=20,
                 fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_sky.png"),
                 sampled_case=plot_case,
@@ -541,6 +530,8 @@ class FlowMatchingTrainerMulti:
 
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
+        print("Plotting training/validation loss curves...")
+        display_results_method(self.avg_mse_losses, self.avg_mse_losses_val, background="black")
         # Optionally: plot final results or save model
         # self.save_models()
 
@@ -586,27 +577,25 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        print("Normalised parameters for corner plot...:", samples_cpu)
-        print("Normalised true parameters:", true_params_norm)
+
         samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
         true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
-        print("Min theta:", self.h_theta_multi_val.min_theta)
-        print("Max theta:", self.h_theta_multi_val.max_theta)
-        print("Denormalized parameters for corner plot...:", samples_cpu)
-        print("Denormalized true parameters:", true_params)
 
 
         labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
 
         # Calculate axis ranges from unnormalized dataset values
-        mins = np.min(self.h_theta_multi_val.parameters, axis=0)
-        maxs = np.max(self.h_theta_multi_val.parameters, axis=0)
+        mins = np.min(self.h_theta_multi_train.parameters, axis=0)
+        maxs = np.max(self.h_theta_multi_train.parameters, axis=0)
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
         ranges = [
             (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
             for i in range(samples_cpu.shape[1])
         ]
+
+        # manually set limits on d
+        ranges[-2] = (0.1, 20.0)
 
         plot_corner(
             samples_cpu=samples_cpu,

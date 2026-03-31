@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Iterable
 
 import matplotlib.pyplot as plt
@@ -39,7 +40,7 @@ IMPORTANT_CONSTELLATIONS = {
     "Sgr": "Sagittarius",
     "Aql": "Aquila",
     "Peg": "Pegasus",
-    "Cru": "Crux",
+    "Cru": "Southern Cross",
     "Cen": "Centaurus"
 }
 
@@ -52,6 +53,7 @@ def _apply_astropy_ra_rotation_deg(
     return np.mod(ra_deg + rotation_offset_deg, 360.0)
 
 
+@lru_cache(maxsize=16)
 def _get_betelgeuse_icrs_deg(rotation_offset_deg: float = 0.0) -> tuple[float, float, str]:
     """Return Betelgeuse ICRS (RA, Dec) in degrees and a source label."""
     if not _ASTROPY_AVAILABLE:
@@ -65,6 +67,7 @@ def _get_betelgeuse_icrs_deg(rotation_offset_deg: float = 0.0) -> tuple[float, f
         return np.nan, np.nan, "unavailable"
 
 
+@lru_cache(maxsize=512)
 def _resolve_named_star_icrs_deg(name: str, rotation_offset_deg: float = 0.0) -> tuple[float, float] | None:
     """Resolve a star name to ICRS RA/Dec degrees using Astropy only."""
     if not _ASTROPY_AVAILABLE:
@@ -118,6 +121,7 @@ def _project_to_hemisphere(
     return "south", float(xx), float(yy)
 
 
+@lru_cache(maxsize=8)
 def _constellation_border_segments(
     astropy_rotation_offset_deg: float = 0.0,
     n_ra: int = 720,
@@ -242,6 +246,7 @@ def _constellation_border_segments(
     return seg_n, seg_s
 
 
+@lru_cache(maxsize=8)
 def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[str, tuple[float, float]]:
     """Estimate constellation label centers (RA, Dec deg) from an ICRS sampling grid."""
     if not _ASTROPY_AVAILABLE:
@@ -439,6 +444,36 @@ def plot_galactic_supernovae_polar_hemispheres(
         multialignment="center",
         alpha=0.95,
     )
+
+    # Add curved "MILKY WAY" text below south pole, following the arc
+    milky_way_text = "MILKY WAY"
+    n_chars = len(milky_way_text)
+    # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
+    angle_start = 240  # degrees in standard angle (bottom-left)
+    angle_end = 300    # degrees in standard angle (bottom-right)
+    angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
+    radius = 0.72  # position along the arc (raised from south pole)
+    
+    for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
+        x = radius * np.cos(angle)
+        y = radius * np.sin(angle)
+        # Rotate text to follow the curve (tangent to circle)
+        rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
+        ax_r.text(
+            x,
+            y,
+            char,
+            color="white",
+            fontsize=11,
+            ha="center",
+            va="center",
+            rotation=rotation,
+            rotation_mode="anchor",
+            alpha=0.75,
+            fontweight="bold",
+            zorder=5,
+            clip_on=False,
+        )
 
     # RA/Dec ticks for orientation in each hemisphere panel.
     ra_tick_deg = np.arange(0, 360, 30)
@@ -804,6 +839,18 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=10,
         )
 
+    # Plot supernova location marker at the center of the red blob.
+    gc_ax = ax_l if gc_panel == "north" else ax_r
+    gc_ax.scatter(
+        [gc_x],
+        [gc_y],
+        s=72,
+        marker="x",
+        c=SIGNAL_COLOUR,
+        linewidths=1.8,
+        zorder=10,
+    )
+
     if betel_panel is not None:
         betel_ax = ax_l if betel_panel == "north" else ax_r
         betel_ax.scatter(
@@ -1006,7 +1053,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         #     zorder=10,
         # )
 
-    # Southern Cross (Crux), pointer stars, Achernar, and Pleiades.
+    # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
     scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
     scx_edges = [
         ("Gacrux", "Acrux"),
@@ -1099,6 +1146,10 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=9,
         )
 
+    display_name_overrides = {
+        "Pleiades": "Matariki",
+        "Acrux": "The Pointers",
+    }
     for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#bbf7d0"), ("Antares", "#fca5a5")):
         if label_name not in south_proj:
             continue
@@ -1107,12 +1158,13 @@ def plot_galactic_supernovae_polar_hemispheres(
         y_offset = 0.018
         if label_name == "Achernar":
             y_offset = 0.030
+        display_name = display_name_overrides.get(label_name, label_name)
         if label_name == "Acrux":
-            y_offset = 0.040
+            y_offset = 0.070
         lbl_ax.text(
-            lx + 0.03,
+            lx,
             ly + y_offset,
-            label_name,
+            display_name,
             color=label_color,
             fontsize=8.2,
             ha="left",
@@ -1285,6 +1337,17 @@ def plot_galactic_supernovae_polar_hemispheres(
         markeredgewidth=1.3,
         label="Galactic Center",
     )
+    ax_r.plot(
+        [],
+        [],
+        marker="x",
+        linestyle="None",
+        markersize=7,
+        markeredgecolor=SIGNAL_COLOUR,
+        markerfacecolor="none",
+        markeredgewidth=1.6,
+        label="Supernova Location",
+    )
     if true_loc_panel is not None:
         ax_r.plot(
             [],
@@ -1295,10 +1358,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             markeredgecolor=SIGNAL_COLOUR,
             markerfacecolor="none",
             markeredgewidth=1.6,
-            label="Supernova Location",
+            label="True Event Location",
         )
     ax_r.legend(
         loc="lower right",
+        bbox_to_anchor=(1.0, -0.03),
         frameon=False,
         labelcolor="white",
         fontsize=8.5,
@@ -1356,7 +1420,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     )
     print(
         f"Southern-sky overlay resolved {len(south_proj)} named targets "
-        "(Southern Cross, pointers, Achernar, Pleiades)."
+        "(Southern Cross, pointers, Achernar, Matariki)."
     )
     print(
         f"Applied Astropy RA rotation offset of {astropy_rotation_offset_deg:+.0f} deg from Supernovae.rotation_offset "
