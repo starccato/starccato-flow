@@ -39,7 +39,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
-        samples_per_epoch: int = 30000,
+        samples_per_epoch: int = 20000,
         validation_split: float = 0.1,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,

@@ -839,18 +839,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=10,
         )
 
-    # Plot supernova location marker at the center of the red blob.
-    gc_ax = ax_l if gc_panel == "north" else ax_r
-    gc_ax.scatter(
-        [gc_x],
-        [gc_y],
-        s=72,
-        marker="x",
-        c=SIGNAL_COLOUR,
-        linewidths=1.8,
-        zorder=10,
-    )
-
     if betel_panel is not None:
         betel_ax = ax_l if betel_panel == "north" else ax_r
         betel_ax.scatter(
@@ -1337,17 +1325,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         markeredgewidth=1.3,
         label="Galactic Center",
     )
-    ax_r.plot(
-        [],
-        [],
-        marker="x",
-        linestyle="None",
-        markersize=7,
-        markeredgecolor=SIGNAL_COLOUR,
-        markerfacecolor="none",
-        markeredgewidth=1.6,
-        label="Supernova Location",
-    )
+
     if true_loc_panel is not None:
         ax_r.plot(
             [],
@@ -1358,7 +1336,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             markeredgecolor=SIGNAL_COLOUR,
             markerfacecolor="none",
             markeredgewidth=1.6,
-            label="True Event Location",
+            label="True Supernova Location",
         )
     ax_r.legend(
         loc="lower right",
@@ -1384,51 +1362,4 @@ def plot_galactic_supernovae_polar_hemispheres(
         plt.close(fig)
 
     plt.rcdefaults()
-
-    if use_posterior_samples:
-        print(f"Plotted {len(ra_supernovae)} galactic supernovae with {len(ra_posterior)} posterior samples.")
-    else:
-        print(f"Plotted {len(ra_supernovae)} supernovae stars from CCSN class coordinates.")
-    print(f"Saved: {fname}")
-    print("Applied Supernovae coordinate rotation (if configured); no extra sky-map view rotation applied.")
-    print("Rendered filled blue contours (lighter = denser) for shared 95%, 75%, 50%, and 25% regions across both hemispheres.")
-    print("Added latitude guide circles every 10 degrees in both hemispheres.")
-    print("Placed North Pole and South Pole labels at the true pole positions.")
-    if use_posterior_samples:
-        print("Added red sky-location contours from posterior samples.")
-    elif red_blob_mode == "density_peak":
-        print("Added a red density blob centered on the posterior peak with matching contour style.")
-    elif red_blob_mode == "true_center":
-        print("Added a red density blob centered on the true sky location with matching contour style.")
-    else:
-        print("Added a red density blob centered on the selected sample location with matching contour style.")
-    if betel_source == "astropy":
-        print(
-            f"Plotted Betelgeuse at RA={betelgeuse_ra_deg:.3f} deg, Dec={betelgeuse_dec_deg:.3f} deg "
-            f"in the same plotted reference frame ({betel_panel} hemisphere)."
-        )
-        print("Betelgeuse coordinates resolved with astropy SkyCoord.from_name('Betelgeuse').")
-    else:
-        print("Betelgeuse name resolution unavailable; skipped Betelgeuse marker.")
-    print(
-        f"Orion stick figure drew {len(orion_proj)} resolved stars and "
-        f"{sum(1 for a_name, b_name in orion_edges if a_name in orion_proj and b_name in orion_proj and orion_proj[a_name][0] == orion_proj[b_name][0])} edges."
-    )
-    print(
-        f"Taurus stick figure drew {len(taurus_proj)} resolved stars and "
-        f"{sum(1 for a_name, b_name in taurus_edges if a_name in taurus_proj and b_name in taurus_proj and taurus_proj[a_name][0] == taurus_proj[b_name][0])} edges."
-    )
-    print(
-        f"Southern-sky overlay resolved {len(south_proj)} named targets "
-        "(Southern Cross, pointers, Achernar, Matariki)."
-    )
-    print(
-        f"Applied Astropy RA rotation offset of {astropy_rotation_offset_deg:+.0f} deg from Supernovae.rotation_offset "
-        "for named-star overlays; Milky Way RA handling is unchanged."
-    )
-    print("South hemisphere mirrored in x so the shared seam RA aligns across both panels.")
-    if show_constellation_borders:
-        print("Rendered all IAU constellation boundaries.")
-        if show_important_constellation_labels:
-            print("Annotated important constellations with labels for orientation.")
 
