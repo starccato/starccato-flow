@@ -32,16 +32,8 @@ except ImportError:
 IMPORTANT_CONSTELLATIONS = {
     "Ori": "Orion",
     "Tau": "Taurus",
-    "Gem": "Gemini",
     "CMa": "Canis Major",
-    "UMa": "Ursa Major",
-    "Cas": "Cassiopeia",
-    "Sco": "Scorpius",
-    "Sgr": "Sagittarius",
-    "Aql": "Aquila",
-    "Peg": "Pegasus",
     "Cru": "Southern Cross",
-    "Cen": "Centaurus"
 }
 
 
