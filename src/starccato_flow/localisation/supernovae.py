@@ -313,7 +313,10 @@ class Supernovae:
         fname_3d: Optional[str] = "plots/galactic_supernovae_3d.png",
         fname_xy: Optional[str] = "plots/galactic_supernovae_xy.png",
         fname_xz: Optional[str] = "plots/galactic_supernovae_xz.png",
+        fname_xy_closeup: Optional[str] = "plots/galactic_supernovae_xy_closeup.png",
         background: str = "black",
+        transparent: Optional[bool] = None,
+        light_year: bool = False,
         font_family: str = "sans-serif",
         font_name: str = "Avenir",
         scatter_size: float = 0.001,
@@ -327,6 +330,7 @@ class Supernovae:
             fname_3d: Output path for the 3D plot
             fname_xy: Output path for the X-Y projection plot
             fname_xz: Output path for the X-Z projection plot
+            fname_xy_closeup: Output path for the X-Y closeup projection plot
             background: Plot theme, either "white" or "black"
             font_family: Font family to use
             font_name: Specific font name to use
@@ -349,7 +353,10 @@ class Supernovae:
             fname_3d=fname_3d,
             fname_xy=fname_xy,
             fname_xz=fname_xz,
+            fname_xy_closeup=fname_xy_closeup,
             background=background,
+            transparent=transparent,
+            light_year=light_year,
             font_family=font_family,
             font_name=font_name,
             scatter_size=scatter_size,
