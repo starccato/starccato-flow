@@ -371,19 +371,19 @@ def plot_galactic_supernovae_polar_hemispheres(
     h_n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
     h_s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
 
-    probs = [0.995, 0.80, 0.50, 0.25]
+    blue_probs = [0.995, 0.80, 0.50, 0.25]
     combined_vals = np.concatenate([
         h_n_smooth.T[inside_circle],
         h_s_smooth.T[inside_circle],
     ])
     combined_vals = combined_vals[combined_vals > 0]
     if combined_vals.size == 0:
-        thr_shared = [1.0 for _ in probs]
+        thr_shared = [1.0 for _ in blue_probs]
     else:
         vals = np.sort(combined_vals)[::-1]
         cdf = np.cumsum(vals) / np.sum(vals)
         thr_shared = []
-        for p in probs:
+        for p in blue_probs:
             idx = np.searchsorted(cdf, p, side="left")
             idx = min(idx, vals.size - 1)
             thr_shared.append(float(vals[idx]))
@@ -690,7 +690,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             post_thr = []
             # Use the same probability bands and palette as the legacy red blob,
             # but sourced from posterior samples.
-            for p in probs:
+            posterior_probs = [0.68, 0.90, 0.95]
+            for p in posterior_probs:
                 idx = np.searchsorted(cdf, p, side="left")
                 idx = min(idx, vals.size - 1)
                 post_thr.append(float(vals[idx]))
@@ -779,7 +780,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         gc_blob[dist2_gc > blob_radius**2] = 0.0
 
         gc_mask = inside_circle & (gc_blob > 0.0)
-        gc_thr = _hpd_thresholds(gc_blob, gc_mask, probs)
+        gc_thr = _hpd_thresholds(gc_blob, gc_mask, blue_probs)
         gc_levels = np.sort(np.array(gc_thr, dtype=float))
         gc_top = max(gc_levels[-1] * 1.001, np.max(gc_blob[gc_mask]) * 1.001)
         gc_fill_levels = np.concatenate([gc_levels, [gc_top]])
