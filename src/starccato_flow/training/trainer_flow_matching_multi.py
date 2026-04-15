@@ -16,8 +16,9 @@ from ..plotting import (
     plot_corner,
     plot_galactic_supernovae_polar_hemispheres,
 )
+from ..plotting.signals import plot_detector_signal_channels
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE, TEN_KPC
 from ..nn.flow_multi import Flow
 
 from . import create_train_val_split, plot_candidate_signal_method, display_results_method
@@ -375,6 +376,34 @@ class FlowMatchingTrainerMulti:
 
         self.avg_mse_losses = []
         self.avg_mse_losses_val = []
+
+        # Plot one pre-training example across detector channels.
+        preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
+        preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
+        preview_dataset = hThetaMulti(
+            s=preview_signals,
+            max_strain=self.training_dataset.max_strain,
+            theta=preview_params,
+            min_theta=self.training_dataset.min_theta,
+            max_theta=self.training_dataset.max_theta,
+            ra=preview_ra,
+            dec=preview_dec,
+            d=preview_d,
+            batch_size=1,
+            noise=False,
+        )
+        preview_signal, _, _ = preview_dataset[0]
+        preview_outdir = os.path.join(self.outdir, "flow_matching")
+        os.makedirs(preview_outdir, exist_ok=True)
+        fig, _ = plot_detector_signal_channels(
+            signals=preview_signal.detach().cpu().numpy() / TEN_KPC,
+            max_value=preview_dataset.max_strain,
+            detector_labels=preview_dataset.detectors,
+            fname=os.path.join(preview_outdir, "pretrain_detector_signal_example.png"),
+            background="black",
+            generated=False,
+        )
+        plt.close(fig)
 
         epoch_bar = trange(self.num_epochs, desc="Epochs", position=0, leave=True)
         for epoch in epoch_bar:

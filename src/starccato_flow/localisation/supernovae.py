@@ -314,6 +314,7 @@ class Supernovae:
         fname_xy: Optional[str] = "plots/galactic_supernovae_xy.png",
         fname_xz: Optional[str] = "plots/galactic_supernovae_xz.png",
         fname_xy_closeup: Optional[str] = "plots/galactic_supernovae_xy_closeup.png",
+        fname_yx_zx: Optional[str] = "plots/galactic_supernovae_yx_zx.png",
         background: str = "black",
         transparent: Optional[bool] = None,
         light_year: bool = False,
@@ -331,6 +332,7 @@ class Supernovae:
             fname_xy: Output path for the X-Y projection plot
             fname_xz: Output path for the X-Z projection plot
             fname_xy_closeup: Output path for the X-Y closeup projection plot
+            fname_yx_zx: Output path for the stacked Y-X and Z-X plot
             background: Plot theme, either "white" or "black"
             font_family: Font family to use
             font_name: Specific font name to use
@@ -354,6 +356,7 @@ class Supernovae:
             fname_xy=fname_xy,
             fname_xz=fname_xz,
             fname_xy_closeup=fname_xy_closeup,
+            fname_yx_zx=fname_yx_zx,
             background=background,
             transparent=transparent,
             light_year=light_year,

@@ -809,7 +809,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Red accretion disk (outer ring).
     bh_disk_outer = Circle(
-        (true_gc_x, true_gc_y), 0.015, color="#dc2626", alpha=0.8, zorder=8
+        (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
     )
     bh_ax.add_patch(bh_disk_outer)
 
@@ -1314,9 +1314,9 @@ def plot_galactic_supernovae_polar_hemispheres(
         linestyle="None",
         markersize=7,
         markerfacecolor="black",
-        markeredgecolor="#dc2626",
+        markeredgecolor="white",
         markeredgewidth=1.3,
-        label="Galactic Center",
+        label="Galactic Center: Sgr A*",
     )
 
     if true_loc_panel is not None:

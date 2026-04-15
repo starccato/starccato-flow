@@ -126,9 +126,10 @@ def plot_detector_signal_channels(
     x_min, x_max = -0.01, 0.05
     tick_step = 0.01
     xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
-    y_expand = 2.25
-    y_min = SIGNAL_LIM_LOWER * y_expand
-    y_max = SIGNAL_LIM_UPPER * y_expand
+    y_expand = 1.5
+    max_absolute_value = np.max(np.abs(channel_signals)) * max_value
+    y_min = -max_absolute_value * y_expand
+    y_max = max_absolute_value * y_expand
 
     for i, ax in enumerate(axes):
         y = channel_signals[i].flatten() * max_value

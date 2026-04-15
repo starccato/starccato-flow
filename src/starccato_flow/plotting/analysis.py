@@ -31,6 +31,7 @@ def plot_galactic_distribution(
     fname_xy: Optional[str] = None,
     fname_xz: Optional[str] = None,
     fname_xy_closeup: Optional[str] = "plots/galactic_supernovae_xy_closeup.png",
+    fname_yx_zx: Optional[str] = "plots/galactic_supernovae_yx_zx.png",
     background: str = "white",
     transparent: Optional[bool] = None,
     light_year: bool = False,
@@ -50,6 +51,7 @@ def plot_galactic_distribution(
         fname_xy (Optional[str]): Output path for the X-Y projection plot
         fname_xz (Optional[str]): Output path for the X-Z projection plot
         fname_xy_closeup (Optional[str]): Output path for the X-Y closeup projection plot
+        fname_yx_zx (Optional[str]): Output path for the stacked Y-X (top) and Z-X (bottom) plot
         background (str): Plot theme, either "white" or "black"
         transparent (Optional[bool]): Override the saved figure transparency
         light_year (bool): If True, convert plot coordinates from kpc to light-years
@@ -106,9 +108,11 @@ def plot_galactic_distribution(
         return output_path
 
     def _style_2d_axes(axes: plt.Axes) -> None:
-        axes.tick_params(colors=text_color, labelsize=18)
+        axes.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
         for spine in axes.spines.values():
             spine.set_color(text_color)
+        axes.spines["top"].set_visible(False)
+        axes.spines["right"].set_visible(False)
         axes.set_aspect("equal")
         if light_year:
             axes.xaxis.set_major_locator(mticker.MultipleLocator(20_000))
@@ -116,10 +120,50 @@ def plot_galactic_distribution(
             axes.xaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
             axes.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
 
+    def _apply_xy_axis_line_window(axes: plt.Axes) -> None:
+        if not light_year:
+            return
+        axes.spines["bottom"].set_bounds(-80_000, 80_000)
+        axes.spines["left"].set_bounds(-80_000, 80_000)
+        axes.spines["bottom"].set_linestyle("--")
+        axes.spines["left"].set_linestyle("--")
+
+    def _legend_with_supernova_marker(axes: plt.Axes) -> None:
+        handles, labels = axes.get_legend_handles_labels()
+        adjusted_handles = []
+        for handle, label in zip(handles, labels):
+            if label == "Supernova":
+                adjusted_handles.append(
+                    mlines.Line2D(
+                        [],
+                        [],
+                        linestyle="None",
+                        marker="o",
+                        markersize=9,
+                        markerfacecolor="lightblue",
+                        markeredgecolor="none",
+                    )
+                )
+            else:
+                adjusted_handles.append(handle)
+
+        axes.legend(
+            adjusted_handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.02),
+            ncol=max(1, len(labels)),
+            facecolor=legend_facecolor,
+            edgecolor="none",
+            labelcolor=text_color,
+            fontsize=20,
+        )
+
     output_3d = _prepare_output_path(fname_3d)
     output_xy = _prepare_output_path(fname_xy)
     output_xz = _prepare_output_path(fname_xz)
     output_xy_closeup = _prepare_output_path(fname_xy_closeup)
+    output_yx_zx = _prepare_output_path(fname_yx_zx)
 
     axis_unit = "light years" if light_year else "kpc"
 
@@ -127,7 +171,7 @@ def plot_galactic_distribution(
 
     fig1 = plt.figure(figsize=(16, 16), facecolor=facecolor)
     ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
-    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue")
+    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax1.scatter(
         0.0,
         0.0,
@@ -177,20 +221,14 @@ def plot_galactic_distribution(
         ax1.xaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
         ax1.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
         ax1.zaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
-    ax1.legend(
-        loc="upper right",
-        facecolor=legend_facecolor,
-        edgecolor=text_color,
-        labelcolor=text_color,
-        fontsize=20,
-    )
+    _legend_with_supernova_marker(ax1)
     if output_3d is not None:
         fig1.savefig(output_3d, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig1)
 
     fig2 = plt.figure(figsize=(16, 16), facecolor=facecolor)
     ax2 = fig2.add_subplot(111, facecolor=facecolor)
-    ax2.scatter(x, y, s=scatter_size, c="lightblue", alpha=1, marker="o", label="Supernova")
+    ax2.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax2.scatter(
         0.0,
         0.0,
@@ -221,20 +259,15 @@ def plot_galactic_distribution(
         ax2.set_ylim(tick_values[0] - axis_padding, tick_values[-1] + axis_padding)
         ax2.set_xticks(tick_values)
         ax2.set_yticks(tick_values)
-    ax2.legend(
-        loc="upper right",
-        facecolor=legend_facecolor,
-        edgecolor=text_color,
-        labelcolor=text_color,
-        fontsize=20,
-    )
+    _apply_xy_axis_line_window(ax2)
+    _legend_with_supernova_marker(ax2)
     if output_xy is not None:
         fig2.savefig(output_xy, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig2)
 
     fig3 = plt.figure(figsize=(16, 16), facecolor=facecolor)
     ax3 = fig3.add_subplot(111, facecolor=facecolor)
-    ax3.scatter(x, z, s=scatter_size, c="lightblue", alpha=1, label="Supernova")
+    ax3.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax3.scatter(
         0.0,
         0.0,
@@ -255,20 +288,14 @@ def plot_galactic_distribution(
         ax3.set_ylim(-20_000, 20_000)
         ax3.yaxis.set_major_locator(mticker.MultipleLocator(10_000))
         ax3.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
-    ax3.legend(
-        loc="upper right",
-        facecolor=legend_facecolor,
-        edgecolor=text_color,
-        labelcolor=text_color,
-        fontsize=20,
-    )
+    _legend_with_supernova_marker(ax3)
     if output_xz is not None:
         fig3.savefig(output_xz, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig3)
 
     fig4 = plt.figure(figsize=(16, 16), facecolor=facecolor)
     ax4 = fig4.add_subplot(111, facecolor=facecolor)
-    ax4.scatter(x, y, s=scatter_size, c="lightblue", alpha=1, marker="o", label="Supernova")
+    ax4.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax4.scatter(
         0.0,
         0.0,
@@ -296,17 +323,86 @@ def plot_galactic_distribution(
         padding_kpc = closeup_padding_ly * ly_to_kpc
         ax4.set_xlim(closeup_x_ly[0] * ly_to_kpc - padding_kpc, closeup_x_ly[1] * ly_to_kpc + padding_kpc)
         ax4.set_ylim(closeup_y_ly[0] * ly_to_kpc - padding_kpc, closeup_y_ly[1] * ly_to_kpc + padding_kpc)
+    _apply_xy_axis_line_window(ax4)
 
-    ax4.legend(
-        loc="upper right",
-        facecolor=legend_facecolor,
-        edgecolor=text_color,
-        labelcolor=text_color,
-        fontsize=20,
-    )
+    _legend_with_supernova_marker(ax4)
     if output_xy_closeup is not None:
         fig4.savefig(output_xy_closeup, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig4)
+
+    fig5, (ax5_top, ax5_bottom) = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=(16, 20),
+        facecolor=facecolor,
+    )
+    ax5_top.set_facecolor(facecolor)
+    ax5_bottom.set_facecolor(facecolor)
+
+    ax5_top.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    ax5_top.scatter(
+        0.0,
+        0.0,
+        s=sun_marker_size,
+        c="black",
+        edgecolors="white",
+        linewidths=1.8,
+        marker="o",
+        label="Galactic Center: Sgr A*",
+    )
+    ax5_top.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax5_top.set_ylabel(f"Y ({axis_unit})", color=text_color, fontsize=22)
+    _style_2d_axes(ax5_top)
+
+    if light_year:
+        tick_values = np.arange(-80_000, 80_001, 20_000)
+        axis_padding = 5_000
+        x_min = tick_values[0] - axis_padding
+        x_max = tick_values[-1] + axis_padding
+        y_min = tick_values[0] - axis_padding
+        y_max = tick_values[-1] + axis_padding
+        ax5_top.set_xlim(x_min, x_max)
+        ax5_top.set_ylim(y_min, y_max)
+        ax5_top.set_xticks(tick_values)
+        ax5_top.set_yticks(tick_values)
+    else:
+        ax5_top.set_xlim(-xy_radius, xy_radius)
+        ax5_top.set_ylim(-xy_radius, xy_radius)
+    _apply_xy_axis_line_window(ax5_top)
+    _legend_with_supernova_marker(ax5_top)
+
+    ax5_bottom.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    ax5_bottom.scatter(
+        0.0,
+        0.0,
+        s=sun_marker_size,
+        c="black",
+        edgecolors="white",
+        linewidths=1.8,
+        marker="o",
+        label="Galactic Center: Sgr A*",
+    )
+    ax5_bottom.scatter(sun_location[0], sun_location[2], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax5_bottom.set_xlabel(f"X ({axis_unit})", color=text_color, fontsize=22)
+    ax5_bottom.set_ylabel(f"Z ({axis_unit})", color=text_color, fontsize=22)
+    _style_2d_axes(ax5_bottom)
+
+    if light_year:
+        ax5_bottom.set_xlim(x_min, x_max)
+        ax5_bottom.set_xticks(tick_values)
+        ax5_bottom.set_ylim(-10_000, 10_000)
+        ax5_bottom.yaxis.set_major_locator(mticker.MultipleLocator(5_000))
+        ax5_bottom.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
+    else:
+        ly_to_kpc = 1.0 / 3261.56
+        ax5_bottom.set_xlim(-xy_radius, xy_radius)
+        ax5_bottom.set_ylim(-10_000 * ly_to_kpc, 10_000 * ly_to_kpc)
+
+    fig5.subplots_adjust(hspace=0.08, top=0.92)
+    if output_yx_zx is not None:
+        fig5.savefig(output_yx_zx, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    figures.append(fig5)
 
     if show:
         plt.show()
