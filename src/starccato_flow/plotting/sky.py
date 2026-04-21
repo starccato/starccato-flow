@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.collections import LineCollection
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Patch
+
+from ..utils.plotting_defaults import GENERATED_SIGNAL_COLOUR, SIGNAL_COLOUR
 
 from . import set_plot_style
 
@@ -630,12 +632,12 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
 
     # Choose red sky-location density: posterior contour map if provided, otherwise legacy blob.
-    red_bases = ["#7f1d1d", "#dc2626", "#f87171", "#fecaca"]
+    # red_bases = ["#dc2626", "#f87171", "#fecaca"]
+    red_bases = [GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR]
     red_fill_colors = [
-        to_rgba(red_bases[0], alpha=0.20),
-        to_rgba(red_bases[1], alpha=0.40),
-        to_rgba(red_bases[2], alpha=0.62),
-        to_rgba(red_bases[3], alpha=0.88),
+        to_rgba(red_bases[0], alpha=0.40),
+        to_rgba(red_bases[1], alpha=0.62),
+        to_rgba(red_bases[2], alpha=0.88),
     ]
 
     if use_posterior_samples:
@@ -714,6 +716,35 @@ def plot_galactic_supernovae_polar_hemispheres(
                 levels=post_fill_levels,
                 colors=red_fill_colors,
                 antialiased=True,
+            )
+
+            posterior_legend_handles = [
+                Patch(
+                    facecolor=red_fill_colors[0],
+                    edgecolor="none",
+                    label="95% credible interval",
+                ),
+                Patch(
+                    facecolor=red_fill_colors[1],
+                    edgecolor="none",
+                    label="90% credible interval",
+                ),
+                Patch(
+                    facecolor=red_fill_colors[2],
+                    edgecolor="none",
+                    label="68% credible interval",
+                ),
+            ]
+            ax_l.legend(
+                handles=posterior_legend_handles,
+                loc="lower left",
+                bbox_to_anchor=(-0.03, -0.08),
+                frameon=False,
+                fontsize=8.5,
+                labelcolor="white",
+                handlelength=1.2,
+                handletextpad=0.5,
+                borderaxespad=0.0,
             )
 
         # Marker at posterior peak.
@@ -1333,10 +1364,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
     ax_r.legend(
         loc="lower right",
-        bbox_to_anchor=(1.0, -0.03),
+        bbox_to_anchor=(1.03, -0.08),
         frameon=False,
         labelcolor="white",
-        fontsize=8.5,
+        fontsize=8.0,
+        borderaxespad=0.0,
     )
 
     plt.savefig(

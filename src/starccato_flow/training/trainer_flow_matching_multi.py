@@ -320,10 +320,15 @@ class FlowMatchingTrainerMulti:
         )
         plt.close(fig_par)
 
-    def _sample_sky_params_for_epoch(self, epoch: int, n_samples: int):
-        """Sample RA/Dec/d sky parameters for an epoch distance shell."""
-        min_kiloparsec = epoch / self.num_epochs * 20.0
-        max_kiloparsec = min_kiloparsec + 1.0
+    def _sample_sky_params_for_epoch(self, epoch: int, n_samples: int, exponential: bool = True):
+        """Sample RA/Dec/d sky parameters for an epoch distance shell.
+
+        When ``exponential`` is True, samples are weighted to favor larger
+        distances in the shell (near ``max_kiloparsec``), with the weighting
+        strength increasing over epochs.
+        """
+        min_kiloparsec = 0.0
+        max_kiloparsec = min(20.0, (epoch / self.num_epochs) * 20.0 + 1.0)
         distance_mask = (
             (self.supernovae.distances >= min_kiloparsec)
             & (self.supernovae.distances <= max_kiloparsec)
@@ -333,10 +338,27 @@ class FlowMatchingTrainerMulti:
             raise ValueError(
                 f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
             )
+
+        sample_probs = None
+        if exponential:
+            candidate_distances = self.supernovae.distances[candidate_indices]
+            shell_width = max(max_kiloparsec - min_kiloparsec, 1e-8)
+            normalized_distance = np.clip((candidate_distances - min_kiloparsec) / shell_width, 0.0, 1.0)
+
+            # Increase bias through training so later epochs concentrate more strongly
+            # near the far edge of each shell.
+            epoch_fraction = (epoch + 1) / max(self.num_epochs, 1)
+            growth = 1.0 + 7.0 * epoch_fraction
+            weights = np.exp(growth * normalized_distance)
+            weight_sum = np.sum(weights)
+            if np.isfinite(weight_sum) and weight_sum > 0.0:
+                sample_probs = weights / weight_sum
+
         sampled_indices = np.random.choice(
             candidate_indices,
             size=n_samples,
             replace=candidate_indices.size < n_samples,
+            p=sample_probs,
         )
         sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
         return sampled_sky_params[:, 0], sampled_sky_params[:, 1], sampled_sky_params[:, 2]
@@ -377,9 +399,13 @@ class FlowMatchingTrainerMulti:
         self.avg_mse_losses = []
         self.avg_mse_losses_val = []
 
-        # Plot one pre-training example across detector channels.
-        preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
-        preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
+        # keep one constant signal+parameter sample for corner and sky plots to track training progress on the same case
+        preview_ra, preview_dec, preview_d = np.deg2rad(-60), np.deg2rad(120), 10
+        preview_signals, preview_params = self.training_dataset[0]
+
+        # # Plot one pre-training example across detector channels.
+        # preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
+        # preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
         preview_dataset = hThetaMulti(
             s=preview_signals,
             max_strain=self.training_dataset.max_strain,
@@ -421,6 +447,7 @@ class FlowMatchingTrainerMulti:
             sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
                 epoch,
                 self.samples_per_epoch,
+                exponential=True
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
