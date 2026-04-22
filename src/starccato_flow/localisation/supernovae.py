@@ -318,6 +318,7 @@ class Supernovae:
         background: str = "black",
         transparent: Optional[bool] = None,
         light_year: bool = False,
+        highlight_indices: Optional[np.ndarray] = None,
         font_family: str = "sans-serif",
         font_name: str = "Avenir",
         scatter_size: float = 0.001,
@@ -352,6 +353,7 @@ class Supernovae:
         return plot_galactic_distribution(
             galactic_coords=self._galactic_coords,
             sun_location=self.SUN_LOCATION,
+            highlight_indices=highlight_indices,
             fname_3d=fname_3d,
             fname_xy=fname_xy,
             fname_xz=fname_xz,

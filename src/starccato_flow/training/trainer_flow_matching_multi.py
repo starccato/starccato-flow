@@ -272,17 +272,20 @@ class FlowMatchingTrainerMulti:
 
     def _save_epoch_data_plots(self, epoch: int) -> None:
         """Save signal and parameter snapshots for the current epoch."""
-        if not hasattr(self, "h_theta_multi"):
+        multi_dataset = getattr(self, "h_theta_multi_train", None)
+        if multi_dataset is None:
+            multi_dataset = getattr(self, "h_theta_multi", None)
+        if multi_dataset is None:
             return
 
         epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
         os.makedirs(epoch_dir, exist_ok=True)
 
         # Plot 1: first generated multi-channel signal for this epoch.
-        signals = self.h_theta_multi.multi_channel_signals
+        signals = multi_dataset.multi_channel_signals
         time_axis = np.arange(Y_LENGTH) * SAMPLING_RATE
         fig_sig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
-        detector_labels = getattr(self.h_theta_multi, "detectors", ["H1", "L1", "V1"])
+        detector_labels = getattr(multi_dataset, "detectors", ["H1", "L1", "V1"])
         first_signal = signals[0]
 
         for i, ax in enumerate(axes):
@@ -302,7 +305,7 @@ class FlowMatchingTrainerMulti:
         plt.close(fig_sig)
 
         # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi].
-        params = self.h_theta_multi.parameters
+        params = multi_dataset.parameters
         fig_par, axes = plt.subplots(2, 2, figsize=(10, 8))
         param_labels = ["ra", "dec", "d", "psi"]
 
@@ -320,7 +323,13 @@ class FlowMatchingTrainerMulti:
         )
         plt.close(fig_par)
 
-    def _sample_sky_params_for_epoch(self, epoch: int, n_samples: int, exponential: bool = True):
+    def _sample_sky_params_for_epoch(
+        self,
+        epoch: int,
+        n_samples: int,
+        exponential: bool = True,
+        epoch_dir: str = None,
+    ):
         """Sample RA/Dec/d sky parameters for an epoch distance shell.
 
         When ``exponential`` is True, samples are weighted to favor larger
@@ -360,7 +369,19 @@ class FlowMatchingTrainerMulti:
             replace=candidate_indices.size < n_samples,
             p=sample_probs,
         )
+        if epoch_dir is not None:
+            os.makedirs(epoch_dir, exist_ok=True)
+            self.supernovae.plot_galactic_distribution(
+                fname_xy=os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_galactic_xy.png"),
+                background="black",
+                transparent=False,
+                light_year=False,
+                highlight_indices=sampled_indices,
+                show=False,
+                dpi=150,
+            )
         sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
+
         return sampled_sky_params[:, 0], sampled_sky_params[:, 1], sampled_sky_params[:, 2]
 
     def _sample_dataset_batches(self, dataset, n_samples: int):
@@ -400,12 +421,14 @@ class FlowMatchingTrainerMulti:
         self.avg_mse_losses_val = []
 
         # keep one constant signal+parameter sample for corner and sky plots to track training progress on the same case
-        preview_ra, preview_dec, preview_d = np.deg2rad(-60), np.deg2rad(120), 10
-        preview_signals, preview_params = self.training_dataset[0]
-
+        preview_ra, preview_dec, preview_d = np.atleast_1d(
+            np.deg2rad(-60),
+            np.deg2rad(120),
+            10.0,
+        )
         # # Plot one pre-training example across detector channels.
-        # preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
-        # preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
+        preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
+        preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
         preview_dataset = hThetaMulti(
             s=preview_signals,
             max_strain=self.training_dataset.max_strain,
@@ -447,7 +470,8 @@ class FlowMatchingTrainerMulti:
             sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
                 epoch,
                 self.samples_per_epoch,
-                exponential=True
+                exponential=True,
+                epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
 
@@ -470,7 +494,8 @@ class FlowMatchingTrainerMulti:
                 shuffle=True,
                 **loader_kwargs,
             )
-            # self._save_epoch_data_plots(epoch)
+
+            self._save_epoch_data_plots(epoch)
 
             for signal, noisy_signal, params in self.h_theta_multi_train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
@@ -512,7 +537,7 @@ class FlowMatchingTrainerMulti:
             val_samples = 0
             with torch.no_grad():
                 n_val_signals = int(self.validation_dataset.signals.shape[1])
-                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals)
+                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals, exponential=True)
                 signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
                 self.h_theta_multi_val = hThetaMulti(
                     s=signals_val,
@@ -606,6 +631,8 @@ class FlowMatchingTrainerMulti:
         """
         self.flow.eval()
 
+        t0 = time.time()
+
         # sample one signal from self.multi_channel_val dataset for corner plotting, ensuring it has the same sky parameters as the sky plot
         signal, noisy_signal, params = sampled_case
 
@@ -637,6 +664,8 @@ class FlowMatchingTrainerMulti:
         samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
         true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
 
+        t1 = time.time()
+        print(f"Corner plot sampling and denormalisation took {(t1 - t0):.2f}s")
 
         labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
 

@@ -27,6 +27,7 @@ from .signals import plot_signal_grid, plot_candidate_signal
 def plot_galactic_distribution(
     galactic_coords: np.ndarray,
     sun_location: Optional[np.ndarray] = None,
+    highlight_indices: Optional[np.ndarray] = None,
     fname_3d: Optional[str] = None,
     fname_xy: Optional[str] = None,
     fname_xz: Optional[str] = None,
@@ -47,6 +48,8 @@ def plot_galactic_distribution(
     Args:
         galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
         sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
+        highlight_indices (Optional[np.ndarray]): Optional indices of supernovae to
+            draw as highlighted yellow points.
         fname_3d (Optional[str]): Output path for the 3D plot
         fname_xy (Optional[str]): Output path for the X-Y projection plot
         fname_xz (Optional[str]): Output path for the X-Z projection plot
@@ -76,16 +79,29 @@ def plot_galactic_distribution(
         if sun_location.shape != (3,):
             raise ValueError("sun_location must have shape (3,).")
 
+    highlight_coords = None
+    if highlight_indices is not None:
+        highlight_indices = np.asarray(highlight_indices)
+        if highlight_indices.ndim != 1:
+            raise ValueError("highlight_indices must be a 1D array of indices.")
+        highlight_coords = galactic_coords[highlight_indices]
+
     kpc_to_ly = 3261.56
     coord_scale = kpc_to_ly if light_year else 1.0
     galactic_coords = galactic_coords * coord_scale
     sun_location = sun_location * coord_scale
+    if highlight_coords is not None:
+        highlight_coords = highlight_coords * coord_scale
 
     x, y, z = galactic_coords.T
     xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
     xz_radius = max(np.max(np.abs(x)), np.max(np.abs(z)), abs(sun_location[0]), abs(sun_location[2]))
     xy_radius *= 1.02
     xz_radius *= 1.02
+    if highlight_coords is not None and highlight_coords.size > 0:
+        hx, hy, hz = highlight_coords.T
+    else:
+        hx = hy = hz = None
     text_color = "white" if background == "black" else "black"
     legend_facecolor = "black" if background == "black" else "white"
     grid_color = "gray"
@@ -206,6 +222,18 @@ def plot_galactic_distribution(
         marker="*",
         label="Sun",
     )
+    if hx is not None:
+        ax1.scatter(
+            hx,
+            hy,
+            hz,
+            s=max(sun_marker_size * 0.25, 18),
+            c="yellow",
+            edgecolors="none",
+            marker="o",
+            label="Sampled Supernovae",
+            zorder=10,
+        )
     ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
     ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
     ax1.set_zlabel(_axis_label("Z"), color=text_color, fontsize=22)
@@ -263,6 +291,17 @@ def plot_galactic_distribution(
         label="Galactic Center: Sgr A*",
     )
     ax2.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    if hx is not None:
+        ax2.scatter(
+            hx,
+            hy,
+            s=scatter_size * 100,
+            c="yellow",
+            edgecolors="none",
+            marker="o",
+            label="Sampled Supernovae",
+            zorder=10,
+        )
     ax2.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
     ax2.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
     # ax2.set_title(
@@ -303,6 +342,17 @@ def plot_galactic_distribution(
         label="Galactic Center: Sgr A*",
     )
     ax3.scatter(sun_location[0], sun_location[2], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    if hx is not None:
+        ax3.scatter(
+            hx,
+            hz,
+            s=scatter_size * 100,
+            c="yellow",
+            edgecolors="none",
+            marker="o",
+            label="Sampled Supernovae",
+            zorder=10,
+        )
     ax3.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
     ax3.set_ylabel(_axis_label("Z"), color=text_color, fontsize=22)
     _style_2d_axes(ax3)
