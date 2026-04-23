@@ -328,6 +328,7 @@ class FlowMatchingTrainerMulti:
         epoch: int,
         n_samples: int,
         exponential: bool = True,
+        validation: bool = False,
         epoch_dir: str = None,
     ):
         """Sample RA/Dec/d sky parameters for an epoch distance shell.
@@ -371,8 +372,12 @@ class FlowMatchingTrainerMulti:
         )
         if epoch_dir is not None:
             os.makedirs(epoch_dir, exist_ok=True)
+            if validation == True:
+                filename_suffix = "validation"
+            else:
+                filename_suffix = "training"
             self.supernovae.plot_galactic_distribution(
-                fname_xy=os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_galactic_xy.png"),
+                fname_xy=os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_{filename_suffix}_galactic_xy.png"),
                 background="black",
                 transparent=False,
                 light_year=False,
@@ -471,6 +476,7 @@ class FlowMatchingTrainerMulti:
                 epoch,
                 self.samples_per_epoch,
                 exponential=True,
+                validation=False,
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
@@ -537,7 +543,7 @@ class FlowMatchingTrainerMulti:
             val_samples = 0
             with torch.no_grad():
                 n_val_signals = int(self.validation_dataset.signals.shape[1])
-                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals, exponential=True)
+                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals, exponential=True, validation=True, epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"))
                 signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
                 self.h_theta_multi_val = hThetaMulti(
                     s=signals_val,
@@ -556,7 +562,6 @@ class FlowMatchingTrainerMulti:
                     shuffle=False,
                     **loader_kwargs,
                 )
-
 
                 for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val_loader:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
