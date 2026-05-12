@@ -46,7 +46,6 @@ class FlowMatchingTrainerMulti:
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         noise: bool = True,
-        curriculum: bool = True,
         toy: bool = True,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
         start_snr: int = 100,
@@ -87,7 +86,6 @@ class FlowMatchingTrainerMulti:
         self.outdir = outdir
         self.toy = toy
         self.noise = noise
-        self.curriculum = curriculum
         self.max_grad_norm = max_grad_norm
         self.start_snr = start_snr
         self.end_snr = end_snr
@@ -121,7 +119,6 @@ class FlowMatchingTrainerMulti:
             self.training_dataset = sTheta(
                 custom_data=(train_signals, train_params),
                 noise=noise,
-                curriculum=curriculum,
                 num_epochs=num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -136,7 +133,6 @@ class FlowMatchingTrainerMulti:
             self.validation_dataset = sTheta(
                 custom_data=(val_signals, val_params),
                 noise=noise,
-                curriculum=False,  # No curriculum for validation
                 num_epochs=num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -174,7 +170,6 @@ class FlowMatchingTrainerMulti:
             self.training_dataset = sTheta(
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
                 noise=noise,
-                curriculum=curriculum,
                 num_epochs=num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -188,7 +183,6 @@ class FlowMatchingTrainerMulti:
             self.validation_dataset = sTheta(
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
                 noise=noise,
-                curriculum=False,  # No curriculum for validation
                 num_epochs=num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -211,7 +205,6 @@ class FlowMatchingTrainerMulti:
                 num_epochs=self.num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
-                curriculum=self.curriculum,
                 noise_realizations=self.noise_realizations,
                 multi_param=self.multi_param,
                 include_beta=self.include_beta,
