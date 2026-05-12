@@ -3,7 +3,8 @@ import torch.nn as nn
 from torch import Tensor
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM
 
-class Flow(nn.Module):
+class FlowFCL(nn.Module):
+    """Fully Connected Layers version of Flow (original implementation)."""
     def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM):
         super().__init__()
         # Encode signal separately first
@@ -37,6 +38,58 @@ class Flow(nn.Module):
             t_start + (t_end - t_start) / 2,
             h
         )
+
+
+class FlowCNN(nn.Module):
+    """Convolutional Neural Network version of Flow."""
+    def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM, num_channels: int = 3):
+        super().__init__()
+        self.num_channels = num_channels
+        self.signal_length = signal_dim // num_channels
+        
+        # 1D Convolutional encoder for multi-channel signals
+        self.signal_encoder = nn.Sequential(
+            nn.Conv1d(num_channels, h // 2, kernel_size=3, padding=1), nn.ELU(),
+            nn.Conv1d(h // 2, h // 4, kernel_size=3, padding=1), nn.ELU(),
+            nn.AdaptiveAvgPool1d(1)  # Global average pooling
+        )
+        
+        # Compute the flattened size after CNN
+        cnn_out_dim = h // 4
+        
+        # Then combine with parameters
+        self.net = nn.Sequential(
+            nn.Linear(dim + 1 + cnn_out_dim, h), nn.ELU(),
+            nn.Linear(h, h), nn.ELU(),
+            nn.Linear(h, dim)
+        )
+    
+    def forward(self, x_t: Tensor, t: Tensor, h: Tensor) -> Tensor:
+        # Reshape to channel-first format (B, C, L) for Conv1d
+        if h.dim() == 2:
+            # If flattened (B, 3*Y_LENGTH), reshape to (B, 3, Y_LENGTH)
+            h = h.view(h.size(0), self.num_channels, self.signal_length)
+        
+        # h should now be (B, C, L) for Conv1d
+        h_encoded = self.signal_encoder(h).view(h.size(0), -1)  # Flatten after pooling
+        return self.net(torch.cat((t, x_t, h_encoded), -1))
+    
+    def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
+        # Ensure t_start and t_end are on the same device as x_t
+        t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
+        t_end = t_end.to(x_t.device)
+        # Midpoint ODE solver
+        return x_t + (t_end - t_start) * self(
+            x_t + self(x_t, t_start, h) * (t_end - t_start) / 2,
+            t_start + (t_end - t_start) / 2,
+            h
+        )
+
+
+# Default to FCL for backward compatibility
+class Flow(FlowFCL):
+    """Default Flow class uses FCL implementation."""
+    pass
 
 
 # slightly older version kept for reference

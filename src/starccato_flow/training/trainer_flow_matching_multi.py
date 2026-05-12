@@ -19,7 +19,7 @@ from ..plotting import (
 from ..plotting.signals import plot_detector_signal_channels
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE, TEN_KPC
-from ..nn.flow_multi import Flow
+from ..nn.flow_multi import FlowFCL, FlowCNN
 
 from . import create_train_val_split, plot_candidate_signal_method, display_results_method
 
@@ -261,7 +261,8 @@ class FlowMatchingTrainerMulti:
         else:
             self.flow_param_dim = self.sky_param_dim
         self.flow_signal_dim = Y_LENGTH * 3 if not self.toy else Y_LENGTH
-        self.flow = Flow(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
 
@@ -304,7 +305,7 @@ class FlowMatchingTrainerMulti:
         )
         plt.close(fig_sig)
 
-        # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi].
+        # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi] (train set)
         params = multi_dataset.parameters
         fig_par, axes = plt.subplots(2, 2, figsize=(10, 8))
         param_labels = ["ra", "dec", "d", "psi"]
@@ -314,7 +315,7 @@ class FlowMatchingTrainerMulti:
             ax.set_title(param_labels[i])
             ax.grid(alpha=0.2)
 
-        fig_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions")
+        fig_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions (Train)")
         fig_par.tight_layout()
         fig_par.savefig(
             os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_params.png"),
@@ -322,6 +323,21 @@ class FlowMatchingTrainerMulti:
             bbox_inches="tight",
         )
         plt.close(fig_par)
+
+        # Plot 3: distribution snapshots for the last four params [ra, dec, d, psi] (validation set)
+        val_multi_dataset = getattr(self, "h_theta_multi_val", None)
+        if val_multi_dataset is not None:
+            val_params = val_multi_dataset.parameters
+            fig_val_par, axes_val = plt.subplots(2, 2, figsize=(10, 8))
+            for i, ax in enumerate(axes_val.flatten()):
+                ax.hist(val_params[:, -4 + i], bins=40, alpha=0.85, color="orange")
+                ax.set_title(param_labels[i])
+                ax.grid(alpha=0.2)
+            fig_val_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions (Val)")
+            fig_val_par.tight_layout()
+            val_param_path = os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_val_params.png")
+            fig_val_par.savefig(val_param_path, dpi=180, bbox_inches="tight")
+            plt.close(fig_val_par)
 
     def _sample_sky_params_for_epoch(
         self,
@@ -493,7 +509,7 @@ class FlowMatchingTrainerMulti:
                 dec=sampled_dec,
                 d=sampled_d,
                 batch_size=self.batch_size,
-                noise=False
+                noise=True
             )
             self.h_theta_multi_train_loader = DataLoader(
                 self.h_theta_multi_train,
@@ -536,6 +552,17 @@ class FlowMatchingTrainerMulti:
 
             avg_total_loss = total_loss / total_samples
             self.avg_mse_losses.append(avg_total_loss)
+
+            _, noisy_signal, _ = self.h_theta_multi_train[0]
+
+            fig, _ = plot_detector_signal_channels(
+                signals=noisy_signal.detach().cpu().numpy() / TEN_KPC,
+                max_value=self.h_theta_multi_train.max_strain,
+                detector_labels=preview_dataset.detectors,
+                background="black",
+                generated=False,
+            )
+            plt.close(fig)
 
             # Validation
             self.flow.eval()

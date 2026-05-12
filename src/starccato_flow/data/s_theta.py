@@ -511,6 +511,7 @@ class sTheta(BaseDataset, Dataset):
             
             s = s / 3.086e+22
             d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
+            print(n)
             s = s * 3.086e+22
             d = d * 3.086e+22
         else:

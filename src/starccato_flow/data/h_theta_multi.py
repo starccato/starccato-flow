@@ -232,10 +232,42 @@ class hThetaMulti(Dataset):
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
         return psd
     
-    def aLIGO_noise(self, seed_offset: int = 0) -> np.ndarray:
-        """Generate aLIGO noise realization."""
-        np.random.seed(seed_offset)
-        return self.rnoise(Y_LENGTH, SAMPLING_RATE, one_sided=True, pad=1)
+    def aLIGO_noise(self, seed_offset=0):
+        """Add Advanced LIGO noise to the signal.
+        
+        Args:
+            seed_offset (int): Offset for random seed to ensure different noise realizations
+            
+        Returns:
+            np.ndarray: Signal with properly scaled aLIGO noise added
+        """
+        # Use seed_offset to ensure different noise for different realizations
+        # This ensures reproducibility while varying across realizations
+        if seed_offset > 0:
+            random_state = np.random.RandomState(seed_offset + self._current_epoch * 10000)
+            original_state = np.random.get_state()
+            np.random.set_state(random_state.get_state())
+        
+        dataDeltaT = SAMPLING_RATE  # Sampling rate: 4096 Hz
+        dataSec = Y_LENGTH * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
+        dataN = int(dataSec / dataDeltaT)  # Number of samples
+        
+        # Generate noise with proper PSD scaling
+        noise = self.rnoise(
+            N=dataN,
+            delta_t=dataDeltaT,
+            one_sided=True,  # Use one-sided spectrum as in R
+            pad=1
+        ).reshape(1, -1)  # shape (1, Y_LENGTH)
+
+        # Restore original random state if we changed it
+        if seed_offset > 0:
+            np.random.set_state(original_state)
+
+        # The noise is now properly scaled due to correct PSD implementation
+        noise = noise - noise.mean()  # Mean center as in R implementation
+
+        return noise
     
     def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1) -> np.ndarray:
         """Generate colored noise with given PSD."""
@@ -366,7 +398,7 @@ class hThetaMulti(Dataset):
             relative_dts = dts - dt_min
 
             # Distance scaling relative to 10 kpc reference waveforms.
-            scale = 10.0 / max(self.d[i], 1e-8)
+            # scale = 10.0 / max(self.d[i], 1e-8)
             
             for j, (ifo, dt_rel) in enumerate(zip(self.ifos, relative_dts)):
                 # compute bilby antenna response patterns
@@ -390,7 +422,8 @@ class hThetaMulti(Dataset):
                 h_cross_shifted = np.interp(t - dt_rel, t, h_cross, left=0.0, right=0.0)
 
                 # Combine + and x polarizations (x set to 0 by default template).
-                h_signal = scale * (F_plus * h_plus_shifted + F_cross * h_cross_shifted)
+                # h_signal = scale * (F_plus * h_plus_shifted + F_cross * h_cross_shifted)
+                h_signal = F_plus * h_plus_shifted + F_cross * h_cross_shifted
                 multi_channel[i, j, :] = h_signal.astype(np.float32)
         
         print(f"✓ Projected signals to {self.num_detectors} detectors")
@@ -418,27 +451,25 @@ class hThetaMulti(Dataset):
         parameters = self.parameters[original_idx].copy()
         
         # Add noise to each detector channel if enabled
-        # if self.noise:
-        #     for j in range(self.num_detectors):
-        #         # Get signal for this detector
-        #         s = clean_signal[j:j+1, :]  # Shape: (1, Y_LENGTH)
+        if self.noise:
+            for j in range(self.num_detectors):
+                # Get signal for this detector
+                s = clean_signal[j:j+1, :].flatten()  # Shape: (1, Y_LENGTH)
                 
-        #         # Compute SNR (using base class method)
-        #         s_normalized = s / TEN_KPC
-        #         hf = np.fft.rfft(s_normalized, axis=1)[0]
-        #         rho = self.calculate_snr_from_fft(hf, self.PSD)
+                # Compute SNR (using base class method)
+                s_normalized = s / TEN_KPC
+                # hf = np.fft.rfft(s_normalized, axis=1)[0]
+                # rho = self.calculate_snr_from_fft(hf, self.PSD)
                 
-        #         # Generate detector-specific noise
-        #         n = self.aLIGO_noise(seed_offset=noise_realization_idx + j * 1000)
+                # Generate detector-specific noise
+                n = self.aLIGO_noise(seed_offset=noise_realization_idx)
                 
-        #         # Add noise with target SNR
-        #         s_normalized = s_normalized / 3.086e+22
-        #         d_normalized = s_normalized + n * (rho / self.rho_target) * 100
-        #         d = d_normalized * 3.086e+22
+                # Add noise with target SNR
+                d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
+                print(n)
+                d = d_normalized * TEN_KPC
                 
-        #         # Normalize
-        #         noisy_signal[j:j+1, :] = self.normalise_signals(d)
-        # else:
+                noisy_signal[j:j+1, :] = d
         
         noisy_signal = self.normalise_signals(noisy_signal)
         clean_signal = self.normalise_signals(clean_signal)
@@ -476,12 +507,6 @@ class hThetaMulti(Dataset):
     def __len__(self) -> int:
         """Return total number of samples (including noise realizations)."""
         return self.s.shape[1] * self.noise_realizations
-    
-    def set_epoch(self, epoch: int) -> None:
-        """Update the current epoch number for curriculum learning."""
-        self._current_epoch = epoch
-        if self.curriculum:
-            self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
     
     @property
     def current_epoch(self) -> int:
