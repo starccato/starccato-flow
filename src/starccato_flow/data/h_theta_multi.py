@@ -47,7 +47,6 @@ class hThetaMulti(Dataset):
         seed: int = 99,
         noise_realizations: int = 1,
         rho_target: float = 10.0,
-        curriculum: bool = False,
         num_epochs: int = 1,
         start_snr: float = 100.0,
         end_snr: float = 10.0,
@@ -66,7 +65,6 @@ class hThetaMulti(Dataset):
         self.seed = seed
         self.noise_realizations = noise_realizations
         self.rho_target = rho_target
-        self.curriculum = curriculum
         self.num_epochs = num_epochs
         self.start_snr = start_snr
         self.end_snr = end_snr
@@ -131,33 +129,7 @@ class hThetaMulti(Dataset):
         self.signal_rfft = np.fft.rfft(self.s / TEN_KPC, axis=0)
         
         # Project signals to multiple detectors
-        self.multi_channel_signals = self._project_to_detectors()
-
-        # If not externally provided, normalize using the multi-channel dynamic range.
-        # if self.max_strain is None:
-        #     self.max_strain = abs(self.multi_channel_signals).max()
-        
-        # Update parameter dimension if including sky params
-        # if self.include_sky_params:
-        #     # Concatenate physical params with sky params
-        #     self.parameters = np.concatenate([self.parameters, self.sky_params], axis=1)
-            
-        #     # Update min/max for normalization
-        #     if shared_min is not None and shared_max is not None:
-        #         # Extend shared min/max with sky param ranges
-        #         sky_min = self.sky_params.min(axis=0)
-        #         sky_max = self.sky_params.max(axis=0)
-        #         self.min_parameter = np.concatenate([self.min_parameter, sky_min])
-        #         self.max_parameter = np.concatenate([self.max_parameter, sky_max])
-        #     else:
-        #         self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
-        #         self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
-        # else:
-        #     # No sky params, just use physical params
-        #     if shared_min is None or shared_max is None:
-        #         self.min_parameter = self.parameters.min(axis=0).astype(np.float32)
-        #         self.max_parameter = self.parameters.max(axis=0).astype(np.float32)
-        
+        self.multi_channel_signals = self._project_to_detectors()        
         self.param_dim = self.parameters.shape[1]
         
         print(f"\n=== Multi-Channel Dataset Info ===")
@@ -347,29 +319,6 @@ class hThetaMulti(Dataset):
         params = (params_norm + 1) / 2 * param_range + self.min_theta
         return params
     
-    # def _generate_sky_params(self, n_samples: int, seed: Optional[int] = None) -> np.ndarray:
-    #     """Generate sky parameters (RA, Dec, distance) for n_samples.
-        
-    #     Args:
-    #         n_samples: Number of samples to generate
-    #         seed: Random seed
-            
-    #     Returns:
-    #         Array of shape (n_samples, 3) with [RA, Dec, distance]
-    #     """
-    #     # Generate galactic locations
-    #     # self.ccsn_locations.generate_locations(n_samples, seed=seed)
-        
-    #     # Get sky params
-    #     sky_params = self.ccsn_locations.get_sky_params()
-        
-    #     print(f"✓ Generated {n_samples} sky locations")
-    #     print(f"  RA range: [{np.rad2deg(sky_params[:, 0].min()):.1f}°, {np.rad2deg(sky_params[:, 0].max()):.1f}°]")
-    #     print(f"  Dec range: [{np.rad2deg(sky_params[:, 1].min()):.1f}°, {np.rad2deg(sky_params[:, 1].max()):.1f}°]")
-    #     print(f"  Distance range: [{sky_params[:, 2].min():.2f}, {sky_params[:, 2].max():.2f}] kpc")
-        
-    #     return sky_params
-    
     def _project_to_detectors(self) -> np.ndarray:
         """Project single-channel signals to multiple detectors using antenna patterns.
         
@@ -398,7 +347,7 @@ class hThetaMulti(Dataset):
             relative_dts = dts - dt_min
 
             # Distance scaling relative to 10 kpc reference waveforms.
-            # scale = 10.0 / max(self.d[i], 1e-8)
+            scale = 10.0 / max(self.d[i], 1e-8)
             
             for j, (ifo, dt_rel) in enumerate(zip(self.ifos, relative_dts)):
                 # compute bilby antenna response patterns
@@ -422,8 +371,8 @@ class hThetaMulti(Dataset):
                 h_cross_shifted = np.interp(t - dt_rel, t, h_cross, left=0.0, right=0.0)
 
                 # Combine + and x polarizations (x set to 0 by default template).
-                # h_signal = scale * (F_plus * h_plus_shifted + F_cross * h_cross_shifted)
-                h_signal = F_plus * h_plus_shifted + F_cross * h_cross_shifted
+                h_signal = scale * (F_plus * h_plus_shifted + F_cross * h_cross_shifted)
+                # h_signal = F_plus * h_plus_shifted + F_cross * h_cross_shifted
                 multi_channel[i, j, :] = h_signal.astype(np.float32)
         
         print(f"✓ Projected signals to {self.num_detectors} detectors")
@@ -462,11 +411,11 @@ class hThetaMulti(Dataset):
                 # rho = self.calculate_snr_from_fft(hf, self.PSD)
                 
                 # Generate detector-specific noise
-                n = self.aLIGO_noise(seed_offset=noise_realization_idx)
+                n = self.aLIGO_noise(seed_offset=noise_realization_idx + j * 1000)
                 
                 # Add noise with target SNR
-                d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
-                print(n)
+                # d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
+                d_normalized = s_normalized + n * 100
                 d = d_normalized * TEN_KPC
                 
                 noisy_signal[j:j+1, :] = d

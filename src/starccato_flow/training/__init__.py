@@ -19,7 +19,6 @@ def create_train_val_split(
     num_epochs: int,
     start_snr: int,
     end_snr: int,
-    curriculum: bool,
     noise_realizations: int,
     multi_param: bool = True,
     include_beta: bool = True,
@@ -35,7 +34,6 @@ def create_train_val_split(
         num_epochs: Number of training epochs
         start_snr: Starting SNR for curriculum
         end_snr: Ending SNR for curriculum
-        curriculum: Whether to use curriculum learning
         noise_realizations: Number of noise realizations per signal
         
     Returns:
@@ -91,7 +89,6 @@ def create_train_val_split(
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
-            curriculum=False, 
             noise_realizations=1,
             multi_param=multi_param,
             include_beta=include_beta,
@@ -124,7 +121,6 @@ def create_train_val_split(
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
-            curriculum=curriculum,
             noise_realizations=noise_realizations,
             multi_param=multi_param,
             include_beta=include_beta,
@@ -140,7 +136,6 @@ def create_train_val_split(
             start_snr=end_snr,
             end_snr=end_snr,
             noise=noise,
-            curriculum=curriculum, 
             noise_realizations=1,
             multi_param=multi_param,
             include_beta=include_beta,

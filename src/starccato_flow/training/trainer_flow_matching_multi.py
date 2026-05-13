@@ -685,9 +685,35 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-
-        samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
-        true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+        if self.toy or self.estimate_intrinsic_params:
+            # Full-vector denormalization
+            samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
+            true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+        else:
+            # Only sky parameters estimated; denormalize sky params and prepend beta
+            sky_min = self.h_theta_multi_val.min_theta[-self.sky_param_dim:]
+            sky_max = self.h_theta_multi_val.max_theta[-self.sky_param_dim:]
+            sky_samples = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
+            true_sky = self._denormalize_with_bounds(
+                true_params_norm[-self.sky_param_dim:].reshape(1, -1),
+                sky_min,
+                sky_max,
+            ).flatten()
+            
+            # Prepend beta from true parameters to posterior samples
+            if self.include_beta:
+                beta_min = self.h_theta_multi_val.min_theta[0]
+                beta_max = self.h_theta_multi_val.max_theta[0]
+                true_beta = self._denormalize_with_bounds(
+                    np.array([[true_params_norm[0]]]),
+                    np.array([beta_min]),
+                    np.array([beta_max]),
+                ).flatten()[0]
+                samples_cpu = np.column_stack([np.full(sky_samples.shape[0], true_beta), sky_samples])
+                true_params = np.concatenate([[true_beta], true_sky])
+            else:
+                samples_cpu = sky_samples
+                true_params = true_sky
 
         t1 = time.time()
         print(f"Corner plot sampling and denormalisation took {(t1 - t0):.2f}s")
