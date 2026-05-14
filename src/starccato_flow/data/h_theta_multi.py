@@ -203,6 +203,19 @@ class hThetaMulti(Dataset):
         cutoff = np.nanmin(psd) * 2e10
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
         return psd
+
+    # need to check if this Adv Virgo or normal Virgo. Code is dated from 2021, same as the AdvLIGO psd.
+    def VirgoPsd(self, f):
+        """Virgo power spectral density."""
+        # Avoid division by zero at f=0 by clipping to a small positive value
+        f = np.clip(f, 1e-10, None)
+        x = f / 500
+        s0 = 10.2e-46
+        psd = s0*(pow(7.87*x,-4.8) + 6./17./x + 1. + x*x);
+        # The upper bound is 2e10 times the minimum value
+        cutoff = np.nanmin(psd) * 2e10
+        psd[(psd > cutoff) | np.isnan(psd)] = cutoff
+        return psd
     
     def aLIGO_noise(self, seed_offset=0):
         """Add Advanced LIGO noise to the signal.
