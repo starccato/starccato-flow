@@ -125,7 +125,9 @@ class hThetaMulti(Dataset):
         half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
         delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
         fourier_freq = np.arange(half_N + 1) * delta_f
-        self.PSD = self.AdvLIGOPsd(fourier_freq)
+
+        self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
+        self.VirgoPSD = self.VirgoPsd(fourier_freq)
         self.signal_rfft = np.fft.rfft(self.s / TEN_KPC, axis=0)
         
         # Project signals to multiple detectors
@@ -217,12 +219,13 @@ class hThetaMulti(Dataset):
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
         return psd
     
-    def aLIGO_noise(self, seed_offset=0):
-        """Add Advanced LIGO noise to the signal.
+    def detector_noise(self, seed_offset=0, detector=None):
+        """Add detector noise to the signal.
         
         Args:
             seed_offset (int): Offset for random seed to ensure different noise realizations
-            
+            detector (str): The detector for which to generate noise ('LIGO' or 'Virgo')
+
         Returns:
             np.ndarray: Signal with properly scaled aLIGO noise added
         """
@@ -242,7 +245,8 @@ class hThetaMulti(Dataset):
             N=dataN,
             delta_t=dataDeltaT,
             one_sided=True,  # Use one-sided spectrum as in R
-            pad=1
+            pad=1,
+            detector=detector
         ).reshape(1, -1)  # shape (1, Y_LENGTH)
 
         # Restore original random state if we changed it
@@ -254,7 +258,7 @@ class hThetaMulti(Dataset):
 
         return noise
     
-    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1) -> np.ndarray:
+    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None) -> np.ndarray:
         """Generate colored noise with given PSD."""
         if pad < 1 or int(pad) != pad:
             raise ValueError("pad must be an integer >= 1")
@@ -272,7 +276,13 @@ class hThetaMulti(Dataset):
             kappa[-1] = 0
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
-        psd = self.PSD
+        if detector == "H1" or detector == "L1":
+            psd = self.AdvLIGOPSD
+        elif detector == "V1":
+            psd = self.VirgoPSD
+        else:
+            raise ValueError("Invalid detector specified. Please choose 'LIGO' or 'Virgo'.")
+
         psd[~np.isfinite(psd)] = 0
         psd[psd < 0] = 0
 
@@ -424,7 +434,7 @@ class hThetaMulti(Dataset):
                 # rho = self.calculate_snr_from_fft(hf, self.PSD)
                 
                 # Generate detector-specific noise
-                n = self.aLIGO_noise(seed_offset=noise_realization_idx + j * 1000)
+                n = self.detector_noise(seed_offset=noise_realization_idx + j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
                 
                 # Add noise with target SNR
                 # d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
