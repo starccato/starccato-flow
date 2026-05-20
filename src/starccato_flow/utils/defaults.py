@@ -17,6 +17,8 @@ SAMPLING_RATE = 1/4096
 
 TEN_KPC = 3.086e+22
 
+GPS_TIME = 1457654242.0
+
 def get_device() -> torch.device:
     try:
         if torch.cuda.is_available():

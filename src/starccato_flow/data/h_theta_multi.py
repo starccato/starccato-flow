@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 
 from .s_theta import sTheta
 from ..localisation.supernovae import Supernovae
-from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE
+from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.
@@ -43,10 +43,8 @@ class hThetaMulti(Dataset):
         dec: Optional[np.ndarray] = None,
         d: Optional[np.ndarray] = None,
         random_polarization: bool = True,
-        gps_time: float = 1457654242.0,
+        gps_time: float = GPS_TIME,
         seed: int = 99,
-        rho_target: float = 10.0,
-        num_epochs: int = 1,
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
@@ -60,8 +58,6 @@ class hThetaMulti(Dataset):
         self.random_polarization = random_polarization
         self.gps_time = float(gps_time)
         self.seed = seed
-        self.rho_target = rho_target
-        self.num_epochs = num_epochs
         self._current_epoch = 0
         self.include_sky_params = True
 
