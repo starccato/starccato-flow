@@ -312,14 +312,46 @@ class hThetaMulti(Dataset):
 
         return noise
     
-    @staticmethod
-    def calculate_snr_from_fft(hf, Sn, fs=SAMPLING_RATE, N=Y_LENGTH):
-        """Calculate SNR directly from pre-computed FFT."""
+    def calculate_snr_from_fft(self, idx=0, fs=SAMPLING_RATE, N=Y_LENGTH):
+        """Calculate SNR directly from pre-computed FFT for a sample index.
+        
+        Args:
+            idx (int): Index of the sample to calculate SNR for
+            fs (float): Sampling frequency
+            N (int): FFT length
+            
+        Returns:
+            list: SNR values for each detector
+        """
         df = fs / N
-        integrand = (np.abs(hf)**2) / Sn
-        rho2 = 4 * np.sum(integrand) * df
-        return np.sqrt(rho2)
-    
+        snr = []
+
+        # Get noisy signal tensor and move to CPU for numpy operations
+        _, noisy_signal_tensor, _ = self.__getitem__(idx)
+        noisy_signal = noisy_signal_tensor.cpu().numpy()  # Convert to numpy
+
+        for j, detector in enumerate(self.detectors):
+            if detector == "H1" or detector == "L1":
+                psd = self.AdvLIGOPSD
+            elif detector == "V1":
+                psd = self.VirgoPSD
+            else:
+                raise ValueError("Invalid detector specified. Please choose 'LIGO' or 'Virgo'.")
+            
+            # Get signal for this detector
+            signal = noisy_signal[j, :]  # Shape: (Y_LENGTH,)
+            signal *= (self.max_strain / TEN_KPC) * 100
+            
+            # Compute FFT
+            hf = np.fft.rfft(signal, axis=0)[1]
+            
+            # Calculate SNR
+            integrand = (np.abs(hf)**2) / psd
+            rho2 = 4 * np.sum(integrand) * df
+            snr.append(np.sqrt(rho2))
+
+        return snr
+
     def normalise_signals(self, signal):
         """Normalize signals by dividing by max strain."""
         return signal / self.max_strain
@@ -431,7 +463,7 @@ class hThetaMulti(Dataset):
                 # Compute SNR (using base class method)
                 s_normalized = s / TEN_KPC
                 # hf = np.fft.rfft(s_normalized, axis=1)[0]
-                # rho = self.calculate_snr_from_fft(hf, self.PSD)
+                # rho = self.calculate_snr_from_fft(hf)
                 
                 # Generate detector-specific noise
                 n = self.detector_noise(seed_offset=noise_realization_idx + j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
@@ -445,8 +477,6 @@ class hThetaMulti(Dataset):
         
         noisy_signal = self.normalise_signals(noisy_signal)
         clean_signal = self.normalise_signals(clean_signal)
-        
-        # Normalize parameters
         params_normalized = self.normalize_parameters(parameters.reshape(1, -1))[0]
         
         return (

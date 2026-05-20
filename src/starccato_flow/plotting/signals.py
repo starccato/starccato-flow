@@ -86,7 +86,8 @@ def plot_signal_grid(
 
 def plot_detector_signal_channels(
     signals: np.ndarray,
-    max_value: float,
+    noisy_signals: Optional[np.ndarray] = None,
+    max_value: float = 1.0,
     detector_labels: Sequence[str] = ("H1", "L1", "V1"),
     fname: Optional[str] = None,
     generated: bool = False,
@@ -94,17 +95,16 @@ def plot_detector_signal_channels(
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Plot 3 detector-channel signals with the same style as ``plot_signal_grid``.
+    """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
     Notes:
-        - This function intentionally duplicates the styling logic from
-          ``plot_signal_grid`` (per request) instead of calling it.
+        - If noisy_signals is provided, both clean and noisy signals are plotted.
         - Expected signal shape is either ``(3, signal_length)`` or
           ``(signal_length, 3)``.
     """
     set_plot_style(background, font_family, font_name)
 
-    signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
+    signal_colour = SIGNAL_COLOUR
     vline_color = "white" if background == "black" else "black"
 
     sig = np.asarray(signals)
@@ -121,6 +121,24 @@ def plot_detector_signal_channels(
             f"got shape {sig.shape}"
         )
 
+    # Handle noisy signals if provided
+    if noisy_signals is not None:
+        noisy_sig = np.asarray(noisy_signals)
+        if noisy_sig.ndim != 2:
+            raise ValueError(f"noisy_signals must be 2D, got shape {noisy_sig.shape}")
+        
+        if noisy_sig.shape[0] == 3:
+            channel_noisy = noisy_sig
+        elif noisy_sig.shape[1] == 3:
+            channel_noisy = noisy_sig.T
+        else:
+            raise ValueError(
+                "noisy_signals must have 3 detector channels in axis 0 or axis 1; "
+                f"got shape {noisy_sig.shape}"
+            )
+    else:
+        channel_noisy = None
+
     fig, axes = plt.subplots(3, 1, figsize=(15, 8), sharex=True)
     d = get_time_axis()
     x_min, x_max = -0.01, 0.05
@@ -132,10 +150,18 @@ def plot_detector_signal_channels(
     y_max = max_absolute_value * y_expand
 
     for i, ax in enumerate(axes):
-        y = channel_signals[i].flatten() * max_value
+        y_clean = channel_signals[i].flatten() * max_value
+        
+        # Plot noisy signal first (if provided) with lower opacity
+        if channel_noisy is not None:
+            y_noisy = channel_noisy[i].flatten() * max_value
+            ax.plot(d, y_noisy, color=signal_colour, linewidth=1.5, alpha=0.5, label="Signal + Noise")
+        
+        # Plot clean signal on top with full opacity
+        ax.plot(d, y_clean, color=signal_colour, linewidth=2, alpha=1.0, label="Signal")
+        
         ax.set_ylim(y_min, y_max)
         ax.set_xlim(x_min, x_max)
-        ax.plot(d, y, color=signal_colour)
         ax.margins(x=0.0)
         ax.set_xmargin(0)
         ax.autoscale(enable=False, axis='x')
@@ -151,6 +177,11 @@ def plot_detector_signal_channels(
 
         if i < 2:
             ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
+        
+        # Add legend only to first subplot if we have both signals
+        if i == 0 and channel_noisy is not None:
+            ax.legend(loc='upper right', facecolor="none", edgecolor=vline_color,
+                     labelcolor=vline_color, fontsize=10, framealpha=0.0)
 
     axes[-1].set_xticks(xticks)
     axes[-1].tick_params(axis='x', which='both', labelbottom=True, bottom=True, colors=vline_color)

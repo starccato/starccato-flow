@@ -9,13 +9,13 @@ class FlowFCL(nn.Module):
         super().__init__()
         # Encode signal separately first
         self.signal_encoder = nn.Sequential(
-            nn.Linear(signal_dim, h), nn.ELU(),
-            nn.Linear(h, h // 2), nn.ELU()
+            nn.Linear(signal_dim, h), nn.GELU(),
+            nn.Linear(h, h // 2), nn.GELU()
         )
         # Then combine with parameters
         self.net = nn.Sequential(
-            nn.Linear(dim + 1 + h // 2, h), nn.ELU(),
-            nn.Linear(h, h), nn.ELU(),
+            nn.Linear(dim + 1 + h // 2, h), nn.GELU(),
+            nn.Linear(h, h), nn.GELU(),
             nn.Linear(h, dim)
         )
     
@@ -49,8 +49,8 @@ class FlowCNN(nn.Module):
         
         # 1D Convolutional encoder for multi-channel signals
         self.signal_encoder = nn.Sequential(
-            nn.Conv1d(num_channels, h // 2, kernel_size=3, padding=1), nn.ELU(),
-            nn.Conv1d(h // 2, h // 4, kernel_size=3, padding=1), nn.ELU(),
+            nn.Conv1d(num_channels, h // 2, kernel_size=3, padding=1), nn.GELU(),
+            nn.Conv1d(h // 2, h // 4, kernel_size=3, padding=1), nn.GELU(),
             nn.AdaptiveAvgPool1d(1)  # Global average pooling
         )
         
@@ -59,8 +59,8 @@ class FlowCNN(nn.Module):
         
         # Then combine with parameters
         self.net = nn.Sequential(
-            nn.Linear(dim + 1 + cnn_out_dim, h), nn.ELU(),
-            nn.Linear(h, h), nn.ELU(),
+            nn.Linear(dim + 1 + cnn_out_dim, h), nn.GELU(),
+            nn.Linear(h, h), nn.GELU(),
             nn.Linear(h, dim)
         )
     

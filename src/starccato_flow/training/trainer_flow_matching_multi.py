@@ -118,7 +118,7 @@ class FlowMatchingTrainerMulti:
             # Create training dataset
             self.training_dataset = sTheta(
                 custom_data=(train_signals, train_params),
-                noise=noise,
+                noise=self.noise,
                 num_epochs=num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -132,7 +132,7 @@ class FlowMatchingTrainerMulti:
             # Create validation dataset sharing normalization from training
             self.validation_dataset = sTheta(
                 custom_data=(val_signals, val_params),
-                noise=noise,
+                noise=self.noise,
                 num_epochs=num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -169,7 +169,7 @@ class FlowMatchingTrainerMulti:
             # Create training dataset with custom data
             self.training_dataset = sTheta(
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
-                noise=noise,
+                noise=self.noise,
                 num_epochs=num_epochs,
                 start_snr=start_snr,
                 end_snr=end_snr,
@@ -182,7 +182,7 @@ class FlowMatchingTrainerMulti:
             # Create validation dataset with custom data
             self.validation_dataset = sTheta(
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
-                noise=noise,
+                noise=self.noise,
                 num_epochs=num_epochs,
                 start_snr=end_snr,
                 end_snr=end_snr,
@@ -617,7 +617,9 @@ class FlowMatchingTrainerMulti:
 
             # Use a single sampled validation case so corner and sky plots compare
             # against the exact same truth values (including beta when enabled).
-            plot_case = self.h_theta_multi_val[0]  # First sample from validation set for consistent plotting
+            plot_case = self.h_theta_multi_val[100]  # First sample from validation set for consistent plotting
+            snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=100)
+            print("snr = ", snr_case)
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
             self.plot_corner_sampled_signal(
                 num_samples=3000,
