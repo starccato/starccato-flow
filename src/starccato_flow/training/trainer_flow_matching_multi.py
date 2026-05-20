@@ -434,40 +434,6 @@ class FlowMatchingTrainerMulti:
         self.avg_mse_losses = []
         self.avg_mse_losses_val = []
 
-        # keep one constant signal+parameter sample for corner and sky plots to track training progress on the same case
-        preview_ra, preview_dec, preview_d = np.atleast_1d(
-            np.deg2rad(-60),
-            np.deg2rad(120),
-            10.0,
-        )
-        # # Plot one pre-training example across detector channels.
-        preview_ra, preview_dec, preview_d = self._sample_sky_params_for_epoch(epoch=0, n_samples=1)
-        preview_signals, preview_params = self._sample_dataset_batches(self.training_dataset, n_samples=1)
-        preview_dataset = hThetaMulti(
-            s=preview_signals,
-            max_strain=self.training_dataset.max_strain,
-            theta=preview_params,
-            min_theta=self.training_dataset.min_theta,
-            max_theta=self.training_dataset.max_theta,
-            ra=preview_ra,
-            dec=preview_dec,
-            d=preview_d,
-            batch_size=1,
-            noise=False,
-        )
-        preview_signal, _, _ = preview_dataset[0]
-        preview_outdir = os.path.join(self.outdir, "flow_matching")
-        os.makedirs(preview_outdir, exist_ok=True)
-        fig, _ = plot_detector_signal_channels(
-            signals=preview_signal.detach().cpu().numpy() / TEN_KPC,
-            max_value=preview_dataset.max_strain,
-            detector_labels=preview_dataset.detectors,
-            fname=os.path.join(preview_outdir, "pretrain_detector_signal_example.png"),
-            background="black",
-            generated=False,
-        )
-        plt.close(fig)
-
         epoch_bar = trange(self.num_epochs, desc="Epochs", position=0, leave=True)
         for epoch in epoch_bar:
             self.flow.train()
@@ -546,17 +512,6 @@ class FlowMatchingTrainerMulti:
             avg_total_loss = total_loss / total_samples
             self.avg_mse_losses.append(avg_total_loss)
 
-            _, noisy_signal, _ = self.h_theta_multi_train[0]
-
-            fig, _ = plot_detector_signal_channels(
-                signals=noisy_signal.detach().cpu().numpy() / TEN_KPC,
-                max_value=self.h_theta_multi_train.max_strain,
-                detector_labels=preview_dataset.detectors,
-                background="black",
-                generated=False,
-            )
-            plt.close(fig)
-
             # Validation
             self.flow.eval()
             val_total_loss = 0
@@ -618,9 +573,18 @@ class FlowMatchingTrainerMulti:
             # Use a single sampled validation case so corner and sky plots compare
             # against the exact same truth values (including beta when enabled).
             plot_case = self.h_theta_multi_val[100]  # First sample from validation set for consistent plotting
-            snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=100)
-            print("snr = ", snr_case)
+            
+            # snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=100) 
+            # print("snr = ", snr_case)
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
+            plot_detector_signal_channels(
+                signals=plot_case[0].detach().cpu().numpy() / TEN_KPC,
+                noisy_signals=plot_case[1].detach().cpu().numpy() / TEN_KPC,
+                max_value=self.h_theta_multi_val.max_strain,
+                detector_labels=self.h_theta_multi_val.detectors,
+                background="black",
+                generated=False,
+            )
             self.plot_corner_sampled_signal(
                 num_samples=3000,
                 n_steps=20,

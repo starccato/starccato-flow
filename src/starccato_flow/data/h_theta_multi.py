@@ -340,7 +340,7 @@ class hThetaMulti(Dataset):
             
             # Get signal for this detector
             signal = noisy_signal[j, :]  # Shape: (Y_LENGTH,)
-            signal *= (self.max_strain / TEN_KPC) * 100
+            signal *= self.max_strain / TEN_KPC
             
             # Compute FFT
             hf = np.fft.rfft(signal, axis=0)[1]
