@@ -1,8 +1,5 @@
 import numpy as np
 
-from starccato_flow.localisation import CCSN
-
-
 def test_ccsn_plot_galactic_distribution_creates_output_files(tmp_path):
     ccsn = CCSN()
     ccsn.generate_locations(num_supernovae=32, seed=7)

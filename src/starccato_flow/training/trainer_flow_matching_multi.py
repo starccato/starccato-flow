@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
-from ..localisation.supernovae import Supernovae
+from ..supernovae.supernovae import Supernovae
 from tqdm.auto import trange
 
 from ..plotting import (
@@ -17,7 +17,7 @@ from ..plotting import (
 )
 from ..plotting.signals import plot_detector_signal_channels
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, SAMPLING_RATE, TEN_KPC
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
 from . import create_train_val_split, plot_candidate_signal_method, display_results_method

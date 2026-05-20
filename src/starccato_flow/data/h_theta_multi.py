@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .s_theta import sTheta
-from ..localisation.supernovae import Supernovae
+from ..supernovae.supernovae import Supernovae
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 
 class hThetaMulti(Dataset):
