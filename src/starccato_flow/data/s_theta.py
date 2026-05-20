@@ -50,7 +50,6 @@ class sTheta(BaseDataset, Dataset):
         indices: Optional[np.ndarray] = None,
         multi_param: bool = True,
         include_beta: bool = True,
-        noise_realizations: int = 1,
         shared_min: Optional[np.ndarray] = None,
         shared_max: Optional[np.ndarray] = None,
         shared_max_strain: Optional[float] = None,
@@ -68,7 +67,6 @@ class sTheta(BaseDataset, Dataset):
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
             include_beta (bool): Whether to include beta1_IC_b in target parameters
-            noise_realizations (int): Number of different noise realizations per signal (multiplies dataset size)
             custom_data (Optional[tuple[np.ndarray, np.ndarray]]): Pre-generated (signals, parameters) arrays.
                 signals: shape (signal_length, num_samples) or (num_samples, signal_length)
                 parameters: shape (num_samples, num_params)
@@ -114,7 +112,6 @@ class sTheta(BaseDataset, Dataset):
         self.start_snr = start_snr
         self.end_snr = end_snr
         self.rho_target = rho_target
-        self.noise_realizations = noise_realizations
 
         # Build the filtering mask from the full parameter table before column selection.
         beta_keep_idx = params_df["beta1_IC_b"].values > 0
@@ -451,8 +448,7 @@ class sTheta(BaseDataset, Dataset):
     
     ### overloads ###
     def __len__(self):
-        # Multiply dataset size by number of noise realizations
-        return self.signals.shape[1] * self.noise_realizations
+        return self.signals.shape[1]
 
     @property
     def shape(self):
@@ -472,25 +468,15 @@ class sTheta(BaseDataset, Dataset):
 
     def __getitem__(self, idx):
         # Validate index is within bounds
-        dataset_size = self.signals.shape[1] * self.noise_realizations
-        if idx < 0 or idx >= dataset_size:
+        if idx < 0 or idx >= self.signals.shape[1]:
             raise IndexError(
-                f"Index {idx} is out of range for dataset with {self.signals.shape[1]} base signals "
-                f"and {self.noise_realizations} noise realizations (total size: {dataset_size})"
+                f"Index {idx} is out of range for dataset with {self.signals.shape[1]} signals"
             )
         
-        # Map the augmented index to the original signal index
-        # If noise_realizations=3 and we have 100 signals:
-        # idx 0-99 -> signal 0-99 (realization 0)
-        # idx 100-199 -> signal 0-99 (realization 1)
-        # idx 200-299 -> signal 0-99 (realization 2)
-        original_idx = idx % self.signals.shape[1]
-        noise_realization_idx = idx // self.signals.shape[1]
-        
-        s = self.signals[:, original_idx]
+        s = self.signals[:, idx]
         s = s.reshape(1, -1)
 
-        parameters = self.parameters[original_idx].copy()  # Extract parameter values as a NumPy array
+        parameters = self.parameters[idx].copy()  # Extract parameter values as a NumPy array
         
         # Note: Log transformations already applied to parameters array in __init__
         # Parameters are: [beta, omega_0, log(A), Ye]
@@ -501,13 +487,13 @@ class sTheta(BaseDataset, Dataset):
         parameters = parameters.reshape(1, -1)
 
         # Use pre-computed FFT to calculate SNR (much faster!)
-        hf = self.signal_rfft[:, original_idx]
+        hf = self.signal_rfft[:, idx]
         rho = self.calculate_snr_from_fft(hf, self.PSD)
         
         # Add noise only if self.noise is True
         if self.noise:
-            # Add different noise each time by using a unique seed based on noise_realization_idx
-            n = self.aLIGO_noise(seed_offset=noise_realization_idx)
+            # Add noise with a consistent seed per signal index
+            n = self.aLIGO_noise(seed_offset=idx)
             
             s = s / 3.086e+22
             d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?

@@ -39,8 +39,7 @@ class FlowMatchingTrainer:
         toy: bool = True,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
         start_snr: int = 100,
-        end_snr: int = 10,
-        noise_realizations: int = 1  # Number of noise realizations per signal
+        end_snr: int = 10
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -58,9 +57,8 @@ class FlowMatchingTrainer:
         self.max_grad_norm = max_grad_norm
         self.start_snr = start_snr
         self.end_snr = end_snr
-        self.noise_realizations = noise_realizations
 
-        self.training_dataset, self.validation_dataset = create_train_val_split(
+        self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
             toy=self.toy,
             y_length=self.y_length,
             noise=self.noise,
@@ -68,9 +66,7 @@ class FlowMatchingTrainer:
             seed=self.seed,
             num_epochs=self.num_epochs,
             start_snr=start_snr,
-            end_snr=end_snr,
-            curriculum=self.curriculum,
-            noise_realizations=self.noise_realizations
+            end_snr=end_snr
         )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)

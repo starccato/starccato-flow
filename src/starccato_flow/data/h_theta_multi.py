@@ -45,11 +45,8 @@ class hThetaMulti(Dataset):
         random_polarization: bool = True,
         gps_time: float = 1457654242.0,
         seed: int = 99,
-        noise_realizations: int = 1,
         rho_target: float = 10.0,
         num_epochs: int = 1,
-        start_snr: float = 100.0,
-        end_snr: float = 10.0,
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
@@ -63,11 +60,8 @@ class hThetaMulti(Dataset):
         self.random_polarization = random_polarization
         self.gps_time = float(gps_time)
         self.seed = seed
-        self.noise_realizations = noise_realizations
         self.rho_target = rho_target
         self.num_epochs = num_epochs
-        self.start_snr = start_snr
-        self.end_snr = end_snr
         self._current_epoch = 0
         self.include_sky_params = True
 
@@ -442,17 +436,13 @@ class hThetaMulti(Dataset):
                 - multi_channel_signal: Shape (num_detectors, signal_length)
                 - parameters: Shape (param_dim,)
         """
-        # Map idx to actual data index considering noise realizations
-        noise_realization_idx = idx % self.noise_realizations
-        original_idx = idx // self.noise_realizations
-        
         # Get multi-channel signal (already projected)
         # Copy so normalization/noise operations do not mutate cached dataset arrays.
-        clean_signal = self.multi_channel_signals[original_idx].copy()  # Shape: (num_detectors, Y_LENGTH)
+        clean_signal = self.multi_channel_signals[idx].copy()  # Shape: (num_detectors, Y_LENGTH)
         noisy_signal = clean_signal.copy()
         
         # Get parameters
-        parameters = self.parameters[original_idx].copy()
+        parameters = self.parameters[idx].copy()
         
         # Add noise to each detector channel if enabled
         if self.noise:
@@ -466,7 +456,7 @@ class hThetaMulti(Dataset):
                 # rho = self.calculate_snr_from_fft(hf)
                 
                 # Generate detector-specific noise
-                n = self.detector_noise(seed_offset=noise_realization_idx + j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
+                n = self.detector_noise(seed_offset=j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
                 
                 # Add noise with target SNR
                 # d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
@@ -499,16 +489,14 @@ class hThetaMulti(Dataset):
             raise ValueError(f"Detector {detector} not in {self.detectors}")
         
         det_idx = self.detectors.index(detector)
-        original_idx = idx // self.noise_realizations
-        
-        signal = self.multi_channel_signals[original_idx, det_idx, :]
+        signal = self.multi_channel_signals[idx, det_idx, :]
         signal_normalized = self.normalise_signals(signal.reshape(1, -1))
         
         return torch.tensor(signal_normalized, dtype=torch.float32, device=DEVICE).squeeze()
     
     def __len__(self) -> int:
-        """Return total number of samples (including noise realizations)."""
-        return self.s.shape[1] * self.noise_realizations
+        """Return total number of samples."""
+        return self.s.shape[1]
     
     @property
     def current_epoch(self) -> int:

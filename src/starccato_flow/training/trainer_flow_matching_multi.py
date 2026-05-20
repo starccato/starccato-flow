@@ -46,11 +46,8 @@ class FlowMatchingTrainerMulti:
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         noise: bool = True,
-        toy: bool = True,
+        toy: bool = False,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
-        start_snr: int = 100,
-        end_snr: int = 10,
-        noise_realizations: int = 1,  # Number of noise realizations per signal
         multi_param: bool = True,
         include_beta: bool = True,
         estimate_intrinsic_params: bool = False,
@@ -87,9 +84,6 @@ class FlowMatchingTrainerMulti:
         self.toy = toy
         self.noise = noise
         self.max_grad_norm = max_grad_norm
-        self.start_snr = start_snr
-        self.end_snr = end_snr
-        self.noise_realizations = noise_realizations
         self.multi_param = multi_param
         self.include_beta = include_beta
         self.estimate_intrinsic_params = estimate_intrinsic_params
@@ -120,9 +114,6 @@ class FlowMatchingTrainerMulti:
                 custom_data=(train_signals, train_params),
                 noise=self.noise,
                 num_epochs=num_epochs,
-                start_snr=start_snr,
-                end_snr=end_snr,
-                noise_realizations=noise_realizations,
                 batch_size=batch_size,
                 multi_param=multi_param,
                 include_beta=include_beta,
@@ -134,9 +125,6 @@ class FlowMatchingTrainerMulti:
                 custom_data=(val_signals, val_params),
                 noise=self.noise,
                 num_epochs=num_epochs,
-                start_snr=end_snr,
-                end_snr=end_snr,
-                noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
                 multi_param=multi_param,
                 include_beta=include_beta,
@@ -171,9 +159,6 @@ class FlowMatchingTrainerMulti:
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
                 noise=self.noise,
                 num_epochs=num_epochs,
-                start_snr=start_snr,
-                end_snr=end_snr,
-                noise_realizations=noise_realizations,
                 batch_size=batch_size,
                 multi_param=multi_param,
                 include_beta=include_beta,
@@ -184,9 +169,6 @@ class FlowMatchingTrainerMulti:
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
                 noise=self.noise,
                 num_epochs=num_epochs,
-                start_snr=end_snr,
-                end_snr=end_snr,
-                noise_realizations=1,  # Single realization for validation
                 batch_size=batch_size,
                 multi_param=multi_param,
                 include_beta=include_beta,
@@ -203,9 +185,6 @@ class FlowMatchingTrainerMulti:
                 validation_split=self.validation_split,
                 seed=self.seed,
                 num_epochs=self.num_epochs,
-                start_snr=start_snr,
-                end_snr=end_snr,
-                noise_realizations=self.noise_realizations,
                 multi_param=self.multi_param,
                 include_beta=self.include_beta,
             )
@@ -530,7 +509,7 @@ class FlowMatchingTrainerMulti:
                     dec=val_dec,
                     d=val_d,
                     batch_size=self.batch_size,
-                    noise=False,
+                    noise=True,
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,

@@ -19,7 +19,6 @@ def create_train_val_split(
     num_epochs: int,
     start_snr: int,
     end_snr: int,
-    noise_realizations: int,
     multi_param: bool = True,
     include_beta: bool = True,
 ):
@@ -34,7 +33,6 @@ def create_train_val_split(
         num_epochs: Number of training epochs
         start_snr: Starting SNR for curriculum
         end_snr: Ending SNR for curriculum
-        noise_realizations: Number of noise realizations per signal
         
     Returns:
         tuple: (training_dataset, validation_dataset)
@@ -83,63 +81,60 @@ def create_train_val_split(
             shared_max_strain=full_toy_dataset.max_strain
         )
     else:
-        # Create a temporary dataset to get the number of base signals (before augmentation)
+        # Create a temporary dataset to get the number of signals
         temp_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
-            noise_realizations=1,
             multi_param=multi_param,
             include_beta=include_beta,
         )
-        num_base_signals = temp_dataset.signals.shape[1]
+        num_signals = temp_dataset.signals.shape[1]
         
-        # Split on BASE signal indices (before augmentation)
-        base_indices = list(range(num_base_signals))
-        split = int(np.floor(validation_split * num_base_signals))
-        if num_base_signals > 1:
-            split = max(1, min(split, num_base_signals - 1))
+        # Split signal indices
+        indices = list(range(num_signals))
+        split = int(np.floor(validation_split * num_signals))
+        if num_signals > 1:
+            split = max(1, min(split, num_signals - 1))
         
         # Deterministic split with fixed seed
         rng = np.random.RandomState(seed)
-        rng.shuffle(base_indices)
-        train_base_indices = np.array(base_indices[split:])
-        val_base_indices = np.array(base_indices[:split])
+        rng.shuffle(indices)
+        train_indices = np.array(indices[split:])
+        val_indices = np.array(indices[:split])
         
-        print(f"\n=== Data Split (on base signals) ===")
-        print(f"Total base signals: {num_base_signals}")
-        print(f"Training base signals: {len(train_base_indices)}")
-        print(f"Validation base signals: {len(val_base_indices)}")
-        print(f"First 5 training indices: {train_base_indices[:5]}")
-        print(f"First 5 validation indices: {val_base_indices[:5]}")
+        print(f"\n=== Data Split ===")
+        print(f"Total signals: {num_signals}")
+        print(f"Training signals: {len(train_indices)}")
+        print(f"Validation signals: {len(val_indices)}")
+        print(f"First 5 training indices: {train_indices[:5]}")
+        print(f"First 5 validation indices: {val_indices[:5]}")
         
-        # Create SEPARATE dataset instances with disjoint base indices
-        # Training: with curriculum and multiple noise realizations
+        # Create SEPARATE dataset instances with disjoint indices
+        # Training: with curriculum learning
         training_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=start_snr,
             end_snr=end_snr,
             noise=noise,
-            noise_realizations=noise_realizations,
             multi_param=multi_param,
             include_beta=include_beta,
-            indices=train_base_indices,
+            indices=train_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,
             shared_max_strain=temp_dataset.max_strain
         )
         
-        # Validation: FIXED SNR (no curriculum) with single noise realization
+        # Validation: FIXED SNR (no curriculum)
         validation_dataset = sTheta(
             num_epochs=num_epochs,
             start_snr=end_snr,
             end_snr=end_snr,
             noise=noise,
-            noise_realizations=1,
             multi_param=multi_param,
             include_beta=include_beta,
-            indices=val_base_indices,
+            indices=val_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,
             shared_max_strain=temp_dataset.max_strain
