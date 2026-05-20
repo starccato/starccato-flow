@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader
 from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
 from ..localisation.supernovae import Supernovae
-from ..localisation.supernovae import Supernovae
 from tqdm.auto import trange
 
 from ..plotting import (
@@ -45,7 +44,7 @@ class FlowMatchingTrainerMulti:
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
-        noise: bool = True,
+        detector_noise_on: bool = True,
         toy: bool = False,
         max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
         multi_param: bool = True,
@@ -82,7 +81,7 @@ class FlowMatchingTrainerMulti:
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
         self.toy = toy
-        self.noise = noise
+        self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
         self.multi_param = multi_param
         self.include_beta = include_beta
@@ -112,7 +111,7 @@ class FlowMatchingTrainerMulti:
             # Create training dataset
             self.training_dataset = sTheta(
                 custom_data=(train_signals, train_params),
-                noise=self.noise,
+                detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 multi_param=multi_param,
@@ -123,7 +122,7 @@ class FlowMatchingTrainerMulti:
             # Create validation dataset sharing normalization from training
             self.validation_dataset = sTheta(
                 custom_data=(val_signals, val_params),
-                noise=self.noise,
+                detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 multi_param=multi_param,
@@ -157,7 +156,7 @@ class FlowMatchingTrainerMulti:
             # Create training dataset with custom data
             self.training_dataset = sTheta(
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
-                noise=self.noise,
+                detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 multi_param=multi_param,
@@ -167,7 +166,7 @@ class FlowMatchingTrainerMulti:
             # Create validation dataset with custom data
             self.validation_dataset = sTheta(
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
-                noise=self.noise,
+                detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 multi_param=multi_param,
@@ -181,7 +180,7 @@ class FlowMatchingTrainerMulti:
             self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
                 toy=self.toy,
                 y_length=self.y_length,
-                noise=self.noise,
+                detector_noise_on=self.detector_noise_on,
                 validation_split=self.validation_split,
                 seed=self.seed,
                 num_epochs=self.num_epochs,
@@ -253,29 +252,6 @@ class FlowMatchingTrainerMulti:
 
         epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
         os.makedirs(epoch_dir, exist_ok=True)
-
-        # Plot 1: first generated multi-channel signal for this epoch.
-        signals = multi_dataset.multi_channel_signals
-        time_axis = np.arange(Y_LENGTH) * SAMPLING_RATE
-        fig_sig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
-        detector_labels = getattr(multi_dataset, "detectors", ["H1", "L1", "V1"])
-        first_signal = signals[0]
-
-        for i, ax in enumerate(axes):
-            ax.plot(time_axis, first_signal[i], lw=1.5)
-            ax.set_ylabel("h")
-            ax.set_title(f"{detector_labels[i]}")
-            ax.grid(alpha=0.2)
-
-        axes[-1].set_xlabel("time (s)")
-        fig_sig.suptitle(f"Epoch {epoch + 1}: First Multi-Channel Sample")
-        fig_sig.tight_layout()
-        fig_sig.savefig(
-            os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_signals.png"),
-            dpi=180,
-            bbox_inches="tight",
-        )
-        plt.close(fig_sig)
 
         # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi] (train set)
         params = multi_dataset.parameters
@@ -447,7 +423,7 @@ class FlowMatchingTrainerMulti:
                 dec=sampled_dec,
                 d=sampled_d,
                 batch_size=self.batch_size,
-                noise=True
+                detector_noise_on=True
             )
             self.h_theta_multi_train_loader = DataLoader(
                 self.h_theta_multi_train,
@@ -509,7 +485,7 @@ class FlowMatchingTrainerMulti:
                     dec=val_dec,
                     d=val_d,
                     batch_size=self.batch_size,
-                    noise=True,
+                    detector_noise_on=True,
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,

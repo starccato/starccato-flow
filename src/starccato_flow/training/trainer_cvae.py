@@ -38,12 +38,10 @@ class ConditionalVAETrainer:
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
-        noise: bool = True,
+        detector_noise_on: bool = True,
         curriculum: bool = True,
         toy: bool = True,
         max_grad_norm: float = 1.0,
-        start_snr: int = 100,
-        end_snr: int = 10,
         varying_param_index: int = 0
     ):
         self.y_length = y_length
@@ -57,11 +55,9 @@ class ConditionalVAETrainer:
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
         self.toy = toy
-        self.noise = noise
+        self.detector_noise_on = detector_noise_on
         self.curriculum = curriculum
         self.max_grad_norm = max_grad_norm
-        self.start_snr = start_snr
-        self.end_snr = end_snr
         self.varying_param_index = varying_param_index
         self.device = DEVICE
 
@@ -69,13 +65,10 @@ class ConditionalVAETrainer:
         self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
             toy=self.toy,
             y_length=self.y_length,
-            noise=self.noise,
+            detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,
             seed=self.seed,
-            num_epochs=self.num_epochs,
-            start_snr=start_snr,
-            end_snr=end_snr,
-            curriculum=self.curriculum
+            num_epochs=self.num_epochs
         )
 
         # Get parameter dimension from dataset

@@ -21,16 +21,13 @@ def _set_seed(seed: int):
     return seed
 
 class sThetaToy(BaseDataset):
-    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, noise=True, curriculum=False, noise_level=0.1, 
-                 start_snr=200, end_snr=10, rho_target=10,
-                 shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):
+    def __init__(self, num_signals=1684, signal_length=Y_LENGTH, detector_noise_on=True, curriculum=False, noise_level=0.1, 
+                 rho_target=10, shared_params=None, shared_min=None, shared_max=None, shared_max_strain=None):
         _set_seed(42)
         self.num_signals = num_signals
         self.signal_length = signal_length
         self.num_epochs = 256
-        self.noise = noise
-        self.start_snr = start_snr
-        self.end_snr = end_snr
+        self.detector_noise_on = detector_noise_on
         self.rho_target = rho_target
         self.curriculum = curriculum
         self.noise_level = noise_level
@@ -96,7 +93,7 @@ class sThetaToy(BaseDataset):
         normalised_signal = self.normalise_signals(signal)
         
         # Add noise if enabled with SNR control
-        if self.noise:
+        if self.detector_noise_on:
             noise = np.random.normal(0, 1.0, self.signal_length)
             signal_power = np.sqrt(np.mean(signal**2))
             noise_power = np.sqrt(np.mean(noise**2))
@@ -159,14 +156,12 @@ class sThetaToy(BaseDataset):
         return self._current_epoch
 
     def set_epoch(self, epoch: int) -> None:
-        """Update the current epoch number and adjust SNR for curriculum learning.
+        """Update the current epoch number.
 
         Args:
             epoch (int): New epoch number
         """
         self._current_epoch = epoch
-        if self.curriculum:
-            self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
 
     def get_loader(self, batch_size=32):
         return DataLoader(

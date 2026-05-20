@@ -33,7 +33,7 @@ class hThetaMulti(Dataset):
         self,
         detectors: List[str] = ['H1', 'L1', 'V1'],
         batch_size: int = BATCH_SIZE,
-        noise: bool = True,
+        detector_noise_on: bool = True,
         s: Optional[np.ndarray] = None,
         max_strain: Optional[float] = None,
         theta: Optional[np.ndarray] = None,
@@ -50,7 +50,7 @@ class hThetaMulti(Dataset):
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
-        self.noise = noise
+        self.detector_noise_on = detector_noise_on
         self.s = self._coerce_signal_matrix(s)
         self.max_strain = max_strain
         self.theta = self._coerce_theta_matrix(theta)
@@ -445,7 +445,7 @@ class hThetaMulti(Dataset):
         parameters = self.parameters[idx].copy()
         
         # Add noise to each detector channel if enabled
-        if self.noise:
+        if self.detector_noise_on:
             for j in range(self.num_detectors):
                 # Get signal for this detector
                 s = clean_signal[j:j+1, :].flatten()  # Shape: (1, Y_LENGTH)

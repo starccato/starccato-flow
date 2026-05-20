@@ -13,12 +13,10 @@ from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
 def create_train_val_split(
     toy: bool,
     y_length: int,
-    noise: bool,
+    detector_noise_on: bool,
     validation_split: float,
     seed: int,
     num_epochs: int,
-    start_snr: int,
-    end_snr: int,
     multi_param: bool = True,
     include_beta: bool = True,
 ):
@@ -27,22 +25,20 @@ def create_train_val_split(
     Args:
         toy: Whether to use toy dataset or CCSN data
         y_length: Length of signal
-        noise: Whether to add noise
+        detector_noise_on: Whether to add detector noise
         validation_split: Fraction of data for validation
         seed: Random seed for reproducible split
         num_epochs: Number of training epochs
-        start_snr: Starting SNR for curriculum
-        end_snr: Ending SNR for curriculum
         
     Returns:
-        tuple: (training_dataset, validation_dataset)
+        tuple: (training_dataset, validation_dataset, val_indices)
     """
     if toy:
         # Create full toy dataset
         full_toy_dataset = sThetaToy(
             num_signals=1684, 
             signal_length=y_length, 
-            noise=noise
+            detector_noise_on=detector_noise_on
         )
         
         # Split toy data using same logic as real data
@@ -65,7 +61,7 @@ def create_train_val_split(
         training_dataset = sThetaToy(
             num_signals=len(train_indices),
             signal_length=y_length,
-            noise=noise,
+            detector_noise_on=detector_noise_on,
             shared_params=full_toy_dataset.parameters[train_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
@@ -74,7 +70,7 @@ def create_train_val_split(
         validation_dataset = sThetaToy(
             num_signals=len(val_indices),
             signal_length=y_length,
-            noise=noise,
+            detector_noise_on=detector_noise_on,
             shared_params=full_toy_dataset.parameters[val_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
@@ -84,9 +80,7 @@ def create_train_val_split(
         # Create a temporary dataset to get the number of signals
         temp_dataset = sTheta(
             num_epochs=num_epochs,
-            start_snr=start_snr,
-            end_snr=end_snr,
-            noise=noise,
+            detector_noise_on=detector_noise_on,
             multi_param=multi_param,
             include_beta=include_beta,
         )
@@ -112,12 +106,9 @@ def create_train_val_split(
         print(f"First 5 validation indices: {val_indices[:5]}")
         
         # Create SEPARATE dataset instances with disjoint indices
-        # Training: with curriculum learning
         training_dataset = sTheta(
             num_epochs=num_epochs,
-            start_snr=start_snr,
-            end_snr=end_snr,
-            noise=noise,
+            detector_noise_on=detector_noise_on,
             multi_param=multi_param,
             include_beta=include_beta,
             indices=train_indices,
@@ -126,12 +117,9 @@ def create_train_val_split(
             shared_max_strain=temp_dataset.max_strain
         )
         
-        # Validation: FIXED SNR (no curriculum)
         validation_dataset = sTheta(
             num_epochs=num_epochs,
-            start_snr=end_snr,
-            end_snr=end_snr,
-            noise=noise,
+            detector_noise_on=detector_noise_on,
             multi_param=multi_param,
             include_beta=include_beta,
             indices=val_indices,
@@ -148,7 +136,7 @@ def create_train_val_split(
     if toy:
         return training_dataset, validation_dataset, val_indices
     else:
-        return training_dataset, validation_dataset, val_base_indices
+        return training_dataset, validation_dataset, val_indices
 
 
 def plot_generated_signal_distribution(

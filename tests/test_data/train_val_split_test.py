@@ -17,9 +17,7 @@ class TestTrainValSplit:
             noise=True,
             validation_split=0.1,
             seed=42,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # Get the base signal indices used by each dataset
@@ -51,9 +49,7 @@ class TestTrainValSplit:
             noise=True,
             validation_split=0.1,
             seed=42,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # For toy data, we need to check if parameters overlap
@@ -84,12 +80,10 @@ class TestTrainValSplit:
         training_dataset, validation_dataset, val_indices = create_train_val_split(
             toy=False,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=validation_split,
             seed=42,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         train_size = len(training_dataset.indices)
@@ -114,12 +108,10 @@ class TestTrainValSplit:
         training_dataset, validation_dataset, val_indices = create_train_val_split(
             toy=True,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=validation_split,
             seed=42,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         train_size = training_dataset.num_signals
@@ -145,24 +137,20 @@ class TestTrainValSplit:
         train1, val1, val_indices1 = create_train_val_split(
             toy=False,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=0.1,
             seed=seed,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # Create second split with same seed
         train2, val2, val_indices2 = create_train_val_split(
             toy=False,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=0.1,
             seed=seed,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # Verify indices are identical
@@ -181,24 +169,20 @@ class TestTrainValSplit:
         train1, val1, val_indices1 = create_train_val_split(
             toy=False,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=0.1,
             seed=1,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # Create split with seed 2
         train2, val2, val_indices2 = create_train_val_split(
             toy=False,
             y_length=Y_LENGTH,
-            noise=True,
+            detector_noise_on=True,
             validation_split=0.1,
             seed=2,
-            num_epochs=256,
-            start_snr=200,
-            end_snr=10
+            num_epochs=256
         )
         
         # Verify indices are different

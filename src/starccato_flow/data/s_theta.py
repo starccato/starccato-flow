@@ -41,11 +41,9 @@ class sTheta(BaseDataset, Dataset):
         self,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = Y_LENGTH,
-        noise: bool = True,
+        detector_noise_on: bool = True,
         curriculum: bool = True,
         snr: bool = True,
-        start_snr: int = 100,
-        end_snr: int = 10,
         rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
         multi_param: bool = True,
@@ -62,7 +60,7 @@ class sTheta(BaseDataset, Dataset):
         
         Args:
             batch_size (int): Batch size for data loading
-            noise (bool): Whether to add noise
+            detector_noise_on (bool): Whether to add detector noise
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
             multi_param (bool): Whether to use multiple parameters
@@ -106,11 +104,9 @@ class sTheta(BaseDataset, Dataset):
             params_df = params_df
             signals_df = signals_df
         
-        self.noise = noise
+        self.detector_noise_on = detector_noise_on
         self.curriculum = curriculum
         self.snr = snr
-        self.start_snr = start_snr
-        self.end_snr = end_snr
         self.rho_target = rho_target
 
         # Build the filtering mask from the full parameter table before column selection.
@@ -490,8 +486,8 @@ class sTheta(BaseDataset, Dataset):
         hf = self.signal_rfft[:, idx]
         rho = self.calculate_snr_from_fft(hf, self.PSD)
         
-        # Add noise only if self.noise is True
-        if self.noise:
+        # Add noise only if self.detector_noise_on is True
+        if self.detector_noise_on:
             # Add noise with a consistent seed per signal index
             n = self.aLIGO_noise(seed_offset=idx)
             
@@ -532,7 +528,6 @@ class sTheta(BaseDataset, Dataset):
             epoch (int): New epoch number
         """
         self._current_epoch = epoch
-        self.rho_target = -1 * (epoch / self.num_epochs) * (abs(self.start_snr - self.end_snr)) + self.start_snr
     
     def get_loader(
         self,
