@@ -43,6 +43,7 @@ class hThetaMulti(Dataset):
         random_polarization: bool = True,
         gps_time: float = GPS_TIME,
         seed: int = 99,
+        intrinsic_param_names: Optional[List[str]] = None,
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
@@ -56,6 +57,7 @@ class hThetaMulti(Dataset):
         self.random_polarization = random_polarization
         self.gps_time = float(gps_time)
         self.seed = seed
+        self.intrinsic_param_names = intrinsic_param_names if intrinsic_param_names is not None else []
         self._current_epoch = 0
         self.include_sky_params = True
 
@@ -104,7 +106,12 @@ class hThetaMulti(Dataset):
         print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.min_theta)} parameters)")
         print(f"{'='*70}")
         print("INTRINSIC PARAMETERS:")
-        intrinsic_labels = ['beta1_IC_b', 'omega_0(rad|s)', 'A(km)', 'Ye_c_b']
+        # Use provided intrinsic parameter names, or fall back to generic labels
+        if self.intrinsic_param_names:
+            intrinsic_labels = self.intrinsic_param_names
+        else:
+            intrinsic_labels = ['beta1_IC_b', 'omega_0(rad|s)', 'A(km)', 'Ye_c_b']
+        
         for i in range(theta_dim):
             param_label = intrinsic_labels[i] if i < len(intrinsic_labels) else f'theta_{i}'
             print(f"  {param_label:20s}: [{self.min_theta[i]:12.6f}, {self.max_theta[i]:12.6f}]")

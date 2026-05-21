@@ -16,6 +16,7 @@ from ..plotting import (
     plot_galactic_supernovae_polar_hemispheres,
 )
 from ..plotting.signals import plot_detector_signal_channels
+from ..plotting.parameters import plot_epoch_sky_parameters
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..nn.flow_multi import FlowFCL, FlowCNN
@@ -162,26 +163,27 @@ class FlowMatchingTrainerMulti:
             print(f"Loaded validation data: {val_signals.shape[1]} real signals (CVAE held-out)")
             
             # Create training dataset
+            # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
             self.training_dataset = sTheta(
                 custom_data=(train_signals, train_params),
-                detector_noise_on=self.detector_noise_on,
+                detector_noise_on=False,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
-                generated=True
+                intrinsic_param_names=self.intrinsic_params
             )
             
             # Create validation dataset sharing normalization from training
+            # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
             self.validation_dataset = sTheta(
                 custom_data=(val_signals, val_params),
-                detector_noise_on=self.detector_noise_on,
+                detector_noise_on=False,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain,
-                generated=True
             )
             
         elif custom_data is not None:
@@ -205,18 +207,20 @@ class FlowMatchingTrainerMulti:
             print(f"Validation samples: {len(val_indices)}")
             
             # Create training dataset with custom data
+            # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
             self.training_dataset = sTheta(
                 custom_data=(signals_array[:, train_indices], params_array[train_indices]),
-                detector_noise_on=self.detector_noise_on,
+                detector_noise_on=False,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
             )
             
             # Create validation dataset with custom data
+            # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
             self.validation_dataset = sTheta(
                 custom_data=(signals_array[:, val_indices], params_array[val_indices]),
-                detector_noise_on=self.detector_noise_on,
+                detector_noise_on=False,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
@@ -312,7 +316,7 @@ class FlowMatchingTrainerMulti:
         return self.parameters_to_estimate.index(param_name)
 
     def _save_epoch_data_plots(self, epoch: int) -> None:
-        """Save signal and parameter snapshots for the current epoch."""
+        """Save parameter distribution plots for the current epoch in a grid layout."""
         multi_dataset = getattr(self, "h_theta_multi_train", None)
         if multi_dataset is None:
             multi_dataset = getattr(self, "h_theta_multi", None)
@@ -322,39 +326,30 @@ class FlowMatchingTrainerMulti:
         epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
         os.makedirs(epoch_dir, exist_ok=True)
 
-        # Plot 2: distribution snapshots for the last four params [ra, dec, d, psi] (train set)
-        params = multi_dataset.parameters
-        fig_par, axes = plt.subplots(2, 2, figsize=(10, 8))
-        param_labels = ["ra", "dec", "d", "psi"]
+        # Plot training set parameters
+        if multi_dataset is not None:
+            fname_train = os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_train_params.png")
+            plot_epoch_sky_parameters(
+                dataset=multi_dataset,
+                sky_params=self.sky_params,
+                fname=fname_train,
+                background="black",
+                color="#3498db",
+                bins=40
+            )
 
-        for i, ax in enumerate(axes.flatten()):
-            ax.hist(params[:, -4 + i], bins=40, alpha=0.85)
-            ax.set_title(param_labels[i])
-            ax.grid(alpha=0.2)
-
-        fig_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions (Train)")
-        fig_par.tight_layout()
-        fig_par.savefig(
-            os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_params.png"),
-            dpi=180,
-            bbox_inches="tight",
-        )
-        plt.close(fig_par)
-
-        # Plot 3: distribution snapshots for the last four params [ra, dec, d, psi] (validation set)
+        # Plot validation set parameters
         val_multi_dataset = getattr(self, "h_theta_multi_val", None)
         if val_multi_dataset is not None:
-            val_params = val_multi_dataset.parameters
-            fig_val_par, axes_val = plt.subplots(2, 2, figsize=(10, 8))
-            for i, ax in enumerate(axes_val.flatten()):
-                ax.hist(val_params[:, -4 + i], bins=40, alpha=0.85, color="orange")
-                ax.set_title(param_labels[i])
-                ax.grid(alpha=0.2)
-            fig_val_par.suptitle(f"Epoch {epoch + 1}: Sky-Parameter Distributions (Val)")
-            fig_val_par.tight_layout()
-            val_param_path = os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_val_params.png")
-            fig_val_par.savefig(val_param_path, dpi=180, bbox_inches="tight")
-            plt.close(fig_val_par)
+            fname_val = os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_val_params.png")
+            plot_epoch_sky_parameters(
+                dataset=val_multi_dataset,
+                sky_params=self.sky_params,
+                fname=fname_val,
+                background="black",
+                color="#e74c3c",
+                bins=40
+            )
 
     def _sample_sky_params_for_epoch(
         self,
@@ -494,7 +489,8 @@ class FlowMatchingTrainerMulti:
                 batch_size=self.batch_size,
                 detector_noise_on=True,
                 random_polarization=True,
-                seed=epoch  # Vary seed by epoch for different psi values each epoch
+                seed=epoch,  # Vary seed by epoch for different psi values each epoch
+                intrinsic_param_names=self.intrinsic_params
             )
             self.h_theta_multi_train_loader = DataLoader(
                 self.h_theta_multi_train,
@@ -555,7 +551,8 @@ class FlowMatchingTrainerMulti:
                     batch_size=self.batch_size,
                     detector_noise_on=True,
                     random_polarization=True,
-                    seed=epoch + 1000  # Different seed range for validation set
+                    seed=epoch + 1000,  # Different seed range for validation set
+                    intrinsic_param_names=self.intrinsic_params
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,
@@ -592,10 +589,9 @@ class FlowMatchingTrainerMulti:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            # Use a single sampled validation case so corner and sky plots compare
-            # against the exact same truth values (including beta when enabled).
-            plot_case = self.h_theta_multi_val[100]  # First sample from validation set for consistent plotting
-            
+            plot_case = self.h_theta_multi_val[np.random.randint(len(self.h_theta_multi_val))] # random sample
+            # plot_case = self.h_theta_multi_val[100] # first sample for consistency across epochs
+
             # snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=100) 
             # print("snr = ", snr_case)
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")

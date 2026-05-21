@@ -179,3 +179,60 @@ def plot_parameter_distribution_grid(
     
     plt.rcdefaults()
     return fig
+
+
+def plot_epoch_sky_parameters(
+    dataset,
+    sky_params: list,
+    fname: str,
+    background: str = "black",
+    color: str = "#3498db",
+    bins: int = 40,
+) -> None:
+    """Plot sky parameter distributions from a dataset in a 2x2 grid.
+    
+    Args:
+        dataset: Dataset with .parameters attribute (e.g., hThetaMulti)
+        sky_params (list): List of sky parameter names to plot (e.g., ["ra", "dec", "d", "psi"])
+        fname (str): Filename to save plot
+        background (str): Background color ("black" or "white")
+        color (str): Color for histogram bars
+        bins (int): Number of histogram bins
+    """
+    num_sky_params = len(sky_params)
+    if num_sky_params == 0:
+        return
+    
+    # Create 2x2 grid
+    n_rows, n_cols = 2, 2
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 10))
+    fig.patch.set_facecolor(background)
+    axes = axes.flatten()
+    
+    # Plot each sky parameter
+    for i, param_name in enumerate(sky_params):
+        if i >= 4:  # Only 2x2 grid
+            break
+        
+        # Sky parameters are at the end: [intrinsic_params..., ra, dec, d, psi]
+        param_idx = dataset.parameters.shape[1] - len(sky_params) + i
+        if param_idx < dataset.parameters.shape[1]:
+            values = dataset.parameters[:, param_idx]
+            ax = axes[i]
+            ax.hist(values, bins=bins, color=color, alpha=0.7, edgecolor='white')
+            ax.set_xlabel(param_name, fontsize=12, color='white', fontfamily='sans-serif')
+            ax.set_ylabel('Count', fontsize=12, color='white', fontfamily='sans-serif')
+            ax.set_facecolor(background)
+            ax.tick_params(colors='white')
+            ax.spines['bottom'].set_color('white')
+            ax.spines['left'].set_color('white')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+    
+    # Hide unused subplots
+    for i in range(num_sky_params, 4):
+        axes[i].set_visible(False)
+    
+    plt.tight_layout()
+    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    plt.close()

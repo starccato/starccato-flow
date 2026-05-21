@@ -47,10 +47,11 @@ def create_train_val_split(
     
     if toy:
         # Create full toy dataset
+        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
         full_toy_dataset = sThetaToy(
             num_signals=1684, 
             signal_length=y_length, 
-            detector_noise_on=detector_noise_on
+            detector_noise_on=False
         )
         
         # Split toy data using same logic as real data
@@ -70,19 +71,21 @@ def create_train_val_split(
         print(f"Validation signals: {len(val_indices)}")
         
         # Create subsets using shared parameter ranges from full dataset
+        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
         training_dataset = sThetaToy(
             num_signals=len(train_indices),
             signal_length=y_length,
-            detector_noise_on=detector_noise_on,
+            detector_noise_on=False,
             shared_params=full_toy_dataset.parameters[train_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
             shared_max_strain=full_toy_dataset.max_strain
         )
+        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
         validation_dataset = sThetaToy(
             num_signals=len(val_indices),
             signal_length=y_length,
-            detector_noise_on=detector_noise_on,
+            detector_noise_on=False,
             shared_params=full_toy_dataset.parameters[val_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
@@ -90,9 +93,10 @@ def create_train_val_split(
         )
     else:
         # Create a temporary dataset to get the number of signals
+        # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
         temp_dataset = sTheta(
             num_epochs=num_epochs,
-            detector_noise_on=detector_noise_on,
+            detector_noise_on=False,
             parameters=stheta_parameters,
         )
         num_signals = temp_dataset.signals.shape[1]
@@ -117,9 +121,10 @@ def create_train_val_split(
         print(f"First 5 validation indices: {val_indices[:5]}")
         
         # Create SEPARATE dataset instances with disjoint indices
+        # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
         training_dataset = sTheta(
             num_epochs=num_epochs,
-            detector_noise_on=detector_noise_on,
+            detector_noise_on=False,
             parameters=stheta_parameters,
             indices=train_indices,
             shared_min=temp_dataset.min_theta,
@@ -129,7 +134,7 @@ def create_train_val_split(
         
         validation_dataset = sTheta(
             num_epochs=num_epochs,
-            detector_noise_on=detector_noise_on,
+            detector_noise_on=False,
             parameters=stheta_parameters,
             indices=val_indices,
             shared_min=temp_dataset.min_theta,
