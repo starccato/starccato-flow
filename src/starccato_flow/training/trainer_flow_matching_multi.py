@@ -46,10 +46,8 @@ class FlowMatchingTrainerMulti:
         outdir: str = "outdir",
         detector_noise_on: bool = True,
         toy: bool = False,
-        max_grad_norm: float = 1.0,  # Maximum gradient norm for clipping
-        multi_param: bool = True,
-        include_beta: bool = True,
-        estimate_intrinsic_params: bool = False,
+        max_grad_norm: float = 1.0,
+        parameters: list = None,
         custom_data: tuple = None,  # (signals_array, params_array) for generated data
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None  # Path to validation data files (real CVAE val set)
@@ -57,6 +55,10 @@ class FlowMatchingTrainerMulti:
         """Initialize FlowMatchingTrainerMulti.
         
         Args:
+            parameters: List of parameter names to estimate. Examples:
+                ["beta1_IC_b", "ra", "dec", "d", "psi"] - estimate sky params + beta
+                ["ra", "dec", "d", "psi"] - estimate only sky parameters
+                If None, defaults to ["beta1_IC_b", "ra", "dec", "d", "psi"]
             custom_data: Optional tuple of (signals, parameters) arrays for using generated data.
                 signals: shape (signal_length, num_samples)
                 parameters: shape (num_samples, num_params)
@@ -83,10 +85,61 @@ class FlowMatchingTrainerMulti:
         self.toy = toy
         self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
-        self.multi_param = multi_param
-        self.include_beta = include_beta
-        self.estimate_intrinsic_params = estimate_intrinsic_params
-        self.sky_param_dim = 4
+        
+        # Set default parameters if not provided
+        if parameters is None:
+            parameters = ["beta1_IC_b", "ra", "dec", "d", "psi"]
+        self.parameters_to_estimate = parameters
+        
+        # Parameter mapping: parameter names -> (full name, index in hThetaMulti output)
+        # hThetaMulti always produces: [beta1_IC_b, omega_0(rad|s), A(km), Ye_c_b, ra, dec, d, psi]
+        self.parameter_mapping = {
+            "beta1_IC_b": ("beta1_IC_b", 0),
+            "beta_ic_b": ("beta1_IC_b", 0),  # Alias for backward compatibility
+            "omega_0": ("omega_0(rad|s)", 1),
+            "omega_0(rad|s)": ("omega_0(rad|s)", 1),  # Support full name too
+            "A": ("A(km)", 2),
+            "A(km)": ("A(km)", 2),  # Support full name
+            "Ye_c_b": ("Ye_c_b", 3),
+            "ra": ("ra", 4),
+            "dec": ("dec", 5),
+            "d": ("d", 6),
+            "psi": ("psi", 7),
+        }
+        
+        # Categorize parameters first (needed for extraction index calculation)
+        intrinsic_param_names = {"beta1_IC_b", "omega_0", "A", "Ye_c_b"}
+        self.intrinsic_params = [p for p in parameters if p in intrinsic_param_names]
+        self.sky_params = [p for p in parameters if p not in intrinsic_param_names]
+        self.sky_param_dim = len(self.sky_params)
+        
+        # Build extraction indices based on actual dataset structure
+        # hThetaMulti always produces: [intrinsic_params..., ra, dec, d, psi]
+        # We need to extract only the parameters we want in the order they appear
+        self.param_extract_indices = []
+        n_intrinsic = len(self.intrinsic_params)
+        
+        # Add indices for intrinsic parameters (they come first in hThetaMulti)
+        for i in range(n_intrinsic):
+            self.param_extract_indices.append(i)
+        
+        # Add indices for sky parameters
+        # Sky parameters in hThetaMulti are always in order: [ra, dec, d, psi]
+        sky_param_order = ["ra", "dec", "d", "psi"]
+        for sky_param in self.sky_params:
+            if sky_param in sky_param_order:
+                sky_idx = sky_param_order.index(sky_param)
+                self.param_extract_indices.append(n_intrinsic + sky_idx)
+            else:
+                raise ValueError(f"Unknown sky parameter '{sky_param}'. Available: {sky_param_order}")
+        
+        print(f"\n=== Parameter Extraction Setup ===")
+        print(f"Requested parameters: {parameters}")
+        print(f"Intrinsic params in dataset: {self.intrinsic_params} (indices 0-{n_intrinsic-1})")
+        print(f"Sky params in dataset: {self.sky_params} (indices {n_intrinsic}-{len(self.param_extract_indices)-1})")
+        print(f"Extract indices from hThetaMulti.parameters: {self.param_extract_indices}")
+        print(f"Final flow parameter dimension: {len(self.param_extract_indices)}")
+        print(f"{'='*40}\n")
 
 
         self.supernovae = Supernovae(
@@ -114,8 +167,7 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
-                multi_param=multi_param,
-                include_beta=include_beta,
+                parameters=parameters,
                 generated=True
             )
             
@@ -125,8 +177,7 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
-                multi_param=multi_param,
-                include_beta=include_beta,
+                parameters=parameters,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain,
@@ -159,8 +210,7 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
-                multi_param=multi_param,
-                include_beta=include_beta,
+                parameters=parameters,
             )
             
             # Create validation dataset with custom data
@@ -169,8 +219,7 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=self.detector_noise_on,
                 num_epochs=num_epochs,
                 batch_size=batch_size,
-                multi_param=multi_param,
-                include_beta=include_beta,
+                parameters=parameters,
                 shared_min=self.training_dataset.min_theta,
                 shared_max=self.training_dataset.max_theta,
                 shared_max_strain=self.training_dataset.max_strain
@@ -184,8 +233,7 @@ class FlowMatchingTrainerMulti:
                 validation_split=self.validation_split,
                 seed=self.seed,
                 num_epochs=self.num_epochs,
-                multi_param=self.multi_param,
-                include_beta=self.include_beta,
+                parameters=parameters,
             )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
@@ -222,15 +270,8 @@ class FlowMatchingTrainerMulti:
         _set_seed(self.seed)
 
         # setup Flow Matching model
-        # Multi-detector setup appends [ra, dec, d, polar_angle] to theta.
-        # By default we estimate only sky parameters while keeping intrinsic params in the dataset.
-        base_param_dim = self.training_dataset.parameters.shape[1]
-        if self.toy:
-            self.flow_param_dim = base_param_dim
-        elif self.estimate_intrinsic_params:
-            self.flow_param_dim = base_param_dim + self.sky_param_dim
-        else:
-            self.flow_param_dim = self.sky_param_dim
+        # Flow parameter dimension = number of parameters to estimate
+        self.flow_param_dim = len(self.parameters_to_estimate)
         self.flow_signal_dim = Y_LENGTH * 3 if not self.toy else Y_LENGTH
         self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
@@ -241,6 +282,34 @@ class FlowMatchingTrainerMulti:
     def _denormalize_with_bounds(params_norm: np.ndarray, min_vals: np.ndarray, max_vals: np.ndarray) -> np.ndarray:
         """Denormalize parameters from [-1, 1] using explicit min/max bounds."""
         return (params_norm + 1.0) / 2.0 * (max_vals - min_vals) + min_vals
+    
+    def _denormalize_extracted_params(self, params_norm: np.ndarray, dataset) -> np.ndarray:
+        """Denormalize extracted parameters using appropriate bounds.
+        
+        The input params_norm is in the reduced parameter space (e.g., 5D if we extracted 5 params).
+        The dataset (hThetaMulti) already contains only the extracted parameters,
+        so we use its bounds directly without indexing.
+        """
+        # dataset.min_theta and dataset.max_theta already have only the extracted parameters
+        # since they were built from training data with extracted parameters
+        min_vals = dataset.min_theta
+        max_vals = dataset.max_theta
+        
+        # Denormalize using those bounds
+        return self._denormalize_with_bounds(params_norm, min_vals, max_vals)
+    
+    def _get_extracted_index(self, param_name: str) -> int:
+        """Get the index of a parameter in the extracted parameter space.
+        
+        Args:
+            param_name: Parameter name (e.g., "ra", "dec", "beta_ic_b")
+            
+        Returns:
+            Index in the extracted parameter space, or -1 if not found
+        """
+        if param_name not in self.parameters_to_estimate:
+            return -1
+        return self.parameters_to_estimate.index(param_name)
 
     def _save_epoch_data_plots(self, epoch: int) -> None:
         """Save signal and parameter snapshots for the current epoch."""
@@ -423,7 +492,9 @@ class FlowMatchingTrainerMulti:
                 dec=sampled_dec,
                 d=sampled_d,
                 batch_size=self.batch_size,
-                detector_noise_on=True
+                detector_noise_on=True,
+                random_polarization=True,
+                seed=epoch  # Vary seed by epoch for different psi values each epoch
             )
             self.h_theta_multi_train_loader = DataLoader(
                 self.h_theta_multi_train,
@@ -437,10 +508,7 @@ class FlowMatchingTrainerMulti:
                 signal = signal.view(signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
                 noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
                 params = params.view(params.size(0), -1).to(DEVICE, non_blocking=use_cuda)
-                if self.toy or self.estimate_intrinsic_params:
-                    params_target = params
-                else:
-                    params_target = params[:, -self.sky_param_dim:]
+                params_target = self._extract_params_to_estimate(params)
 
                 if params_target.size(-1) != self.flow_param_dim:
                     raise ValueError(
@@ -486,6 +554,8 @@ class FlowMatchingTrainerMulti:
                     d=val_d,
                     batch_size=self.batch_size,
                     detector_noise_on=True,
+                    random_polarization=True,
+                    seed=epoch + 1000  # Different seed range for validation set
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,
@@ -496,10 +566,7 @@ class FlowMatchingTrainerMulti:
                 for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val_loader:
                     val_noisy_signal = val_noisy_signal.view(val_noisy_signal.size(0), -1).to(DEVICE, non_blocking=use_cuda)
                     val_params = val_params.view(val_params.size(0), -1).to(DEVICE, non_blocking=use_cuda)
-                    if self.toy or self.estimate_intrinsic_params:
-                        val_params_target = val_params
-                    else:
-                        val_params_target = val_params[:, -self.sky_param_dim:]
+                    val_params_target = self._extract_params_to_estimate(val_params)
 
                     if val_params_target.size(-1) != self.flow_param_dim:
                         raise ValueError(
@@ -606,53 +673,44 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        if self.toy or self.estimate_intrinsic_params:
-            # Full-vector denormalization
-            samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
-            true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
+        # Denormalize extracted parameters
+        if self.toy:
+            # For toy data, we work in full parameter space so denormalize directly
+            # (toy parameters are already in the format we need)
+            samples_cpu = samples_cpu  # Already denormalized in toy case
+            true_params = true_params_norm
+            labels = self.parameters_to_estimate
         else:
-            # Only sky parameters estimated; denormalize sky params and prepend beta
-            sky_min = self.h_theta_multi_val.min_theta[-self.sky_param_dim:]
-            sky_max = self.h_theta_multi_val.max_theta[-self.sky_param_dim:]
-            sky_samples = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
-            true_sky = self._denormalize_with_bounds(
-                true_params_norm[-self.sky_param_dim:].reshape(1, -1),
-                sky_min,
-                sky_max,
-            ).flatten()
-            
-            # Prepend beta from true parameters to posterior samples
-            if self.include_beta:
-                beta_min = self.h_theta_multi_val.min_theta[0]
-                beta_max = self.h_theta_multi_val.max_theta[0]
-                true_beta = self._denormalize_with_bounds(
-                    np.array([[true_params_norm[0]]]),
-                    np.array([beta_min]),
-                    np.array([beta_max]),
-                ).flatten()[0]
-                samples_cpu = np.column_stack([np.full(sky_samples.shape[0], true_beta), sky_samples])
-                true_params = np.concatenate([[true_beta], true_sky])
-            else:
-                samples_cpu = sky_samples
-                true_params = true_sky
+            # For real data, always use extracted parameter denormalization
+            # since we're operating in the extracted parameter space
+            samples_cpu = self._denormalize_extracted_params(samples_cpu, self.h_theta_multi_val)
+            true_params = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), self.h_theta_multi_val).flatten()
+            labels = self.parameters_to_estimate
 
         t1 = time.time()
         print(f"Corner plot sampling and denormalisation took {(t1 - t0):.2f}s")
 
-        labels = ["beta", "ra", "dec", "d", "psi"] if self.include_beta else ["ra", "dec", "d", "psi"]
-
-        # Calculate axis ranges from unnormalized dataset values
-        mins = np.min(self.h_theta_multi_train.parameters, axis=0)
-        maxs = np.max(self.h_theta_multi_train.parameters, axis=0)
+        # Calculate axis ranges from extracted parameter bounds
+        # Use the dataset bounds which are already in extracted parameter space
+        mins = self.h_theta_multi_val.min_theta
+        maxs = self.h_theta_multi_val.max_theta
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
         ranges = [
             (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
-            for i in range(samples_cpu.shape[1])
+            for i in range(len(mins))
         ]
+        
+        # Debug: print ranges for each parameter
+        print("\nPlot axis ranges (extracted parameter space):")
+        for i, label in enumerate(labels):
+            print(f"  {label:20s}: {ranges[i]}")
 
-        # manually set limits on d
-        ranges[-2] = (0.1, 20.0)
+        # manually set limits on d if it's in the extracted parameters
+        if 'd' in self.parameters_to_estimate:
+            d_idx = self.parameters_to_estimate.index('d')
+            ranges[d_idx] = (0.1, 20.0)
+            print(f"  Override d range to: {ranges[d_idx]}")
 
         plot_corner(
             samples_cpu=samples_cpu,
@@ -702,27 +760,32 @@ class FlowMatchingTrainerMulti:
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
 
-        if self.toy or self.estimate_intrinsic_params:
-            # Full-vector denormalization; sky parameters remain the trailing coordinates.
-            samples_cpu = self.h_theta_multi_val.denormalize_parameters(samples_cpu)
-            true_params = self.h_theta_multi_val.denormalize_parameters(true_params_norm.reshape(1, -1)).flatten()
-            ra_samples = samples_cpu[:, -4]
-            dec_samples = samples_cpu[:, -3]
-            true_ra = true_params[-4]
-            true_dec = true_params[-3]
+        # Denormalize the extracted parameters
+        if self.toy:
+            # For toy data, assume last 4 params are [ra, dec, d, psi]
+            samples_denorm = samples_cpu
+            true_params_denorm = true_params_norm
         else:
-            sky_min = self.h_theta_multi_val.min_theta[-self.sky_param_dim:]
-            sky_max = self.h_theta_multi_val.max_theta[-self.sky_param_dim:]
-            sky_samples = self._denormalize_with_bounds(samples_cpu, sky_min, sky_max)
-            true_sky = self._denormalize_with_bounds(
-                true_params_norm[-self.sky_param_dim:].reshape(1, -1),
-                sky_min,
-                sky_max,
-            ).flatten()
-            ra_samples = sky_samples[:, 0]
-            dec_samples = sky_samples[:, 1]
-            true_ra = true_sky[0]
-            true_dec = true_sky[1]
+            # For real data, denormalize in the extracted parameter space
+            samples_denorm = self._denormalize_extracted_params(samples_cpu, self.h_theta_multi_val)
+            true_params_denorm = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), self.h_theta_multi_val).flatten()
+        
+        # Extract RA and Dec indices from the parameters_to_estimate list
+        ra_idx = self._get_extracted_index("ra")
+        dec_idx = self._get_extracted_index("dec")
+        
+        if ra_idx >= 0 and dec_idx >= 0:
+            # Extract RA and Dec from the denormalized extracted parameters
+            ra_samples = samples_denorm[:, ra_idx]
+            dec_samples = samples_denorm[:, dec_idx]
+            true_ra = true_params_denorm[ra_idx]
+            true_dec = true_params_denorm[dec_idx]
+        else:
+            # Fallback: assume they are at the end (shouldn't happen with proper setup)
+            ra_samples = samples_denorm[:, -4]
+            dec_samples = samples_denorm[:, -3]
+            true_ra = true_params_denorm[-4]
+            true_dec = true_params_denorm[-3]
 
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
@@ -750,6 +813,18 @@ class FlowMatchingTrainerMulti:
             fname=fname
         )
 
+    def _extract_params_to_estimate(self, full_params: torch.Tensor) -> torch.Tensor:
+        """Extract only the parameters we're estimating from the full parameter tensor.
+        
+        For toy data, returns all parameters. For real data, extracts only requested parameters
+        using the parameter_mapping indices.
+        """
+        if self.toy:
+            return full_params
+        
+        # Extract only the requested parameter indices
+        return full_params[:, self.param_extract_indices]
+    
     def display_results(self, background="black"):
         """Display training results."""
         display_results_method(self.avg_mse_losses, self.avg_mse_losses_val, background=background)

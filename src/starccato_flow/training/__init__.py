@@ -17,8 +17,7 @@ def create_train_val_split(
     validation_split: float,
     seed: int,
     num_epochs: int,
-    multi_param: bool = True,
-    include_beta: bool = True,
+    parameters: list = None,
 ):
     """Create training and validation datasets with proper splitting.
     
@@ -29,10 +28,23 @@ def create_train_val_split(
         validation_split: Fraction of data for validation
         seed: Random seed for reproducible split
         num_epochs: Number of training epochs
+        parameters: List of parameter names to estimate. If None, defaults to
+                    ["beta_ic_b", "ra", "dec", "d", "psi"]
         
     Returns:
         tuple: (training_dataset, validation_dataset, val_indices)
     """
+    if parameters is None:
+        parameters = ["beta_ic_b", "ra", "dec", "d", "psi"]
+    
+    # Filter parameters to only include those available in sTheta (intrinsic CCSN parameters)
+    # Sky parameters (ra, dec, d, psi) are added later by hThetaMulti
+    intrinsic_params = {"beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"}
+    stheta_parameters = [p for p in parameters if p in intrinsic_params]
+    # If no intrinsic parameters were specified, use all available ones
+    if not stheta_parameters:
+        stheta_parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
+    
     if toy:
         # Create full toy dataset
         full_toy_dataset = sThetaToy(
@@ -81,8 +93,7 @@ def create_train_val_split(
         temp_dataset = sTheta(
             num_epochs=num_epochs,
             detector_noise_on=detector_noise_on,
-            multi_param=multi_param,
-            include_beta=include_beta,
+            parameters=stheta_parameters,
         )
         num_signals = temp_dataset.signals.shape[1]
         
@@ -109,8 +120,7 @@ def create_train_val_split(
         training_dataset = sTheta(
             num_epochs=num_epochs,
             detector_noise_on=detector_noise_on,
-            multi_param=multi_param,
-            include_beta=include_beta,
+            parameters=stheta_parameters,
             indices=train_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,
@@ -120,8 +130,7 @@ def create_train_val_split(
         validation_dataset = sTheta(
             num_epochs=num_epochs,
             detector_noise_on=detector_noise_on,
-            multi_param=multi_param,
-            include_beta=include_beta,
+            parameters=stheta_parameters,
             indices=val_indices,
             shared_min=temp_dataset.min_theta,
             shared_max=temp_dataset.max_theta,

@@ -46,8 +46,7 @@ class sTheta(BaseDataset, Dataset):
         snr: bool = True,
         rho_target: int = 10,
         indices: Optional[np.ndarray] = None,
-        multi_param: bool = True,
-        include_beta: bool = True,
+        parameters: list = None,
         shared_min: Optional[np.ndarray] = None,
         shared_max: Optional[np.ndarray] = None,
         shared_max_strain: Optional[float] = None,
@@ -63,8 +62,10 @@ class sTheta(BaseDataset, Dataset):
             detector_noise_on (bool): Whether to add detector noise
             curriculum (bool): Whether to use curriculum learning
             indices (Optional[np.ndarray]): Specific indices to use
-            multi_param (bool): Whether to use multiple parameters
-            include_beta (bool): Whether to include beta1_IC_b in target parameters
+            parameters (list): List of parameter names to include. Examples:
+                ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"] - all parameters
+                ["beta1_IC_b", "A(km)"] - subset of parameters
+                If None, defaults to ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
             custom_data (Optional[tuple[np.ndarray, np.ndarray]]): Pre-generated (signals, parameters) arrays.
                 signals: shape (signal_length, num_samples) or (num_samples, signal_length)
                 parameters: shape (num_samples, num_params)
@@ -109,21 +110,16 @@ class sTheta(BaseDataset, Dataset):
         self.snr = snr
         self.rho_target = rho_target
 
+        # Set default parameters if not provided
+        if parameters is None:
+            parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
+        self.parameter_names = parameters
+        
         # Build the filtering mask from the full parameter table before column selection.
         beta_keep_idx = params_df["beta1_IC_b"].values > 0
 
-        # Select parameter subset before filtering
-        all_parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
-        if multi_param:
-            parameter_set = all_parameters if include_beta else all_parameters[1:]
-        else:
-            parameter_set = ["beta1_IC_b"] if include_beta else ["omega_0(rad|s)"]
-
         # keep only the parameters we want
-        params_df = params_df[parameter_set]
-        
-        # Store parameter names for reference
-        self.parameter_names = parameter_set
+        params_df = params_df[parameters]
         
         # Remove unusual parameters and corresponding signals using beta positivity.
         keep_idx = beta_keep_idx
@@ -174,6 +170,14 @@ class sTheta(BaseDataset, Dataset):
         else:
             self.min_theta = self.parameters.min(axis=0).astype(np.float32)
             self.max_theta = self.parameters.max(axis=0).astype(np.float32)
+
+        # Print parameter bounds
+        print(f"\n{'='*70}")
+        print(f"sTheta Dataset - Parameter Bounds ({len(self.parameter_names)} parameters)")
+        print(f"{'='*70}")
+        for i, param_name in enumerate(self.parameter_names):
+            print(f"{param_name:20s}: [{self.min_theta[i]:12.6f}, {self.max_theta[i]:12.6f}]")
+        print(f"{'='*70}\n")
 
         self.PSD = self.AdvLIGOPsd(fourier_freq)
         self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)

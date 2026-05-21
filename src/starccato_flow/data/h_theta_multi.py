@@ -9,8 +9,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .s_theta import sTheta
-from ..supernovae.supernovae import Supernovae
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 
 class hThetaMulti(Dataset):
@@ -100,6 +98,24 @@ class hThetaMulti(Dataset):
                 f"theta_dim={theta_dim}, combined_dim={self.parameters.shape[1]}, "
                 f"min_dim={base_min.shape[0]}, max_dim={base_max.shape[0]}"
             )
+
+        # Print parameter bounds
+        print(f"\n{'='*70}")
+        print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.min_theta)} parameters)")
+        print(f"{'='*70}")
+        print("INTRINSIC PARAMETERS:")
+        intrinsic_labels = ['beta1_IC_b', 'omega_0(rad|s)', 'A(km)', 'Ye_c_b']
+        for i in range(theta_dim):
+            param_label = intrinsic_labels[i] if i < len(intrinsic_labels) else f'theta_{i}'
+            print(f"  {param_label:20s}: [{self.min_theta[i]:12.6f}, {self.max_theta[i]:12.6f}]")
+        
+        print("\nEXTRINSIC (SKY) PARAMETERS:")
+        extrinsic_labels = ['ra', 'dec', 'd', 'psi']
+        for i, label in enumerate(extrinsic_labels):
+            idx = theta_dim + i
+            if idx < len(self.min_theta):
+                print(f"  {label:20s}: [{self.min_theta[idx]:12.6f}, {self.max_theta[idx]:12.6f}]")
+        print(f"{'='*70}\n")
 
         if self.max_strain is None:
             self.max_strain = np.max(np.abs(self.s))
