@@ -5,11 +5,14 @@ This module only works with generated data (not raw CCSN CSV files).
 
 from typing import Optional, List, Tuple
 import importlib
+import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from scipy.interpolate import interp1d
 
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
+from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
 
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.
@@ -60,6 +63,15 @@ class hThetaMulti(Dataset):
         self.intrinsic_param_names = intrinsic_param_names if intrinsic_param_names is not None else []
         self._current_epoch = 0
         self.include_sky_params = True
+        
+        # Toggle between analytical and measured PSD for noise generation
+        self.use_measured_psd = True
+        
+        # Cache for measured sensitivity curves (loaded on first use)
+        self._ligo_freq_curve = None
+        self._ligo_psd_curve = None
+        self._virgo_freq_curve = None
+        self._virgo_psd_curve = None
 
         n_samples = self.s.shape[1]
         if self.ra is None or self.dec is None or self.d is None:
@@ -232,6 +244,90 @@ class hThetaMulti(Dataset):
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
         return psd
     
+    @staticmethod
+    def _load_sensitivity_curve(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
+        """Load sensitivity curve from .txt file with frequency and ASD columns.
+        
+        Args:
+            filepath: Path to .txt file with two columns: frequency (Hz) and ASD (strain/√Hz)
+            
+        Returns:
+            Tuple of (frequencies, psd_values)
+        """
+        if not os.path.exists(AVIRGO_ASD_FILE):
+            raise FileNotFoundError(f"Sensitivity curve file not found: {AVIRGO_ASD_FILE}")
+        
+        data = np.loadtxt(AVIRGO_ASD_FILE)
+        frequencies = data[:, 0]
+        asd = data[:, 1]
+        psd = asd ** 2  # Convert ASD to PSD
+        
+        return frequencies, psd
+    
+    @staticmethod
+    def _interpolate_psd(freq_query: np.ndarray, freq_curve: np.ndarray, psd_curve: np.ndarray) -> np.ndarray:
+        """Interpolate PSD at query frequencies using log-log interpolation.
+        
+        Args:
+            freq_query: Frequencies at which to get PSD values
+            freq_curve: Frequency points from sensitivity curve
+            psd_curve: PSD values from sensitivity curve
+            
+        Returns:
+            PSD values at query frequencies
+        """
+        # Use log-log interpolation for smooth behavior across frequency range
+        log_freq_curve = np.log10(np.clip(freq_curve, 1e-10, None))
+        log_psd_curve = np.log10(np.clip(psd_curve, 1e-50, None))
+        
+        # Create interpolator
+        interp_func = interp1d(
+            log_freq_curve, 
+            log_psd_curve, 
+            kind='cubic', 
+            fill_value='extrapolate',
+            bounds_error=False
+        )
+        
+        # Interpolate and convert back from log space
+        log_freq_query = np.log10(np.clip(freq_query, 1e-10, None))
+        log_psd_query = interp_func(log_freq_query)
+        psd_query = 10.0 ** log_psd_query
+        
+        return psd_query
+    
+    def AdvLIGOPsd_measured(self, f: np.ndarray, asd_file: Optional[str] = None) -> np.ndarray:
+        """Get Advanced LIGO PSD from measured sensitivity curve.
+        
+        Args:
+            f: Frequencies (Hz)
+            asd_file: Path to ASD file. If None, constructs path relative to module location.
+            
+        Returns:
+            PSD values at frequencies f
+        """        
+        # Load and cache on first call
+        if self._ligo_freq_curve is None or self._ligo_psd_curve is None:
+            self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
+        
+        return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve)
+    
+    def VirgoPsd_measured(self, f: np.ndarray, asd_file: Optional[str] = None) -> np.ndarray:
+        """Get Virgo PSD from measured sensitivity curve.
+        
+        Args:
+            f: Frequencies (Hz)
+            asd_file: Path to ASD file. If None, constructs path relative to module location.
+            
+        Returns:
+            PSD values at frequencies f
+        """
+        # Load and cache on first call
+        if self._virgo_freq_curve is None or self._virgo_psd_curve is None:
+            self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
+        
+        return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve)
+    
     def detector_noise(self, seed_offset=0, detector=None):
         """Add detector noise to the signal.
         
@@ -259,7 +355,8 @@ class hThetaMulti(Dataset):
             delta_t=dataDeltaT,
             one_sided=True,  # Use one-sided spectrum as in R
             pad=1,
-            detector=detector
+            detector=detector,
+            use_measured_psd=self.use_measured_psd
         ).reshape(1, -1)  # shape (1, Y_LENGTH)
 
         # Restore original random state if we changed it
@@ -271,8 +368,20 @@ class hThetaMulti(Dataset):
 
         return noise
     
-    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None) -> np.ndarray:
-        """Generate colored noise with given PSD."""
+    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None, use_measured_psd: bool = False) -> np.ndarray:
+        """Generate colored noise with given PSD.
+        
+        Args:
+            N: Number of samples
+            delta_t: Time step (seconds)
+            one_sided: Whether to use one-sided or two-sided spectral density
+            pad: Padding factor (>=1)
+            detector: Detector name ('H1', 'L1', or 'V1')
+            use_measured_psd: If True, use measured sensitivity curves; if False, use analytical formulas
+            
+        Returns:
+            Colored noise array
+        """
         if pad < 1 or int(pad) != pad:
             raise ValueError("pad must be an integer >= 1")
 
@@ -290,11 +399,17 @@ class hThetaMulti(Dataset):
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
         if detector == "H1" or detector == "L1":
-            psd = self.AdvLIGOPSD
+            if use_measured_psd:
+                psd = self.AdvLIGOPsd_measured(fourier_freq)
+            else:
+                psd = self.AdvLIGOPSD
         elif detector == "V1":
-            psd = self.VirgoPSD
+            if use_measured_psd:
+                psd = self.VirgoPsd_measured(fourier_freq)
+            else:
+                psd = self.VirgoPSD
         else:
-            raise ValueError("Invalid detector specified. Please choose 'LIGO' or 'Virgo'.")
+            raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
 
         psd[~np.isfinite(psd)] = 0
         psd[psd < 0] = 0

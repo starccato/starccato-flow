@@ -36,6 +36,8 @@ DEVICE = get_device()
 
 SIGNALS_CSV = f"../data/training/richers_1764.csv"
 PARAMETERS_CSV = f"../data/training/richers_1764_parameters.csv"
+AVIRGO_ASD_FILE = f"../data/noise_asd/advirgo.txt"
+ALIGO_ASD_FILE = f"../data/noise_asd/alIGO.txt"
 TIME_CSV = f"../data/training/richers_1764_times.csv"
 
 
