@@ -12,8 +12,7 @@ from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV
 from . import BaseDataset
 
-"""This loads the signal data from the raw simulation outputs from Richers et al (20XX) ."""
-
+"""This loads the signal data from the raw simulation outputs from Richers et al (2017) ."""
 
 is_even = (Y_LENGTH % 2 == 0)
 half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
@@ -309,52 +308,6 @@ class sTheta(BaseDataset, Dataset):
                 alpha=alpha,
                 show_stats=show_stats
             )
-
-    # def plot_parameter_distributions_grid(
-    #     self,
-    #     bins: int = 25,
-    #     fname: Optional[str] = None,
-    #     background: str = "white",
-    #     font_family: str = "sans-serif",
-    #     font_name: str = "Avenir",
-    #     color: Optional[str] = None,
-    #     alpha: float = 0.8,
-    #     figsize: Tuple[float, float] = (20, 5)
-    # ):
-    #     """Plot distributions for all parameters in a 1x4 grid (one row).
-        
-    #     Args:
-    #         bins (int): Number of histogram bins
-    #         fname (Optional[str]): Filename to save plot
-    #         background (str): Background color theme
-    #         font_family (str): Font family to use
-    #         font_name (str): Specific font name
-    #         color (Optional[str]): Color for the histogram
-    #         alpha (float): Transparency of the histogram bars
-    #         figsize (Tuple[float, float]): Figure size in inches
-    #     """
-    #     # Prepare parameters dictionary
-    #     parameters_dict = {}
-    #     for param_name in self.parameters.columns:
-    #         values = self.parameters[param_name].values
-    #         # Apply log transformation for A(km) parameter
-    #         if param_name == "A(km)":
-    #             values = np.log(values)
-    #         parameters_dict[param_name] = values
-        
-    #     return plot_parameter_distribution_grid(
-    #         parameters_dict=parameters_dict,
-    #         labels_dict=self.PARAMETER_LABELS,
-    #         ranges_dict=self.PARAMETER_RANGES,
-    #         bins=bins,
-    #         fname=fname,
-    #         background=background,
-    #         font_family=font_family,
-    #         font_name=font_name,
-    #         color=color,
-    #         alpha=alpha,
-    #         figsize=figsize
-    #     )
  
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"

@@ -1,7 +1,6 @@
 import os
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import nn
@@ -15,13 +14,13 @@ from ..plotting import (
     plot_corner,
     plot_galactic_supernovae_polar_hemispheres,
 )
-from ..plotting.signals import plot_detector_signal_channels
+from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
 from ..plotting.parameters import plot_epoch_sky_parameters
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
-from . import create_train_val_split, plot_candidate_signal_method, display_results_method
+from . import create_train_val_split, display_results_method
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -41,7 +40,7 @@ class FlowMatchingTrainerMulti:
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
         samples_per_epoch: int = 20000,
-        validation_split: float = 0.1,
+        validation_split: float = VALIDATION_SPLIT,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
@@ -801,11 +800,15 @@ class FlowMatchingTrainerMulti:
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
-        plot_candidate_signal_method(
-            val_loader=self.val_loader,
-            snr=snr,
+        self.val_loader.dataset.update_snr(snr)
+        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
+        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
+        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
+        plot_candidate_signal(
+            signal=signal_denorm,
+            noisy_signal=noisy_signal_denorm,
+            max_value=self.val_loader.dataset.max_strain,
             background=background,
-            index=index,
             fname=fname
         )
 

@@ -12,9 +12,9 @@ from ..nn.cvae import ConditionalVAE
 
 from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 
-from . import create_train_val_split, plot_candidate_signal_method, plot_signal_grid
+from . import create_train_val_split, plot_signal_grid
 
-from ..plotting.signals import plot_reconstruction
+from ..plotting.signals import plot_reconstruction, plot_candidate_signal
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -456,11 +456,15 @@ class ConditionalVAETrainer:
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
-        plot_candidate_signal_method(
-            val_loader=self.val_loader,
-            snr=snr,
+        self.val_loader.dataset.update_snr(snr)
+        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
+        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
+        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
+        plot_candidate_signal(
+            signal=signal_denorm,
+            noisy_signal=noisy_signal_denorm,
+            max_value=self.val_loader.dataset.max_strain,
             background=background,
-            index=index,
             fname=fname
         )
 

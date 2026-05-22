@@ -8,11 +8,12 @@ from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
 from ..plotting import plot_corner
+from ..plotting.signals import plot_candidate_signal
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..nn.flow import Flow
 
-from . import create_train_val_split, plot_candidate_signal_method, display_results_method
+from . import create_train_val_split, display_results_method
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -239,11 +240,15 @@ class FlowMatchingTrainer:
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
-        plot_candidate_signal_method(
-            val_loader=self.val_loader,
-            snr=snr,
+        self.val_loader.dataset.update_snr(snr)
+        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
+        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
+        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
+        plot_candidate_signal(
+            signal=signal_denorm,
+            noisy_signal=noisy_signal_denorm,
+            max_value=self.val_loader.dataset.max_strain,
             background=background,
-            index=index,
             fname=fname
         )
 

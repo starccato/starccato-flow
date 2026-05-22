@@ -9,7 +9,6 @@ from ..data.s_theta import sTheta
 from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
 from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
 
-
 def create_train_val_split(
     toy: bool,
     y_length: int,
@@ -198,35 +197,6 @@ def plot_generated_signal_distribution(
         background=background,
         font_family=font_family,
         font_name=font_name,
-        fname=fname
-    )
-
-
-def plot_candidate_signal_method(
-    val_loader,
-    snr=100,
-    background="white",
-    index=0,
-    fname="plots/candidate_signal.png"
-):
-    """Plot a candidate signal with noise.
-    
-    Args:
-        val_loader: Validation data loader
-        snr: Signal-to-noise ratio
-        background: Plot background color
-        index: Index of signal to plot
-        fname: Filename to save plot
-    """
-    val_loader.dataset.update_snr(snr)
-    signal, noisy_signal, _ = val_loader.dataset.__getitem__(index)
-    signal_denorm = val_loader.dataset.denormalise_signals(signal) / TEN_KPC
-    noisy_signal_denorm = val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
-    plot_candidate_signal(
-        signal=signal_denorm,
-        noisy_signal=noisy_signal_denorm,
-        max_value=val_loader.dataset.max_strain,
-        background=background,
         fname=fname
     )
 
