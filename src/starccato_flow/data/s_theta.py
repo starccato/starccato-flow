@@ -10,6 +10,7 @@ from ..plotting import plot_signal_distribution, plot_signal_grid, plot_paramete
 from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
 from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV
+from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 from . import BaseDataset
 
 """This loads the signal data from the raw simulation outputs from Richers et al (2017) ."""
@@ -20,21 +21,9 @@ delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
 class sTheta(BaseDataset, Dataset):
-    # Default LaTeX labels for parameters
-    PARAMETER_LABELS = {
-        'beta1_IC_b': r'$\beta_{IC,b}$',
-        'omega_0(rad|s)': r'$\omega_0$',
-        'A(km)': r'$A$',
-        'Ye_c_b': r'$Y_{e,c,b}$'
-    }
-    
-    # Default parameter ranges for plotting (in physical units after denormalization)
-    PARAMETER_RANGES = {
-        'beta1_IC_b': (0, 0.25),
-        'omega_0(rad|s)': (0, 16),
-        'A(km)': (0, 10000),
-        'Ye_c_b': (0, 0.3)
-    }
+    # Import unified parameter labels and ranges from plotting_defaults
+    PARAMETER_LABELS = PARAMETER_LABELS
+    PARAMETER_RANGES = PARAMETER_RANGES
     
     def __init__(
         self,

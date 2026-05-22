@@ -590,11 +590,12 @@ class FlowMatchingTrainerMulti:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            plot_case = self.h_theta_multi_val[np.random.randint(len(self.h_theta_multi_val))] # random sample
+            random_idx = np.random.randint(len(self.h_theta_multi_val))
+            plot_case = self.h_theta_multi_val[random_idx] # random sample
             # plot_case = self.h_theta_multi_val[100] # first sample for consistency across epochs
 
-            # snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=100) 
-            # print("snr = ", snr_case)
+            snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=random_idx) 
+            print("snr = ", snr_case)
             print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
             plot_detector_signal_channels(
                 signals=plot_case[0].detach().cpu().numpy() / TEN_KPC,

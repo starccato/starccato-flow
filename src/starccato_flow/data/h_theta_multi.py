@@ -13,6 +13,7 @@ from scipy.interpolate import interp1d
 
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
+from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.
@@ -26,6 +27,10 @@ class hThetaMulti(Dataset):
     Note: This class only works with generated signals (custom_data), not raw CCSN CSV files.
     """
 
+    # Import unified parameter labels and ranges from plotting_defaults
+    PARAMETER_LABELS = PARAMETER_LABELS
+    PARAMETER_RANGES = PARAMETER_RANGES
+    
     # Fixed physical bounds for sky parameters: [ra, dec, distance_kpc, psi]
     SKY_MIN = np.array([-np.pi, -np.pi / 2.0, 0.0, 0.0], dtype=np.float32)
     SKY_MAX = np.array([np.pi, np.pi / 2.0, 20.0, np.pi], dtype=np.float32)
