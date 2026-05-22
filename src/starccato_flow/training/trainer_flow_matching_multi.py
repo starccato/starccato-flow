@@ -6,20 +6,16 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from starccato_flow.plotting.losses import plot_loss
 from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
 from ..supernovae.supernovae import Supernovae
 from tqdm.auto import trange
-
-from ..plotting import (
-    plot_corner,
-    plot_galactic_supernovae_polar_hemispheres,
-)
+  
+from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
-from ..plotting.parameters import plot_epoch_sky_parameters
+from ..plotting.parameters import plot_epoch_sky_parameters, plot_corner
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, PARAMETER_LABELS
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
 from . import create_train_val_split
@@ -594,9 +590,8 @@ class FlowMatchingTrainerMulti:
             plot_case = self.h_theta_multi_val[random_idx] # random sample
             # plot_case = self.h_theta_multi_val[100] # first sample for consistency across epochs
 
-            snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=random_idx) 
-            print("snr = ", snr_case)
-            print(f"Plotting corner and sky localisation for epoch {epoch + 1} using validation sample with parameters: {plot_case[2].cpu().numpy()}")
+            # snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=random_idx) 
+            # print("snr = ", snr_case)
             plot_detector_signal_channels(
                 signals=plot_case[0].detach().cpu().numpy() / TEN_KPC,
                 noisy_signals=plot_case[1].detach().cpu().numpy() / TEN_KPC,
@@ -624,9 +619,9 @@ class FlowMatchingTrainerMulti:
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
         print("Plotting training/validation loss curves...")
-        display_results_method(self.avg_mse_losses, self.avg_mse_losses_val, background="black")
         # Optionally: plot final results or save model
         # self.save_models()
+        self.display_results()  
 
     def plot_corner_sampled_signal(
         self,
@@ -689,6 +684,9 @@ class FlowMatchingTrainerMulti:
         t1 = time.time()
         print(f"Corner plot sampling and denormalisation took {(t1 - t0):.2f}s")
 
+        # Convert parameter names to LaTeX labels using plotting_defaults
+        latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
+        
         # Calculate axis ranges from extracted parameter bounds
         # Use the dataset bounds which are already in extracted parameter space
         mins = self.h_theta_multi_val.min_theta
@@ -702,7 +700,7 @@ class FlowMatchingTrainerMulti:
         
         # Debug: print ranges for each parameter
         print("\nPlot axis ranges (extracted parameter space):")
-        for i, label in enumerate(labels):
+        for i, label in enumerate(self.parameters_to_estimate):
             print(f"  {label:20s}: {ranges[i]}")
 
         # manually set limits on d if it's in the extracted parameters
@@ -715,7 +713,7 @@ class FlowMatchingTrainerMulti:
             samples_cpu=samples_cpu,
             true_params=true_params,
             fname=fname,
-            labels=labels,
+            labels=latex_labels,
             ranges=ranges
         )
 
@@ -830,7 +828,7 @@ class FlowMatchingTrainerMulti:
     
     def display_results(self, background="black"):
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background)        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background, fname=os.path.join(self.outdir, "flow_matching", "training_loss_curve.png"))        
         
         # # Plot VAE gradient norms if available
         # if hasattr(self, 'vae_gradient_norms'):

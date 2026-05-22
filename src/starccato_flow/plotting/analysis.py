@@ -18,7 +18,9 @@ from ..utils.plotting_defaults import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     SIGNAL_LIM_UPPER,
-    SIGNAL_LIM_LOWER
+    SIGNAL_LIM_LOWER,
+    PARAMETER_LABELS,
+    PARAMETER_RANGES
 )
 from . import set_plot_style, get_time_axis
 from .signals import plot_signal_grid, plot_candidate_signal
@@ -617,149 +619,6 @@ def p_p_plot(
     """
     # TODO: Implement P-P plot
     pass
-
-
-def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset=None, 
-                labels=None, ranges=None):
-    """Plot corner plot of parameter posterior distribution.
-    
-    Args:
-        samples_cpu (np.ndarray): Posterior samples as numpy array, shape (num_samples, num_params)
-        true_params (np.ndarray): True parameter values as numpy array, shape (num_params,)
-        fname (str): Filename to save plot
-        dataset: Optional dataset object (CCSNData or sThetaToy) to extract parameter metadata
-        labels (list): Optional custom labels for parameters. If None, will be inferred from dataset or num_params
-        ranges (list): Optional custom ranges for parameters as list of tuples [(min, max), ...]
-    """
-    # Detect number of parameters
-    num_params = samples_cpu.shape[1]
-    
-    # If dataset is provided, extract parameter names and labels
-    if dataset is not None and labels is None:
-        if hasattr(dataset, 'parameter_names') and hasattr(dataset, 'PARAMETER_LABELS'):
-            # CCSN data with parameter metadata
-            labels = [dataset.PARAMETER_LABELS.get(name, name) for name in dataset.parameter_names]
-        elif hasattr(dataset, 'parameter_names'):
-            # Has parameter names but no labels
-            labels = [name.replace('_', ' ').title() for name in dataset.parameter_names]
-    
-    # If dataset is provided and ranges not specified, try to extract them
-    if dataset is not None and ranges is None:
-        if hasattr(dataset, 'parameter_names') and hasattr(dataset, 'PARAMETER_RANGES'):
-            # Build ranges list from parameter names
-            ranges = [dataset.PARAMETER_RANGES.get(name, None) for name in dataset.parameter_names]
-            # If any range is None, set entire ranges to None (let corner auto-determine)
-            if None in ranges:
-                ranges = None
-    
-    # If labels still not set, use default logic based on number of parameters
-    if labels is None:
-        if num_params == 2:
-            # Toy data with 2 parameters
-            labels = [r"Parameter 1", r"Parameter 2"]
-        elif num_params == 4:
-            # CCSN data with 4 parameters (legacy fallback)
-            labels = [
-                r"$\beta_{IC,b}$",
-                r"$\omega_0$",
-                r"$A$",
-                r"$Y_{e,c,b}$",
-            ]
-        else:
-            # Generic labels for other cases
-            labels = [f"Parameter {i+1}" for i in range(num_params)]
-    
-    # Set default ranges if not provided
-    if ranges is None:
-        if num_params == 2:
-            ranges = [(-3, 3), (-3, 3)]
-        elif num_params == 4:
-            # Legacy fallback for 4 parameters
-            ranges = [(0, 0.25), (0, 16), (0, 10000), (0.2, 0.3)]
-        # Otherwise ranges will be None and corner will auto-determine
-    
-    plt.rcParams['figure.facecolor'] = 'none'  # Transparent figure background
-    plt.rcParams['axes.facecolor'] = 'black'  # Black subplot backgrounds
-    plt.rcParams['savefig.facecolor'] = 'none'  # Also transparent when saving
-    plt.rcParams['text.color'] = 'white'
-    plt.rcParams['axes.labelcolor'] = 'white'
-    plt.rcParams['xtick.color'] = 'white'
-    plt.rcParams['ytick.color'] = 'white'
-
-    # Special case for single parameter - corner library has issues with this
-    if num_params == 1:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-        ax.hist(samples_cpu.flatten(), bins=100, color=GENERATED_SIGNAL_COLOUR, 
-                alpha=0.7, density=True, edgecolor='none')
-        if true_params is not None and len(true_params) > 0:
-            ax.axvline(true_params[0], color=SIGNAL_COLOUR, linewidth=2, label='True value')
-        ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=24, color='white')
-        ax.set_ylabel('Density', fontsize=24, color='white')
-        if ranges is not None and ranges[0] is not None:
-            ax.set_xlim(ranges[0])
-        ax.tick_params(labelsize=12, colors='white')
-        for spine in ax.spines.values():
-            spine.set_edgecolor('white')
-        ax.set_facecolor('black')
-        fig.patch.set_alpha(1.0)
-        
-        # Add title with quantiles
-        q = np.percentile(samples_cpu.flatten(), [16, 50, 84])
-        title = f"{q[1]:.4f}$_{{-{q[1]-q[0]:.4f}}}^{{+{q[2]-q[1]:.4f}}}$"
-        ax.set_title(title, fontsize=12, color='white')
-        
-        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
-        plt.show()
-        return
-
-    corner_kwargs = {
-        'labels': labels,
-        'truths': true_params[:num_params],
-        'truth_color': SIGNAL_COLOUR,
-        'show_titles': True,
-        'title_quantiles': [0.16, 0.5, 0.84],
-        'title_fmt': '.4f',
-        'title_kwargs': {'fontsize': 12},
-        'label_kwargs': {'fontsize': 24},
-        'bins': 100,
-        'smooth': 3,
-        'color': GENERATED_SIGNAL_COLOUR,
-        'hist_kwargs': {'density': False, 'alpha': 1.0},
-        'levels': (0.68, 0.95),
-        'fill_contours': True,
-        'plot_datapoints': False
-    }
-    
-    # Add range only if specified
-    if ranges is not None:
-        corner_kwargs['range'] = ranges
-    
-    figure = corner.corner(samples_cpu, **corner_kwargs)
-
-    # Fill hist patches
-    for ax in figure.get_axes():
-        for patch in ax.patches:
-            patch.set_facecolor("white")
-            patch.set_alpha(1.0)
-
-    # Make axis lines white and adjust tick labels
-    for ax in figure.get_axes():
-        for spine in ax.spines.values():
-            spine.set_edgecolor('white')
-        # Axis tick numbers
-        ax.tick_params(labelsize=12)
-        # Reduce label padding to save space
-        ax.xaxis.labelpad = 2
-        ax.yaxis.labelpad = 2
-
-    # Transparent canvas
-    figure.patch.set_alpha(1.0)
-
-    # Reduce spacing between subplots to make plots bigger
-    figure.subplots_adjust(hspace=0.05, wspace=0.05)
-    
-    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
-    plt.show()
 
 
 def create_signal_grid_gif(
