@@ -151,9 +151,12 @@ class hThetaMulti(Dataset):
         delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
         fourier_freq = np.arange(half_N + 1) * delta_f
 
-        self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
-        self.VirgoPSD = self.VirgoPsd(fourier_freq)
-        self.signal_rfft = np.fft.rfft(self.s / TEN_KPC, axis=0)
+        if self.use_measured_psd:
+            self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
+            self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
+        else:
+            self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
+            self.VirgoPSD = self.VirgoPsd(fourier_freq)
         
         # Project signals to multiple detectors
         self.multi_channel_signals = self._project_to_detectors()        
@@ -399,15 +402,9 @@ class hThetaMulti(Dataset):
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
         if detector == "H1" or detector == "L1":
-            if use_measured_psd:
-                psd = self.AdvLIGOPsd_measured(fourier_freq)
-            else:
-                psd = self.AdvLIGOPSD
+            psd = self.AdvLIGOPSD
         elif detector == "V1":
-            if use_measured_psd:
-                psd = self.VirgoPsd_measured(fourier_freq)
-            else:
-                psd = self.VirgoPSD
+            psd = self.VirgoPSD
         else:
             raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
 

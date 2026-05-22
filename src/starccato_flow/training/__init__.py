@@ -199,14 +199,3 @@ def plot_generated_signal_distribution(
         font_name=font_name,
         fname=fname
     )
-
-
-def display_results_method(avg_mse_losses, avg_mse_losses_val, background="black"):
-    """Display training results with loss plots.
-    
-    Args:
-        avg_mse_losses: List of average training MSE losses per epoch
-        avg_mse_losses_val: List of average validation MSE losses per epoch
-        background: Plot background color
-    """
-    plot_loss(avg_mse_losses, avg_mse_losses_val, background=background)

@@ -5,6 +5,8 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+
+from starccato_flow.plotting.losses import plot_loss
 from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
 from ..supernovae.supernovae import Supernovae
@@ -601,6 +603,7 @@ class FlowMatchingTrainerMulti:
                 detector_labels=self.h_theta_multi_val.detectors,
                 background="black",
                 generated=False,
+                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_signal.png"),
             )
             self.plot_corner_sampled_signal(
                 num_samples=3000,
@@ -826,7 +829,7 @@ class FlowMatchingTrainerMulti:
     
     def display_results(self, background="black"):
         """Display training results."""
-        display_results_method(self.avg_mse_losses, self.avg_mse_losses_val, background=background)
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background)        
         
         # # Plot VAE gradient norms if available
         # if hasattr(self, 'vae_gradient_norms'):
