@@ -22,7 +22,7 @@ from ..plotting.parameters import plot_epoch_sky_parameters
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
-from . import create_train_val_split, display_results_method
+from . import create_train_val_split
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""

@@ -237,9 +237,10 @@ class hThetaMulti(Dataset):
         # The upper bound is 2e10 times the minimum value
         cutoff = np.nanmin(psd) * 2e10
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
+        # Ensure no zero or negative values in PSD
+        psd = np.maximum(psd, np.max(psd) * 1e-15)
         return psd
 
-    # need to check if this Adv Virgo or normal Virgo. Code is dated from 2021, same as the AdvLIGO psd.
     def VirgoPsd(self, f):
         """Virgo power spectral density."""
         # Avoid division by zero at f=0 by clipping to a small positive value
@@ -250,6 +251,8 @@ class hThetaMulti(Dataset):
         # The upper bound is 2e10 times the minimum value
         cutoff = np.nanmin(psd) * 2e10
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
+        # Ensure no zero or negative values in PSD
+        psd = np.maximum(psd, np.max(psd) * 1e-15)
         return psd
     
     @staticmethod
@@ -300,7 +303,18 @@ class hThetaMulti(Dataset):
         # Interpolate and convert back from log space
         log_freq_query = np.log10(np.clip(freq_query, 1e-10, None))
         log_psd_query = interp_func(log_freq_query)
+        
+        # Clamp log_psd_query to reasonable bounds to avoid inf from 10**x
+        # PSD values should stay within ~1e-50 to ~1e-40 typically
+        log_psd_query = np.clip(log_psd_query, -50, -40)
+        
         psd_query = 10.0 ** log_psd_query
+        
+        # Final safety check: ensure no inf or NaN values
+        psd_query = np.nan_to_num(psd_query, nan=1e-45, posinf=1e-45, neginf=1e-50)
+        
+        # Ensure all values are positive and finite
+        psd_query = np.maximum(psd_query, 1e-50)
         
         return psd_query
     
@@ -413,8 +427,10 @@ class hThetaMulti(Dataset):
         else:
             raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
 
-        psd[~np.isfinite(psd)] = 0
-        psd[psd < 0] = 0
+        # Clean PSD: replace inf/NaN with reasonable default, clamp to positive range
+        psd = psd.copy()  # Make a copy to avoid modifying cached arrays
+        psd = np.nan_to_num(psd, nan=1e-45, posinf=1e-45, neginf=1e-50)
+        psd = np.maximum(psd, 1e-50)  # Ensure all values are positive and finite
 
         if one_sided:
             sd_vec = np.sqrt(psd / ((1 + kappa) * lambda_factors))
@@ -475,10 +491,17 @@ class hThetaMulti(Dataset):
             # Compute FFT
             hf = np.fft.rfft(signal, axis=0)[1]
             
-            # Calculate SNR
-            integrand = (np.abs(hf)**2) / psd
+            # Calculate SNR with robust protection against inf/NaN in PSD
+            # First clean up PSD: replace inf/NaN and clamp to valid range
+            psd_clean = np.nan_to_num(psd, nan=1e-45, posinf=1e-45, neginf=1e-50)
+            psd_clean = np.maximum(psd_clean, 1e-50)  # Ensure minimum positive value
+            
+            # Now calculate with safe denominator
+            integrand = (np.abs(hf)**2) / psd_clean
             rho2 = 4 * np.sum(integrand) * df
-            snr.append(np.sqrt(rho2))
+            snr_val = np.sqrt(rho2)
+            
+            snr.append(snr_val)
 
         return snr
 

@@ -332,7 +332,9 @@ class sTheta(BaseDataset, Dataset):
         N = len(h)
         df = fs / N
         hf = np.fft.rfft(h)
-        integrand = (np.abs(hf)**2) / Sn
+        # Add small epsilon to avoid divide-by-zero warnings from near-zero PSD values
+        Sn_safe = np.maximum(Sn, np.max(Sn) * 1e-10)
+        integrand = (np.abs(hf)**2) / Sn_safe
         rho2 = 4 * np.sum(integrand) * df
         return np.sqrt(rho2)
     
@@ -347,7 +349,9 @@ class sTheta(BaseDataset, Dataset):
             N: length of original signal
         """
         df = fs / N
-        integrand = (np.abs(hf)**2) / Sn
+        # Add small epsilon to avoid divide-by-zero warnings from near-zero PSD values
+        Sn_safe = np.maximum(Sn, np.max(Sn) * 1e-10)
+        integrand = (np.abs(hf)**2) / Sn_safe
         rho2 = 4 * np.sum(integrand) * df
         return np.sqrt(rho2)
 
