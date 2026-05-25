@@ -77,7 +77,8 @@ from .losses import (
 
 from .parameters import (
     plot_parameter_distribution,
-    plot_parameter_distribution_grid
+    plot_parameter_distribution_grid,
+    plot_corner
 )
 
 from .latent import (
@@ -93,7 +94,6 @@ from .analysis import (
     plot_galactic_distribution,
     plot_reconstruction_distribution,
     p_p_plot,
-    plot_corner,
     create_signal_grid_gif,
     create_snr_variation_gif,
     plot_sky_localisation

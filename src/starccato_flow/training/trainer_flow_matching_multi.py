@@ -444,6 +444,69 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
+    def run_parameter_estimation(self, signal_idx: int, d: int):
+        """Run parameter estimation on a single signal and return the predicted parameters."""
+        signal, _, params = self.validation_dataset[signal_idx]
+
+        # sample sky parameters from the supernovae distribution for the given distance
+        distance_mask = (
+            (self.supernovae.distances >= d - 0.5)
+            & (self.supernovae.distances <= d + 0.5)
+        )
+        candidate_indices = np.where(distance_mask)[0]
+
+        candidate_index = np.random.choice(candidate_indices)
+        sampled_ra = self.supernovae.ras[candidate_index]
+        sampled_dec = self.supernovae.decs[candidate_index]
+        sampled_d = self.supernovae.distances[candidate_index]
+
+        # create multi-channel signals
+        self.h_theta_multi_train = hThetaMulti(
+            s=signal,
+            max_strain=self.training_dataset.max_strain,
+            theta=params,
+            min_theta=self.training_dataset.min_theta,
+            max_theta=self.training_dataset.max_theta,
+            ra=sampled_ra,
+            dec=sampled_dec,
+            d=sampled_d,
+            batch_size=self.batch_size,
+            detector_noise_on=True,
+            random_polarization=True,
+            seed=1,  # Vary seed by epoch for different psi values each epoch
+            intrinsic_param_names=self.intrinsic_params
+        )
+        self.h_theta_multi_train_loader = DataLoader(
+            self.h_theta_multi_train,
+            shuffle=True,
+            **loader_kwargs,
+        )
+
+        case = self.h_theta_multi_train_loader.dataset.__getitem__(0)  # Force dataset to prepare the first item and set up normalization
+
+        plot_detector_signal_channels(
+            signals=case[0].detach().cpu().numpy() / TEN_KPC,
+            noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
+            max_value=self.h_theta_multi_val.max_strain,
+            detector_labels=self.h_theta_multi_val.detectors,
+            background="black",
+            generated=False,
+            fname=os.path.join(cor, f"epoch_{d + 1:04d}_signal.png"),
+        )
+        self.plot_corner_sampled_signal(
+            num_samples=3000,
+            n_steps=20,
+            fname=os.path.join(inference_dir, f"epoch_{d + 1:04d}_corner.png"),
+            sampled_case=case,
+        )
+        self.plot_sky_localisation_sampled_signal(
+            num_samples=3000,
+            n_steps=20,
+            fname=os.path.join(inference_dir, f"epoch_{d + 1:04d}_sky.png"),
+            sampled_case=case,
+        )
+
+
     def train(self):
         t0 = time.time()
 
@@ -588,31 +651,8 @@ class FlowMatchingTrainerMulti:
 
             random_idx = np.random.randint(len(self.h_theta_multi_val))
             plot_case = self.h_theta_multi_val[random_idx] # random sample
+            self.run_parameter_estimation(signal_idx=random_idx, d=10)
             # plot_case = self.h_theta_multi_val[100] # first sample for consistency across epochs
-
-            # snr_case = self.h_theta_multi_train.calculate_snr_from_fft(idx=random_idx) 
-            # print("snr = ", snr_case)
-            plot_detector_signal_channels(
-                signals=plot_case[0].detach().cpu().numpy() / TEN_KPC,
-                noisy_signals=plot_case[1].detach().cpu().numpy() / TEN_KPC,
-                max_value=self.h_theta_multi_val.max_strain,
-                detector_labels=self.h_theta_multi_val.detectors,
-                background="black",
-                generated=False,
-                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_signal.png"),
-            )
-            self.plot_corner_sampled_signal(
-                num_samples=3000,
-                n_steps=20,
-                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_corner.png"),
-                sampled_case=plot_case,
-            )
-            self.plot_sky_localisation_sampled_signal(
-                num_samples=3000,
-                n_steps=20,
-                fname=os.path.join(corner_epoch_dir, f"epoch_{epoch + 1:04d}_sky.png"),
-                sampled_case=plot_case,
-            )
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
@@ -620,7 +660,7 @@ class FlowMatchingTrainerMulti:
         print(f"Training Time: {runtime:.2f}min")
         print("Plotting training/validation loss curves...")
         # Optionally: plot final results or save model
-        # self.save_models()
+        self.save_models()
         self.display_results()  
 
     def plot_corner_sampled_signal(
@@ -874,8 +914,8 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/generator_weights.pt"
+        return f"{self.outdir}/flow_weights.pt"
 
     def save_models(self):
-        torch.save(self.vae.state_dict(), self.save_fname)
-        print(f"Saved VAE model to {self.save_fname}")
+        torch.save(self.flow.state_dict(), self.save_fname)
+        print(f"Saved Flow model to {self.save_fname}")
