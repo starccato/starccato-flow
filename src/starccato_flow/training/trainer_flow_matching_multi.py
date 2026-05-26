@@ -963,3 +963,13 @@ class FlowMatchingTrainerMulti:
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
         print(f"Saved Flow model to {self.save_fname}")
+
+    def load_models(self):
+        """Load pre-trained flow model weights from checkpoint."""
+        if not os.path.exists(f"{self.outdir}/flow_weights_final.pt"):
+            raise FileNotFoundError(f"Model checkpoint not found at {self.save_fname}")
+        
+        state_dict = torch.load(f"{self.outdir}/flow_weights_final.pt", map_location=DEVICE)
+        self.flow.load_state_dict(state_dict)
+        self.flow.to(DEVICE)
+        print(f"Loaded Flow model from {f'{self.outdir}/flow_weights_final.pt'}")
