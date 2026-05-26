@@ -446,7 +446,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: None, d: None):
+    def run_parameter_estimation(self, signal_idx: None, ra: None, dec: None, d: None, psi: None):
         """Run parameter estimation on a single signal and return the predicted parameters."""
         
         # Set up directory paths
@@ -460,54 +460,60 @@ class FlowMatchingTrainerMulti:
             filename_suffix = "epoch"
         
         if signal_idx is not None and d is not None:
-            signal, _, params = self.validation_dataset[signal_idx]
+            # Get RAW (unnormalized) signal and params from validation dataset
+            # We need raw signals because hThetaMulti expects unnormalized input
+            signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
+            params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
+            
+            # Find supernovae at the specified distance
             distance_mask = (
                 (self.supernovae.distances >= d - 0.25)
                 & (self.supernovae.distances <= d + 0.25)
             )
             candidate_indices = np.where(distance_mask)[0]
 
+            # Randomly select one supernova at that distance
             candidate_index = np.random.choice(candidate_indices)
-            sampled_ra = self.supernovae.ras[candidate_index]
-            sampled_dec = self.supernovae.decs[candidate_index]
-            sampled_d = self.supernovae.distances[candidate_index]
+            sampled_ra = np.array([self.supernovae.ra[candidate_index]])
+            sampled_dec = np.array([self.supernovae.dec[candidate_index]])
+            sampled_d = np.array([self.supernovae.distances[candidate_index]])
+            
+            # Wrap raw signal and params in tensors for hThetaMulti
+            signals = [torch.tensor(signal_raw, dtype=torch.float32)]
+            params_np = np.asarray(params)
+            if params_np.ndim == 1:
+                params_np = params_np.reshape(1, -1)
+            params_tensor = torch.tensor(params_np, dtype=torch.float32)
+            
+            # Create temporary multi-channel dataset with the specified sky parameters
+            # Following the same pattern as train()
             temp_h_theta_multi_val = hThetaMulti(
-                s=signal,
-                max_strain=self.training_dataset.max_strain,
-                theta=params,
-                min_theta=self.training_dataset.min_theta,
-                max_theta=self.training_dataset.max_theta,
+                s=signals,  # List of tensors with RAW signals
+                max_strain=self.validation_dataset.max_strain,
+                theta=params_tensor,  # Tensor
+                min_theta=self.validation_dataset.min_theta,
+                max_theta=self.validation_dataset.max_theta,
                 ra=sampled_ra,
                 dec=sampled_dec,
                 d=sampled_d,
                 batch_size=self.batch_size,
-                detector_noise_on=True,
+                detector_noise_on=True,  # Add fresh detector noise, consistent with train()
                 random_polarization=True,
-                seed=1,  # Vary seed by epoch for different psi values each epoch
+                seed=1,
                 intrinsic_param_names=self.intrinsic_params
             )
-            use_cuda = str(DEVICE).startswith("cuda")
-            loader_kwargs = {
-                "batch_size": self.batch_size,
-                "num_workers": 0,
-                "pin_memory": use_cuda,
-                "persistent_workers": False,
-            }
-            temp_h_theta_multi_val_loader = DataLoader(
-                temp_h_theta_multi_val,
-                shuffle=True,
-                **loader_kwargs,
-                )
-
-            case = temp_h_theta_multi_val_loader.dataset.__getitem__(0)  # Force dataset to prepare the first item and set up normalization
+            case = temp_h_theta_multi_val[0]
+            # Use temp_h_theta_multi_val for plotting since it was used to create case
+            active_h_theta_multi = temp_h_theta_multi_val
         else:
             case = self.h_theta_multi_val[np.random.randint(len(self.h_theta_multi_val))]
+            active_h_theta_multi = self.h_theta_multi_val
         
         plot_detector_signal_channels(
             signals=case[0].detach().cpu().numpy() / TEN_KPC,
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
-            max_value=self.h_theta_multi_val.max_strain,
-            detector_labels=self.h_theta_multi_val.detectors,
+            max_value=active_h_theta_multi.max_strain,
+            detector_labels=active_h_theta_multi.detectors,
             background="black",
             generated=False,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png"),
@@ -517,12 +523,14 @@ class FlowMatchingTrainerMulti:
             n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png"),
             sampled_case=case,
+            h_theta_multi_dataset=active_h_theta_multi,
         )
         self.plot_sky_localisation_sampled_signal(
             num_samples=3000,
             n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png"),
             sampled_case=case,
+            h_theta_multi_dataset=active_h_theta_multi,
         )
 
 
@@ -686,6 +694,7 @@ class FlowMatchingTrainerMulti:
         n_steps: int = 20,
         fname: str = "plots/corner_plot_sampled_signal.png",
         sampled_case=None,
+        h_theta_multi_dataset=None,
     ):
         """Generate a corner plot for one sampled multi-channel validation signal.
 
@@ -693,6 +702,10 @@ class FlowMatchingTrainerMulti:
         sky parameters (including psi), and plots the posterior over the full parameter vector.
         """
         self.flow.eval()
+        
+        # Use passed dataset or default to self.h_theta_multi_val
+        if h_theta_multi_dataset is None:
+            h_theta_multi_dataset = self.h_theta_multi_val
 
         t0 = time.time()
 
@@ -733,8 +746,8 @@ class FlowMatchingTrainerMulti:
         else:
             # For real data, always use extracted parameter denormalization
             # since we're operating in the extracted parameter space
-            samples_cpu = self._denormalize_extracted_params(samples_cpu, self.h_theta_multi_val)
-            true_params = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), self.h_theta_multi_val).flatten()
+            samples_cpu = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+            true_params = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), h_theta_multi_dataset).flatten()
             labels = self.parameters_to_estimate
 
         t1 = time.time()
@@ -745,8 +758,8 @@ class FlowMatchingTrainerMulti:
         
         # Calculate axis ranges from extracted parameter bounds
         # Use the dataset bounds which are already in extracted parameter space
-        mins = self.h_theta_multi_val.min_theta
-        maxs = self.h_theta_multi_val.max_theta
+        mins = h_theta_multi_dataset.min_theta
+        maxs = h_theta_multi_dataset.max_theta
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
         ranges = [
@@ -780,9 +793,14 @@ class FlowMatchingTrainerMulti:
         n_steps: int = 20,
         fname: str = "plots/sky_localisation_sampled_signal.png",
         sampled_case=None,
+        h_theta_multi_dataset=None,
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal."""
         self.flow.eval()
+        
+        # Use passed dataset or default to self.h_theta_multi_val
+        if h_theta_multi_dataset is None:
+            h_theta_multi_dataset = self.h_theta_multi_val
 
         if sampled_case is None:
             _, noisy_signal, params = self._sample_validation_plot_case(epoch)
@@ -820,8 +838,8 @@ class FlowMatchingTrainerMulti:
             true_params_denorm = true_params_norm
         else:
             # For real data, denormalize in the extracted parameter space
-            samples_denorm = self._denormalize_extracted_params(samples_cpu, self.h_theta_multi_val)
-            true_params_denorm = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), self.h_theta_multi_val).flatten()
+            samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+            true_params_denorm = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), h_theta_multi_dataset).flatten()
         
         # Extract RA and Dec indices from the parameters_to_estimate list
         ra_idx = self._get_extracted_index("ra")
