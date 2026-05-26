@@ -446,7 +446,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: None, ra: None, dec: None, d: None, psi: None):
+    def run_parameter_estimation(self, signal_idx: None, ra: None, dec: None, d: None):
         """Run parameter estimation on a single signal and return the predicted parameters."""
         
         # Set up directory paths
@@ -455,7 +455,10 @@ class FlowMatchingTrainerMulti:
         
         # Create filename suffix based on provided parameters
         if signal_idx is not None and d is not None:
-            filename_suffix = f"signal_{signal_idx:04d}_d_{d:.1f}"
+            if ra is not None and dec is not None:
+                filename_suffix = f"signal_{signal_idx:04d}_ra_{np.degrees(ra):.1f}_dec_{np.degrees(dec):.1f}_d_{d:.1f}"
+            else:
+                filename_suffix = f"signal_{signal_idx:04d}_d_{d:.1f}"
         else:
             filename_suffix = "epoch"
         
@@ -465,18 +468,25 @@ class FlowMatchingTrainerMulti:
             signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
             params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
             
-            # Find supernovae at the specified distance
-            distance_mask = (
-                (self.supernovae.distances >= d - 0.25)
-                & (self.supernovae.distances <= d + 0.25)
-            )
-            candidate_indices = np.where(distance_mask)[0]
+            # Use specified sky parameters or randomly select a supernova at the specified distance
+            if ra is not None and dec is not None:
+                # Use directly specified sky parameters
+                sampled_ra = np.array([ra])
+                sampled_dec = np.array([dec])
+                sampled_d = np.array([d])
+            else:
+                # Find supernovae at the specified distance and randomly select one
+                distance_mask = (
+                    (self.supernovae.distances >= d - 0.25)
+                    & (self.supernovae.distances <= d + 0.25)
+                )
+                candidate_indices = np.where(distance_mask)[0]
 
-            # Randomly select one supernova at that distance
-            candidate_index = np.random.choice(candidate_indices)
-            sampled_ra = np.array([self.supernovae.ra[candidate_index]])
-            sampled_dec = np.array([self.supernovae.dec[candidate_index]])
-            sampled_d = np.array([self.supernovae.distances[candidate_index]])
+                # Randomly select one supernova at that distance
+                candidate_index = np.random.choice(candidate_indices)
+                sampled_ra = np.array([self.supernovae.ra[candidate_index]])
+                sampled_dec = np.array([self.supernovae.dec[candidate_index]])
+                sampled_d = np.array([self.supernovae.distances[candidate_index]])
             
             # Wrap raw signal and params in tensors for hThetaMulti
             signals = [torch.tensor(signal_raw, dtype=torch.float32)]
@@ -676,7 +686,7 @@ class FlowMatchingTrainerMulti:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            self.run_parameter_estimation(signal_idx=None, d=None) 
+            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None) 
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
