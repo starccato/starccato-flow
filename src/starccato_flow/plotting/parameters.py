@@ -405,5 +405,5 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
     # Reduce spacing between subplots to make plots bigger
     figure.subplots_adjust(hspace=0.05, wspace=0.05)
     
-    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
+    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=False)
     plt.show()

@@ -446,8 +446,17 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: None, ra: None, dec: None, d: None):
-        """Run parameter estimation on a single signal and return the predicted parameters."""
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, export_on: bool = False, random_psi: bool = True):
+        """Run parameter estimation on a single signal and return the predicted parameters.
+        
+        Args:
+            signal_idx: Index of the signal in the validation dataset
+            d: Distance in kpc
+            ra: Right ascension in radians (optional, random if None)
+            dec: Declination in radians (optional, random if None)
+            export_on: Whether to export signal channels as .txt files
+            random_psi: Whether to use random polarization angle (True) or fixed psi=0 (False)
+        """
         
         # Set up directory paths
         epoch_data_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
@@ -508,7 +517,7 @@ class FlowMatchingTrainerMulti:
                 d=sampled_d,
                 batch_size=self.batch_size,
                 detector_noise_on=True,  # Add fresh detector noise, consistent with train()
-                random_polarization=True,
+                random_polarization=random_psi,
                 seed=1,
                 intrinsic_param_names=self.intrinsic_params
             )
@@ -533,7 +542,7 @@ class FlowMatchingTrainerMulti:
             n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png"),
             sampled_case=case,
-            h_theta_multi_dataset=active_h_theta_multi,
+            h_theta_multi_dataset=active_h_theta_multi
         )
         self.plot_sky_localisation_sampled_signal(
             num_samples=3000,
@@ -542,6 +551,16 @@ class FlowMatchingTrainerMulti:
             sampled_case=case,
             h_theta_multi_dataset=active_h_theta_multi,
         )
+
+        # export each channel of the signal as a separate .txt file for external analysis
+        if export_on:
+            export_dir = os.path.join(self.outdir, "exported_signals")
+            os.makedirs(export_dir, exist_ok=True)
+            detector_labels = active_h_theta_multi.detectors
+            for i in range(case[0].shape[0]):
+                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC  # Denormalize to physical units
+                detector_name = detector_labels[i] if i < len(detector_labels) else f"channel_{i+1}"
+                np.savetxt(os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"), channel_signal)
 
 
     def train(self):
@@ -964,10 +983,81 @@ class FlowMatchingTrainerMulti:
         torch.save(self.flow.state_dict(), self.save_fname)
         print(f"Saved Flow model to {self.save_fname}")
 
+    def export_strain_and_parameters(self, signal_idx: int, fname_prefix: str, ra: float = None, dec: float = None, d: float = None):
+        """Export the signal and parameters for a specific index to CSV files (one per detector).
+        
+        Args:
+            signal_idx: Index of the signal in the validation dataset
+            fname_prefix: Prefix for output filenames
+            ra: Optional RA coordinate (radians). If None, randomly selects a supernova
+            dec: Optional Dec coordinate (radians). If None, randomly selects a supernova
+            d: Optional distance (kpc). If None, randomly selects a supernova
+        """
+        if signal_idx < 0 or signal_idx >= self.validation_dataset.signals.shape[1]:
+            raise IndexError(f"Signal index {signal_idx} is out of bounds for validation dataset with {self.validation_dataset.signals.shape[1]} signals.")
+        
+        # Get raw signal and parameters
+        signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]
+        params = self.validation_dataset.parameters[signal_idx]
+        
+        # Default to random selection if sky parameters not specified
+        if ra is None or dec is None or d is None:
+            raise ValueError("Must specify ra, dec, and d for exporting multi-detector strains")
+        
+        # Wrap in tensors for hThetaMulti
+        signals = [torch.tensor(signal_raw, dtype=torch.float32)]
+        params_np = np.asarray(params)
+        if params_np.ndim == 1:
+            params_np = params_np.reshape(1, -1)
+        params_tensor = torch.tensor(params_np, dtype=torch.float32)
+        
+        # Create multi-channel dataset
+        sampled_ra = np.array([ra])
+        sampled_dec = np.array([dec])
+        sampled_d = np.array([d])
+        
+        temp_h_theta_multi = hThetaMulti(
+            s=signals,
+            max_strain=self.validation_dataset.max_strain,
+            theta=params_tensor,
+            min_theta=self.validation_dataset.min_theta,
+            max_theta=self.validation_dataset.max_theta,
+            ra=sampled_ra,
+            dec=sampled_dec,
+            d=sampled_d,
+            batch_size=self.batch_size,
+            detector_noise_on=True,
+            random_polarization=True,
+            seed=1,
+            intrinsic_param_names=self.intrinsic_params
+        )
+        
+        # Get the multi-channel signals
+        clean_signal, noisy_signal, _ = temp_h_theta_multi[0]
+        
+        # Export each detector's strain separately
+        detector_labels = temp_h_theta_multi.detectors
+        for i, detector in enumerate(detector_labels):
+            clean_strain = clean_signal[i].cpu().numpy() if isinstance(clean_signal, torch.Tensor) else clean_signal[i]
+            noisy_strain = noisy_signal[i].cpu().numpy() if isinstance(noisy_signal, torch.Tensor) else noisy_signal[i]
+            
+            np.savetxt(f"{fname_prefix}_{detector}_clean.csv", clean_strain, delimiter=",")
+            np.savetxt(f"{fname_prefix}_{detector}_noisy.csv", noisy_strain, delimiter=",")
+        
+        # Export parameters
+        params_export = params.cpu().numpy() if isinstance(params, torch.Tensor) else params
+        np.savetxt(f"{fname_prefix}_parameters.csv", params_export, delimiter=",")
+        
+        print(f"Exported multi-detector strains for signal index {signal_idx}:")
+        for detector in detector_labels:
+            print(f"  {fname_prefix}_{detector}_clean.csv")
+            print(f"  {fname_prefix}_{detector}_noisy.csv")
+        print(f"  {fname_prefix}_parameters.csv")
+
     def load_models(self):
         """Load pre-trained flow model weights from checkpoint."""
         if not os.path.exists(f"{self.outdir}/flow_weights_final.pt"):
-            raise FileNotFoundError(f"Model checkpoint not found at {self.save_fname}")
+            raise FileNotFoundError(f"Model checkpoint not found at {f'{self.outdir}/flow_weights_final.pt'}")
         
         state_dict = torch.load(f"{self.outdir}/flow_weights_final.pt", map_location=DEVICE)
         self.flow.load_state_dict(state_dict)
