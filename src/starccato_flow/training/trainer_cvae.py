@@ -275,18 +275,9 @@ class ConditionalVAETrainer:
             # Checkpoint: generate signals with fixed parameters
             if (epoch + 1) % self.checkpoint_interval == 0:
                 with torch.no_grad():
-                    # plot reconstruction (take first signal from batch)
-                    plot_reconstruction(
-                        original=val_signal[0].cpu().numpy(),
-                        reconstructed=recon[0].cpu().numpy(),
-                        max_value=self.validation_dataset.max_strain / TEN_KPC,
-                        font_family="Serif",
-                        font_name="Times New Roman",
-                    )
-
-                    # Generate signals conditioned on fixed parameters
-                    # Using fixed noise for visualization consistency across epochs
-                    generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
+                    self._plot_reconstruction(signal_idx=0)
+                    self._plot_signal_grid(epoch)
+                    # self._plot_latent_space(epoch)
                     
                     # Encode a sample of training data to visualize latent space
                     num_samples_to_encode = min(500, len(self.training_dataset))
@@ -315,47 +306,36 @@ class ConditionalVAETrainer:
                     
                 print(f"\nEpoch {epoch+1}/{self.num_epochs}")
                 print(f"  Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
-                print(f"  Generated signals shape: {generated_signals.shape}")
                 
                 # DIAGNOSTIC: Check if decoder is sensitive to parameter changes
-                with torch.no_grad():
-                    test_params_norm = [np.zeros(self.param_dim), np.ones(self.param_dim)]
+                # with torch.no_grad():
+                #     test_params_norm = [np.zeros(self.param_dim), np.ones(self.param_dim)]
                     
-                    # test_params_norm = [self.training_dataset.normalize_parameters(p) for p in test_params]
+                #     # test_params_norm = [self.training_dataset.normalize_parameters(p) for p in test_params]
                     
-                    # Use SAME noise for both parameter sets
-                    z_test = torch.randn(1, self.z_dim).to(DEVICE)
+                #     # Use SAME noise for both parameter sets
+                #     z_test = torch.randn(1, self.z_dim).to(DEVICE)
                     
-                    test_signals = []
-                    for params_norm in test_params_norm:
-                        params_tensor = torch.tensor(params_norm, dtype=torch.float32).unsqueeze(0).to(DEVICE)
-                        signal = self.cvae.decoder(z_test, params_tensor).cpu().numpy()
-                        test_signals.append(signal)
+                #     test_signals = []
+                #     for params_norm in test_params_norm:
+                #         params_tensor = torch.tensor(params_norm, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+                #         signal = self.cvae.decoder(z_test, params_tensor).cpu().numpy()
+                #         test_signals.append(signal)
                     
-                    # Check if signals are actually different
-                    diff = np.abs(test_signals[0] - test_signals[1]).mean()
-                    signal_std = np.mean([test_signals[0].std(), test_signals[1].std()])
-                    relative_diff = diff / (signal_std + 1e-8)
+                #     # Check if signals are actually different
+                #     diff = np.abs(test_signals[0] - test_signals[1]).mean()
+                #     signal_std = np.mean([test_signals[0].std(), test_signals[1].std()])
+                #     relative_diff = diff / (signal_std + 1e-8)
                     
-                    print(f"  Parameter Sensitivity Check:")
-                    print(f"    Mean absolute difference: {diff:.6f}")
-                    print(f"    Relative difference: {relative_diff:.4f}")
+                #     print(f"  Parameter Sensitivity Check:")
+                #     print(f"    Mean absolute difference: {diff:.6f}")
+                #     print(f"    Relative difference: {relative_diff:.4f}")
                     
-                    if relative_diff < 0.1:
-                        print(f"    ⚠️  WARNING: Model may be ignoring parameters (diff too small)")
-                    else:
-                        print(f"    ✓ Model is using parameters (signals differ)")
+                #     if relative_diff < 0.1:
+                #         print(f"    ⚠️  WARNING: Model may be ignoring parameters (diff too small)")
+                #     else:
+                #         print(f"    ✓ Model is using parameters (signals differ)")
                 
-                plot_signal_grid(
-                    signals=generated_signals / TEN_KPC,
-                    noisy_signals=None,
-                    max_value=self.validation_dataset.max_strain,
-                    num_cols=4,
-                    num_rows=4,
-                    fname=os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg"),
-                    background="black",
-                    generated=True
-                )
                 
                 # Plot latent space (dark style)
                 fig = plt.figure(figsize=(15, 5), facecolor='black')
@@ -461,6 +441,35 @@ class ConditionalVAETrainer:
             generated = self.cvae.decoder(z, params_tensor).cpu().numpy()
         
         return generated
+    
+
+    def _plot_signal_grid(self, epoch):
+        generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
+        
+        # Extract parameter values if theta_label is set
+        param_values_to_display = None
+        if self.theta_label is not None and self.theta_param_index is not None:
+            # Denormalize fixed parameters to physical units for display
+            fixed_params_denorm = np.array([
+                self.training_dataset.denormalize_parameters(p) 
+                for p in self.fixed_params.cpu().numpy()
+            ])
+            param_values_to_display = fixed_params_denorm[:, self.theta_param_index]
+        
+        plot_signal_grid(
+            signals=generated_signals / TEN_KPC,
+            noisy_signals=None,
+            max_value=self.validation_dataset.max_strain,
+            num_cols=4,
+            num_rows=4,
+            fname=os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg"),
+            background="white",
+            generated=True,
+            param_values=param_values_to_display,
+            param_label=self.theta_label,
+            font_family="Serif",
+            font_name="Times New Roman",
+        )
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
@@ -474,6 +483,23 @@ class ConditionalVAETrainer:
             max_value=self.val_loader.dataset.max_strain,
             background=background,
             fname=fname
+        )
+        
+    def _plot_reconstruction(self, signal_idx=0):
+        """Plot reconstruction of a single signal from the validation set."""
+        self.cvae.eval()
+        val_signal, _, val_params = self.val_loader.dataset.__getitem__(signal_idx)
+        val_signal = val_signal.view(1, -1).to(DEVICE)
+        val_params = val_params.view(1, -1).to(DEVICE)
+
+        recon, _, _ = self.cvae(val_signal, val_params)
+
+        plot_reconstruction(
+            original=val_signal.cpu().numpy(),
+            reconstructed=recon.cpu().numpy(),
+            max_value=self.validation_dataset.max_strain / TEN_KPC,
+            font_family="Serif",
+            font_name="Times New Roman",
         )
 
     def display_results(self, background="black"):
@@ -534,3 +560,41 @@ class ConditionalVAETrainer:
         print(f"Saved validation parameters to {val_params_path}")
         print(f"  Shape: {val_params.shape} (num_samples, param_dim)")
         print(f"  Validation set: {val_signals.shape[1]} real signals for final testing")
+    
+    @classmethod
+    def load(
+        cls,
+        model_path: str,
+        y_length: int = Y_LENGTH,
+        hidden_dim: int = HIDDEN_DIM,
+        z_dim: int = Z_DIM,
+        param_dim: int = 4
+    ) -> ConditionalVAE:
+        """Load a trained CVAE model from disk.
+        
+        Args:
+            model_path: Path to the saved model weights (.pt file)
+            y_length: Signal length dimension
+            hidden_dim: Hidden layer dimension
+            z_dim: Latent dimension
+            param_dim: Number of physical parameters
+            
+        Returns:
+            Loaded ConditionalVAE model
+        """
+        # Reconstruct model architecture
+        cvae = ConditionalVAE(
+            y_length=y_length,
+            hidden_dim=hidden_dim,
+            z_dim=z_dim,
+            param_dim=param_dim
+        ).to(DEVICE)
+        
+        # Load saved weights
+        cvae.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        cvae.eval()
+        
+        print(f"✓ Loaded CVAE model from {model_path}")
+        print(f"  Architecture: y_length={y_length}, hidden_dim={hidden_dim}, z_dim={z_dim}, param_dim={param_dim}")
+        
+        return cvae

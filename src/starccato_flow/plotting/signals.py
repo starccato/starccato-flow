@@ -53,7 +53,9 @@ def plot_signal_grid(
     vline_color = "white" if background == "black" else "black"
     text_color = "white" if background == "black" else "black"
 
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 8))
+    # Adjust figsize if we have parameter labels
+    figsize = (15, 10) if param_values is not None and param_label is not None else (15, 8)
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
     axes = axes.flatten()
 
     d = get_time_axis()
@@ -75,8 +77,7 @@ def plot_signal_grid(
         # Display parameter value above each subplot if provided
         if param_values is not None and param_label is not None and i < len(param_values):
             param_text = f"{param_label} = {param_values[i]:.3f}"
-            ax.text(0.5, 1.10, param_text, transform=ax.transAxes,
-                   ha='center', va='bottom', fontsize=10, color=text_color)
+            ax.set_title(param_text, fontsize=11, color=text_color, pad=8)
         
         if i % num_cols != 0:
             ax.yaxis.set_ticklabels([])
