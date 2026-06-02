@@ -25,7 +25,9 @@ def plot_signal_grid(
     generated: bool = False,
     background: str = "white",
     font_family: str = DEFAULT_FONT_FAMILY,
-    font_name: str = DEFAULT_FONT
+    font_name: str = DEFAULT_FONT,
+    param_values: Optional[np.ndarray] = None,
+    param_label: Optional[str] = None
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot a grid of waveform signals.
     
@@ -39,6 +41,8 @@ def plot_signal_grid(
         background (str): Background color theme
         font_family (str): Font family to use
         font_name (str): Specific font name
+        param_values (Optional[np.ndarray]): Array of parameter values to display above each plot
+        param_label (Optional[str]): Label for the parameter (e.g., "Ye")
     
     Returns:
         Tuple[plt.Figure, plt.Axes]: Figure and axes objects
@@ -47,6 +51,7 @@ def plot_signal_grid(
     
     signal_colour = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
     vline_color = "white" if background == "black" else "black"
+    text_color = "white" if background == "black" else "black"
 
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 8))
     axes = axes.flatten()
@@ -66,6 +71,12 @@ def plot_signal_grid(
         
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         ax.grid(False)
+        
+        # Display parameter value above each subplot if provided
+        if param_values is not None and param_label is not None and i < len(param_values):
+            param_text = f"{param_label} = {param_values[i]:.3f}"
+            ax.text(0.5, 1.10, param_text, transform=ax.transAxes,
+                   ha='center', va='bottom', fontsize=10, color=text_color)
         
         if i % num_cols != 0:
             ax.yaxis.set_ticklabels([])
@@ -192,7 +203,7 @@ def plot_detector_signal_channels(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
 
     plt.show()
     plt.rcdefaults()
@@ -277,9 +288,11 @@ def plot_reconstruction(
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot original and reconstructed signals for comparison.
     
+    Single-channel version of detector signal plotting with clean and noisy overlay.
+    
     Args:
-        original (torch.Tensor): Original signal
-        reconstructed (torch.Tensor): Reconstructed signal
+        original (torch.Tensor): Original clean signal
+        reconstructed (torch.Tensor): Reconstructed signal (analog to noisy)
         max_value (float): Maximum value for scaling
         fname (Optional[str]): Filename to save plot
         background (str): Background color theme
@@ -292,43 +305,54 @@ def plot_reconstruction(
     set_plot_style(background, font_family, font_name)
     vline_color = "white" if background == "black" else "black"
 
-    fig, ax = plt.subplots(figsize=(15, 4))
+    fig, ax = plt.subplots(figsize=(12, 5))
     d = get_time_axis()
-
+    x_min, x_max = -0.01, 0.05
+    tick_step = 0.01
+    xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
+    
     y_original = original.flatten() * max_value
     y_reconstructed = reconstructed.flatten() * max_value
     
-    ax.plot(d, y_original, color="deepskyblue", 
-            label="Original Signal", linewidth=2)
-    ax.plot(d, y_reconstructed, color=GENERATED_SIGNAL_COLOUR, 
-            label="Reconstructed Signal", linewidth=2)
-
-    ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-    ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis="both", colors=vline_color, labelsize=12)
+    # Calculate y limits
+    y_expand = 1.5
+    max_absolute_value = max(np.abs(y_original).max(), np.abs(y_reconstructed).max())
+    y_min = -max_absolute_value * y_expand
+    y_max = max_absolute_value * y_expand
     
+    # Plot reconstructed signal first (if provided) with lower opacity
+    ax.plot(d, y_reconstructed, color=SIGNAL_COLOUR, linewidth=1.5, 
+            alpha=0.5, label="Reconstructed")
+    
+    # Plot original signal on top with full opacity
+    ax.plot(d, y_original, color=SIGNAL_COLOUR, linewidth=2, 
+            alpha=1.0, label="Original")
+    
+    ax.set_ylim(y_min, y_max)
+    ax.set_xlim(x_min, x_max)
+    ax.margins(x=0.0)
+    ax.set_xmargin(0)
+    ax.autoscale(enable=False, axis='x')
+
+    ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+    ax.grid(False)
+    ax.tick_params(axis='x', colors=vline_color)
+    ax.tick_params(axis='y', colors=vline_color)
+
     for spine in ax.spines.values():
         spine.set_color(vline_color)
     
+    ax.set_xticks(xticks)
+    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
     ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
     ax.set_ylabel("h", fontsize=16, color=vline_color)
-    ax.legend(fontsize=12, loc='upper right', framealpha=0.0, 
-             labelcolor=vline_color)
-
-    n = len(y_original)
-    plt.text(
-        0.98, 0.02, f"n = {n}",
-        ha='right', va='bottom',
-        transform=ax.transAxes,
-        fontsize=12, color=vline_color,
-        alpha=0.8
-    )
+    
+    ax.legend(loc='upper right', facecolor="none", edgecolor=vline_color,
+             labelcolor=vline_color, fontsize=11, framealpha=0.0)
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", 
-                   transparent=(background=="black"))
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
 
     plt.show()
     plt.rcdefaults()

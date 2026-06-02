@@ -41,7 +41,8 @@ class sTheta(BaseDataset, Dataset):
         generated: bool = False,
         params_df: pd.DataFrame = None,
         signals_df: pd.DataFrame = None,
-        custom_data: Optional[tuple[np.ndarray, np.ndarray]] = None
+        custom_data: Optional[tuple[np.ndarray, np.ndarray]] = None,
+        remove_erroneous: bool = True
     ):
         """Initialize the CCSN dataset.
         
@@ -58,6 +59,7 @@ class sTheta(BaseDataset, Dataset):
                 signals: shape (signal_length, num_samples) or (num_samples, signal_length)
                 parameters: shape (num_samples, num_params)
                 If provided, overrides params_df and signals_df.
+            remove_erroneous (bool): Whether to remove signals with beta1_IC_b <= 0 (default: True)
         """
         self.batch_size = batch_size
         self._current_epoch = 0
@@ -104,7 +106,10 @@ class sTheta(BaseDataset, Dataset):
         self.parameter_names = parameters
         
         # Build the filtering mask from the full parameter table before column selection.
-        beta_keep_idx = params_df["beta1_IC_b"].values > 0
+        if remove_erroneous:
+            beta_keep_idx = params_df["beta1_IC_b"].values > 0
+        else:
+            beta_keep_idx = np.ones(len(params_df), dtype=bool)
 
         # keep only the parameters we want
         params_df = params_df[parameters]
@@ -171,7 +176,7 @@ class sTheta(BaseDataset, Dataset):
         self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)
 
 
-    def plot_signal_distribution(self, background=True, font_family="Serif", font_name="Times New Roman", fname=None):
+    def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):

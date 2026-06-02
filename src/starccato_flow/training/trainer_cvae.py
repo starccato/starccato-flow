@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,7 +43,9 @@ class ConditionalVAETrainer:
         curriculum: bool = True,
         toy: bool = True,
         max_grad_norm: float = 1.0,
-        varying_param_index: int = 0
+        varying_param_index: int = 0,
+        theta_label: Optional[str] = None,
+        theta_param_index: Optional[int] = None
     ):
         self.y_length = y_length
         self.hidden_dim = hidden_dim
@@ -59,6 +62,8 @@ class ConditionalVAETrainer:
         self.curriculum = curriculum
         self.max_grad_norm = max_grad_norm
         self.varying_param_index = varying_param_index
+        self.theta_label = theta_label
+        self.theta_param_index = theta_param_index
         self.device = DEVICE
 
         # Create train/val split using shared utility function
@@ -94,6 +99,7 @@ class ConditionalVAETrainer:
         print("=" * 50)
 
         os.makedirs(outdir, exist_ok=True)
+        os.makedirs(os.path.join(outdir, "cvae"), exist_ok=True)
         _set_seed(self.seed)
 
         # Initialize Conditional VAE
@@ -205,8 +211,8 @@ class ConditionalVAETrainer:
             kld_loss = 0
             total_samples = 0
 
-            self.val_loader.dataset.set_epoch(epoch)
-            self.train_loader.dataset.set_epoch(epoch)
+            # self.val_loader.dataset.set_epoch(epoch)
+            # self.train_loader.dataset.set_epoch(epoch)
 
             for signal, noisy_signal, params in self.train_loader:
                 signal = signal.view(signal.size(0), -1).to(DEVICE)
@@ -273,7 +279,9 @@ class ConditionalVAETrainer:
                     plot_reconstruction(
                         original=val_signal[0].cpu().numpy(),
                         reconstructed=recon[0].cpu().numpy(),
-                        max_value=self.training_dataset.max_strain / TEN_KPC,
+                        max_value=self.validation_dataset.max_strain / TEN_KPC,
+                        font_family="Serif",
+                        font_name="Times New Roman",
                     )
 
                     # Generate signals conditioned on fixed parameters
@@ -341,10 +349,10 @@ class ConditionalVAETrainer:
                 plot_signal_grid(
                     signals=generated_signals / TEN_KPC,
                     noisy_signals=None,
-                    max_value=self.training_dataset.max_strain,
+                    max_value=self.validation_dataset.max_strain,
                     num_cols=4,
                     num_rows=4,
-                    fname=f"plots/cvae_generated_signals_epoch_{epoch+1}.svg",
+                    fname=os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg"),
                     background="black",
                     generated=True
                 )
@@ -404,7 +412,7 @@ class ConditionalVAETrainer:
                 plt.suptitle(f'CVAE Latent Space (Epoch {epoch+1})', fontsize=14, color='white')
                 plt.tight_layout()
                 plt.savefig(
-                    f'plots/cvae_latent_space_epoch_{epoch+1}.svg',
+                    os.path.join(self.outdir, "cvae", f'cvae_latent_space_epoch_{epoch+1}.svg'),
                     bbox_inches='tight',
                     dpi=150,
                     facecolor='black',
@@ -412,7 +420,7 @@ class ConditionalVAETrainer:
                 )
                 plt.close()
                 
-                print(f"  Saved latent space plot to plots/cvae_latent_space_epoch_{epoch+1}.svg")
+                print(f"  Saved latent space plot to {os.path.join(self.outdir, 'cvae', f'cvae_latent_space_epoch_{epoch+1}.svg')}")
 
 
         runtime = (time.time() - t0) / 60
@@ -478,7 +486,7 @@ class ConditionalVAETrainer:
             train_losses=self.avg_total_losses,
             val_losses=self.avg_total_losses_val,
             background=background,
-            fname="plots/cvae_total_loss.svg"
+            fname=os.path.join(self.outdir, "cvae", "cvae_total_loss.svg")
         )
         
         # Plot reconstruction losses
@@ -487,7 +495,7 @@ class ConditionalVAETrainer:
             train_losses=self.avg_reproduction_losses,
             val_losses=self.avg_reproduction_losses_val,
             background=background,
-            fname="plots/cvae_reconstruction_loss.svg"
+            fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction_loss.svg")
         )
         
         # Plot KLD losses
@@ -496,7 +504,7 @@ class ConditionalVAETrainer:
             train_losses=self.avg_kld_losses,
             val_losses=self.avg_kld_losses_val,
             background=background,
-            fname="plots/cvae_kld_loss.svg"
+            fname=os.path.join(self.outdir, "cvae", "cvae_kld_loss.svg")
         )
 
     @property

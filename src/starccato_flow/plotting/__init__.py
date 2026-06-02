@@ -41,8 +41,8 @@ def set_plot_style(background: str = "white", font_family: str = "serif", font_n
         'axes.labelcolor': text_color,
         'xtick.color': text_color,
         'ytick.color': text_color,
-        'font.family': font_family,
-        f'font.{font_family}': [font_name],
+        'font.family': font_family.lower(),
+        f'font.{font_family.lower()}': [font_name],
         'font.size': DEFAULT_FONT_SIZE
     })
 

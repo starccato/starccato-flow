@@ -110,13 +110,13 @@ def plot_parameter_distribution_grid(
     font_name: str = "Avenir",
     color: Optional[str] = None,
     alpha: float = 0.8,
-    figsize: Tuple[float, float] = (20, 5)
+    figsize: Tuple[float, float] = (12, 10)
 ) -> plt.Figure:
-    """Plot distributions for multiple parameters in a 1x4 grid (one row).
+    """Plot distributions for multiple parameters in a 2x2 grid.
     
     Args:
         parameters_dict (dict): Dictionary mapping parameter names to value arrays
-        labels_dict (Optional[dict]): Dictionary mapping parameter names to LaTeX labels
+        labels_dict (Optional[dict]): Dictionary mapping parameter names to LaTeX labels. If None, uses PARAMETER_LABELS.
         ranges_dict (Optional[dict]): Dictionary mapping parameter names to (min, max) tuples
         bins (int): Number of histogram bins
         fname (Optional[str]): Filename to save plot
@@ -132,7 +132,7 @@ def plot_parameter_distribution_grid(
     """
     set_plot_style(background, font_family, font_name)
     
-    fig, axes = plt.subplots(1, 4, figsize=figsize)
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
     axes = axes.flatten()
     
     if color is None:
@@ -160,6 +160,8 @@ def plot_parameter_distribution_grid(
         
         if labels_dict and param_name in labels_dict:
             param_label = labels_dict[param_name]
+        elif param_name in PARAMETER_LABELS:
+            param_label = PARAMETER_LABELS[param_name]
         else:
             param_label = param_name
         

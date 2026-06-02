@@ -350,72 +350,6 @@ class FlowMatchingTrainerMulti:
                 bins=40
             )
 
-    def _sample_sky_params_for_epoch(
-        self,
-        epoch: int,
-        n_samples: int,
-        exponential: bool = True,
-        validation: bool = False,
-        epoch_dir: str = None,
-    ):
-        """Sample RA/Dec/d sky parameters for an epoch distance shell.
-
-        When ``exponential`` is True, samples are weighted to favor larger
-        distances in the shell (near ``max_kiloparsec``), with the weighting
-        strength increasing over epochs.
-        """
-        min_kiloparsec = 0.0
-        max_kiloparsec = min(20.0, (epoch / self.num_epochs) * 20.0 + 1.0)
-        distance_mask = (
-            (self.supernovae.distances >= min_kiloparsec)
-            & (self.supernovae.distances <= max_kiloparsec)
-        )
-        candidate_indices = np.where(distance_mask)[0]
-        if candidate_indices.size == 0:
-            raise ValueError(
-                f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
-            )
-
-        sample_probs = None
-        if exponential:
-            candidate_distances = self.supernovae.distances[candidate_indices]
-            shell_width = max(max_kiloparsec - min_kiloparsec, 1e-8)
-            normalized_distance = np.clip((candidate_distances - min_kiloparsec) / shell_width, 0.0, 1.0)
-
-            # Increase bias through training so later epochs concentrate more strongly
-            # near the far edge of each shell.
-            epoch_fraction = (epoch + 1) / max(self.num_epochs, 1)
-            growth = 1.0 + 7.0 * epoch_fraction
-            weights = np.exp(growth * normalized_distance)
-            weight_sum = np.sum(weights)
-            if np.isfinite(weight_sum) and weight_sum > 0.0:
-                sample_probs = weights / weight_sum
-
-        sampled_indices = np.random.choice(
-            candidate_indices,
-            size=n_samples,
-            replace=candidate_indices.size < n_samples,
-            p=sample_probs,
-        )
-        if epoch_dir is not None:
-            os.makedirs(epoch_dir, exist_ok=True)
-            if validation == True:
-                filename_suffix = "validation"
-            else:
-                filename_suffix = "training"
-            self.supernovae.plot_galactic_distribution(
-                fname_xy=os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_{filename_suffix}_galactic_xy.png"),
-                background="black",
-                transparent=False,
-                light_year=False,
-                highlight_indices=sampled_indices,
-                show=False,
-                dpi=150,
-            )
-        sampled_sky_params = self.supernovae.get_sky_params(indices=sampled_indices)
-
-        return sampled_sky_params[:, 0], sampled_sky_params[:, 1], sampled_sky_params[:, 2]
-
     def _sample_dataset_batches(self, dataset, n_samples: int):
         """Sample n_samples from a base dataset and return batched signal/parameter lists."""
         signals = []
@@ -582,9 +516,10 @@ class FlowMatchingTrainerMulti:
                 "persistent_workers": False,
             }
 
-            sampled_ra, sampled_dec, sampled_d = self._sample_sky_params_for_epoch(
+            sampled_ra, sampled_dec, sampled_d = self.supernovae.sample_supernovae_for_epoch(
                 epoch,
                 self.samples_per_epoch,
+                self.num_epochs,
                 exponential=True,
                 validation=False,
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
@@ -653,7 +588,14 @@ class FlowMatchingTrainerMulti:
             val_samples = 0
             with torch.no_grad():
                 n_val_signals = int(self.validation_dataset.signals.shape[1])
-                val_ra, val_dec, val_d = self._sample_sky_params_for_epoch(epoch, n_val_signals, exponential=True, validation=True, epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"))
+                val_ra, val_dec, val_d = self.supernovae.sample_supernovae_for_epoch(
+                    epoch, 
+                    n_val_signals, 
+                    self.num_epochs, 
+                    exponential=True, 
+                    validation=True, 
+                    epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data")
+                )
                 signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
                 self.h_theta_multi_val = hThetaMulti(
                     s=signals_val,
