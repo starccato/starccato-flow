@@ -527,6 +527,34 @@ class hThetaMulti(Dataset):
         params = (params_norm + 1) / 2 * param_range + self.min_theta
         return params
     
+    def project_signal(self, h_plus, h_cross, psi, ra, dec, gps):
+        """Project a single-channel signal to multiple detectors using antenna patterns.
+        Args:
+            h_plus: The plus-polarization signal (shape: (Y_LENGTH,))
+            h_cross: The cross-polarization signal (shape: (Y_LENGTH,))
+        Returns:
+            Array of shape (num_detectors, Y_LENGTH)
+        """
+        h_multi = np.zeros((self.num_detectors, Y_LENGTH), dtype=np.float32)
+        for j, ifo in enumerate(self.ifos):
+            F_plus = ifo.antenna_response(ra, dec, gps, psi, mode='plus')
+            F_cross = ifo.antenna_response(ra, dec, gps, psi, mode='cross')
+            h_multi[j, :] = (F_plus * h_plus + F_cross * h_cross).astype(np.float32)
+        return h_multi
+    
+    def apply_time_delay(self, signal, ra, dec, gps):
+        """Apply time delays to all detector signals using interpolation."""
+        dts = np.array(
+            [ifo.time_delay_from_geocenter(ra, dec, gps) for ifo in self.ifos],
+            dtype=np.float64,
+        )
+        relative_dts = dts - dts.min()
+        t = np.arange(Y_LENGTH) * SAMPLING_RATE
+        h_delayed = np.zeros_like(signal)
+        for j, dt_rel in enumerate(relative_dts):
+            h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
+        return h_delayed
+    
     def _project_to_detectors(self) -> np.ndarray:
         """Project single-channel signals to multiple detectors using antenna patterns.
         
@@ -534,58 +562,20 @@ class hThetaMulti(Dataset):
             Array of shape (n_samples, num_detectors, signal_length)
         """
         n_samples = self.s.shape[1]
-        multi_channel = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
-        t = np.arange(Y_LENGTH) * SAMPLING_RATE
+        h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
+        h_delayed = np.zeros_like(h)
+        h_rescaled = np.zeros_like(h)
         h_cross = np.zeros(Y_LENGTH, dtype=np.float32) # assume cross-polarization is zero for these templates
         
-        print(f"Projecting signals to {self.num_detectors} detectors...")
+        # print(f"Projecting signals to {self.num_detectors} detectors...")
         
         for i in range(n_samples):
-            h_plus = self.s[:, i]  # Shape: (Y_LENGTH,)
-
-            psi = float(self.polar_angle[i])
-            gps = self.gps_time
-
-            # compute detector delays first; use relative stream delays.
-            dts = np.array(
-                [ifo.time_delay_from_geocenter(self.ra[i], self.dec[i], gps) for ifo in self.ifos],
-                dtype=np.float64,
-            )
-            dt_min = dts.min()
-            relative_dts = dts - dt_min
-
-            # Distance scaling relative to 10 kpc reference waveforms.
-            scale = 10.0 / max(self.d[i], 1e-8)
-            
-            for j, (ifo, dt_rel) in enumerate(zip(self.ifos, relative_dts)):
-                # compute bilby antenna response patterns
-                F_plus = ifo.antenna_response(
-                    self.ra[i],
-                    self.dec[i],
-                    gps,
-                    psi,
-                    mode='plus',
-                )
-                F_cross = ifo.antenna_response(
-                    self.ra[i],
-                    self.dec[i],
-                    gps,
-                    psi,
-                    mode='cross',
-                )
-
-                # Push later-arriving detectors right in stream (relative delay).
-                h_plus_shifted = np.interp(t - dt_rel, t, h_plus, left=0.0, right=0.0)
-                h_cross_shifted = np.interp(t - dt_rel, t, h_cross, left=0.0, right=0.0)
-
-                # Combine + and x polarizations (x set to 0 by default template).
-                h_signal = scale * (F_plus * h_plus_shifted + F_cross * h_cross_shifted)
-                # h_signal = F_plus * h_plus_shifted + F_cross * h_cross_shifted
-                multi_channel[i, j, :] = h_signal.astype(np.float32)
-        
-        print(f"✓ Projected signals to {self.num_detectors} detectors")
-        
-        return multi_channel
+            h_plus = self.s[:, i]
+            h[i, :, :] = self.project_signal(h_plus, h_cross, self.polar_angle[i], self.ra[i], self.dec[i], self.gps_time)
+            h_delayed[i, :, :] = self.apply_time_delay(h[i, :, :], self.ra[i], self.dec[i], self.gps_time)
+            h_rescaled[i, :, :] = h_delayed[i, :, :] * (10.0 / max(self.d[i], 1e-8))
+                
+        return h_rescaled
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, ...]:
         """Get a single sample (multi-channel signal, parameters).

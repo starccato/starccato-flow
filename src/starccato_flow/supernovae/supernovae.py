@@ -5,6 +5,8 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from ..plotting.analysis import plot_surface_density
+
 
 class Supernovae:
     """Manages supernova locations in galactic and equatorial coordinates."""
@@ -36,6 +38,8 @@ class Supernovae:
         
         if locations_file is not None:
             self.load_locations(locations_file, limit)
+        else:
+            self.generate_locations(num_supernovae=2000000, seed=42)  # Generate a default set of locations if no file is provided
     
     def load_locations(self, filepath: str, limit: Optional[int] = None) -> None:
         """Load supernova locations from CSV file.
@@ -61,8 +65,25 @@ class Supernovae:
         self._compute_distances()
         
         print(f"✓ Loaded {len(self._galactic_coords)} supernova locations from {filepath}")
+
+    def _plot_surface_density(self, fname: str, font_family: str = "serif", font_name: str = "Times New Roman", transparent: bool = True) -> None:
+        """Plot surface density of supernovae in the galactic plane."""
+        
+        plot_surface_density(
+            fname=fname,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=transparent
+        )
+
+    def radial_pdf(self, r):
+            """Radial distribution of galactic supernovae."""
+            return self.A * np.sin((np.pi * r) / self.r_0 + self.theta_0) * np.exp(-self.beta * r)
+        
+    def pdf_2d(self, r):
+            """2D PDF accounting for area element in polar coordinates."""
+            return self.radial_pdf(r) * r
     
-    # not sure how it go this source
     def generate_locations(self, num_supernovae: int, seed: Optional[int] = None) -> np.ndarray:
         """Generate galactic supernova locations using rejection sampling.
         
@@ -76,23 +97,14 @@ class Supernovae:
         if seed is not None:
             np.random.seed(seed)
         
-        # Radial distribution parameters (Faucher-Giguère & Kaspi 2006)
-        A = 1.96
-        r_0 = 17.2
-        theta_0 = 0.08
-        beta = 0.13
-        
-        def radial_pdf(r):
-            """Radial distribution of galactic supernovae."""
-            return A * np.sin((np.pi * r) / r_0 + theta_0) * np.exp(-beta * r)
-        
-        def pdf_2d(r):
-            """2D PDF accounting for area element in polar coordinates."""
-            return radial_pdf(r) * r
+        self.A = 1.96
+        self.r_0 = 17.2
+        self.theta_0 = 0.08
+        self.beta = 0.13
         
         # Find maximum for rejection sampling
         r_test = np.linspace(0.01, 16.8, 1000)
-        pdf_max = np.max(np.abs(pdf_2d(r_test)))
+        pdf_max = np.max(np.abs(self.pdf_2d(r_test)))
         
         # Rejection sampling for radial distances
         r_samples = []
@@ -101,7 +113,7 @@ class Supernovae:
             r_proposal = np.random.uniform(0.01, 16.8, num_supernovae * 2)
             u = np.random.uniform(0, pdf_max, num_supernovae * 2)
             # Accept where u < pdf_2d(r)
-            accepted = r_proposal[u < np.abs(pdf_2d(r_proposal))]
+            accepted = r_proposal[u < np.abs(self.pdf_2d(r_proposal))]
             r_samples.extend(accepted)
         
         r = np.array(r_samples[:num_supernovae])
@@ -122,9 +134,7 @@ class Supernovae:
         # Compute derived quantities
         self._compute_equatorial_coordinates()
         self._compute_distances()
-        
-        return self._galactic_coords
-    
+            
     def sample_locations(self, num_supernovae: int, min_kiloparsec: float = 0.0, max_kiloparsec: float = 16800.0) -> np.ndarray:
         """Sample supernova locations from region between min_kiloparsec and max_kiloparsec from Earth."""
         selected_region = self._galactic_coords[(self._distances >= min_kiloparsec) & (self._distances <= max_kiloparsec)]

@@ -488,11 +488,12 @@ class ConditionalVAETrainer:
     def _plot_reconstruction(self, signal_idx=0):
         """Plot reconstruction of a single signal from the validation set."""
         self.cvae.eval()
-        val_signal, _, val_params = self.val_loader.dataset.__getitem__(signal_idx)
+        val_signal, noisy_signal, val_params = self.val_loader.dataset.__getitem__(signal_idx)
         val_signal = val_signal.view(1, -1).to(DEVICE)
+        val_noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
         val_params = val_params.view(1, -1).to(DEVICE)
 
-        recon, _, _ = self.cvae(val_signal, val_params)
+        recon, _, _ = self.cvae(val_noisy_signal, val_params)
 
         plot_reconstruction(
             original=val_signal.cpu().numpy(),
@@ -562,7 +563,7 @@ class ConditionalVAETrainer:
         print(f"  Validation set: {val_signals.shape[1]} real signals for final testing")
     
     @classmethod
-    def load(
+    def load_model(
         cls,
         model_path: str,
         y_length: int = Y_LENGTH,

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 import matplotlib.ticker as mticker
+from matplotlib import rcParams
 import numpy as np
 import pandas as pd
 import torch
@@ -24,6 +25,60 @@ from ..utils.plotting_defaults import (
 )
 from . import set_plot_style, get_time_axis
 from .signals import plot_signal_grid, plot_candidate_signal
+
+def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False):
+    """Plot surface density of supernovae in the galactic plane."""
+
+    plt.rcParams["font.family"] = font_family
+    plt.rcParams["font.size"] = 18
+    if font_family == "sans-serif":
+        plt.rcParams["font.sans-serif"] = [font_name]
+    elif font_family == "serif":
+        plt.rcParams["font.serif"] = [font_name]
+
+    # Generate radius values
+    r = np.linspace(0, 30, 1000)
+
+    # Model parameters
+    A = 1.96
+    r_0 = 17.2
+    theta_0 = 0.08
+    beta = 0.13
+
+    # Surface density
+    surface_density = (
+        A
+        * np.sin((np.pi * r) / r_0 + theta_0)
+        * np.exp(-beta * r)
+    )
+
+    # Create figure and axes
+    _, ax = plt.subplots(figsize=(8, 6), facecolor="white")
+
+    ax.plot(r, surface_density, color="lightblue", linewidth=2)
+
+    # Put ticks only on visible axes
+    ax.xaxis.set_ticks_position("bottom")
+    ax.yaxis.set_ticks_position("left")
+
+    # Turn off grid
+    ax.grid(False)
+
+    ax.set_xlabel("r (kpc)")
+    ax.set_ylabel("Surface Density")
+
+    ax.set_xlim(0, 30)
+    ax.set_ylim(0, 1.0)
+
+    if fname:
+        plt.savefig(
+            fname,
+            dpi=300,
+            bbox_inches="tight",
+            transparent=transparent
+        )
+
+    plt.show()
 
 
 def plot_galactic_distribution(
@@ -96,7 +151,9 @@ def plot_galactic_distribution(
         highlight_coords = highlight_coords * coord_scale
 
     x, y, z = galactic_coords.T
-    xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
+    # xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
+    # print(xy_radius)
+    xy_radius = 33
     xz_radius = max(np.max(np.abs(x)), np.max(np.abs(z)), abs(sun_location[0]), abs(sun_location[2]))
     xy_radius *= 1.02
     xz_radius *= 1.02
@@ -131,7 +188,7 @@ def plot_galactic_distribution(
             spine.set_color(text_color)
         axes.spines["top"].set_visible(False)
         axes.spines["right"].set_visible(False)
-        axes.set_aspect("equal")
+        # axes.set_aspect("equal")
         if light_year:
             axes.xaxis.set_major_locator(mticker.MultipleLocator(20_000))
             axes.yaxis.set_major_locator(mticker.MultipleLocator(20_000))
