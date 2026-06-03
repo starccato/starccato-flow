@@ -11,6 +11,8 @@ import torch
 from torch.utils.data import Dataset
 from scipy.interpolate import interp1d
 
+from starccato_flow.plotting.signals import plot_detector_signal_channels
+
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
@@ -554,6 +556,49 @@ class hThetaMulti(Dataset):
         for j, dt_rel in enumerate(relative_dts):
             h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
         return h_delayed
+    
+    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, font_family="serif", font_name="Times New Roman"):
+        n_samples = self.s.shape[1]
+        h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
+        h_delayed = np.zeros_like(h)
+        h_rescaled = np.zeros_like(h)
+        h_cross = np.zeros(Y_LENGTH, dtype=np.float32) # assume cross-polarization is zero for these templates      
+        h_plus = self.s[:, signal_idx]
+
+        h = self.project_signal(h_plus, h_cross, self.polar_angle[signal_idx], self.ra[signal_idx], self.dec[signal_idx], self.gps_time)
+        h_delayed = self.apply_time_delay(h, self.ra[signal_idx], self.dec[signal_idx], self.gps_time)
+        h_rescaled = h_delayed * (10.0 / max(self.d[signal_idx], 1e-8))
+
+        # h
+        plot_detector_signal_channels(
+            signals=h / TEN_KPC,
+            max_value=self.max_strain,
+            detector_labels=self.detectors,
+            background="white",
+            fname=f_name_h,
+            font_family=font_family,
+            font_name=font_name
+        )
+        # h_delayed
+        plot_detector_signal_channels(
+            signals=h_delayed / TEN_KPC,
+            max_value=self.max_strain,
+            detector_labels=self.detectors,
+            background="white",
+            fname=f_name_h_delayed,
+            font_family=font_family,
+            font_name=font_name
+        )
+        # h_rescaled
+        plot_detector_signal_channels(
+            signals=h_rescaled / TEN_KPC,
+            max_value=self.max_strain,
+            detector_labels=self.detectors,
+            background="white",
+            fname=f_name_h_delayed_rescaled,
+            font_family=font_family,
+            font_name=font_name
+        )
     
     def _project_to_detectors(self) -> np.ndarray:
         """Project single-channel signals to multiple detectors using antenna patterns.

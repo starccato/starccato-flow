@@ -658,6 +658,55 @@ class FlowMatchingTrainerMulti:
         self.save_models()
         self.display_results()  
 
+    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed):
+        signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
+        params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
+        d = 5 # kpc
+        
+        distance_mask = (
+            (self.supernovae.distances >= d - 0.25)
+            & (self.supernovae.distances <= d + 0.25)
+        )
+        candidate_indices = np.where(distance_mask)[0]
+
+        # Randomly select one supernova at that distance
+        candidate_index = np.random.choice(candidate_indices)
+        sampled_ra = np.array([self.supernovae.ra[candidate_index]])
+        sampled_dec = np.array([self.supernovae.dec[candidate_index]])
+        sampled_d = np.array([self.supernovae.distances[candidate_index]])
+        
+        # Wrap raw signal and params in tensors for hThetaMulti
+        signals = [torch.tensor(signal_raw, dtype=torch.float32)]
+        params_np = np.asarray(params)
+        if params_np.ndim == 1:
+            params_np = params_np.reshape(1, -1)
+
+        temp_h_theta_multi = hThetaMulti(
+            s=signals,  # List of tensors with RAW signals
+            max_strain=self.validation_dataset.max_strain,
+            theta=params_np,  # Tensor
+            min_theta=self.validation_dataset.min_theta,
+            max_theta=self.validation_dataset.max_theta,
+            ra=sampled_ra,
+            dec=sampled_dec,
+            d=sampled_d,
+            batch_size=self.batch_size,
+            detector_noise_on=True,  # Add fresh detector noise, consistent with train()
+            random_polarization=True,
+            seed=1,
+            intrinsic_param_names=self.intrinsic_params
+        )
+
+        temp_h_theta_multi._plot_project_to_detectors_steps(
+            signal_idx=0,
+            f_name_h=f_name_h,
+            f_name_h_delayed=f_name_h_delayed,
+            f_name_h_delayed_rescaled=f_name_h_rescaled_delayed,
+            font_family="Serif",
+            font_name="Times New Roman"
+        )
+
+
     def plot_corner_sampled_signal(
         self,
         epoch: int = 0,
