@@ -58,6 +58,71 @@ class ConditionalVAE(nn.Module):
         z = self.reparameterization(mean, torch.exp(0.5 * log_var))  # takes exponential function (log var -> var)
         d_hat = self.decoder(z, params)
         return d_hat, mean, log_var
+    
+    def get_architecture_table(self) -> str:
+        """Generate a LaTeX table of the CVAE architecture for publication.
+        
+        Automatically extracts architecture parameters from the model.
+        
+        Returns:
+            LaTeX code for the architecture table
+        """
+        z_dim = self.z_dim
+        param_dim = self.param_dim
+        hidden_dim = self.encoder.signal_fc[0].out_features
+        y_length = self.decoder.FC_output.out_features
+        param_embed_dim = z_dim * 2
+        
+        latex = r"\begin{table}[h]" + "\n"
+        latex += r"\centering" + "\n"
+        latex += r"\caption{Conditional Variational Autoencoder (CVAE) Architecture}" + "\n"
+        latex += r"\label{tab:cvae_architecture}" + "\n"
+        latex += r"\begin{tabular}{llr}" + "\n"
+        latex += r"\toprule" + "\n"
+        latex += r"\textbf{Component} & \textbf{Layer} & \textbf{Output Dimension} \\" + "\n"
+        latex += r"\midrule" + "\n"
+        
+        # Encoder section
+        latex += r"\multicolumn{3}{l}{\textit{Encoder}} \\" + "\n"
+        latex += r"\quad Input Signal & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Parameter Embed & Linear & $" + str(hidden_dim // 2) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim // 2) + r"$ \\" + "\n"
+        latex += r"\quad & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Concatenate & Concat & $" + str(2*hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Combined FC & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & Dropout(0.1) & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Mean & Linear & $" + str(z_dim) + r"$ \\" + "\n"
+        latex += r"\quad Log-Variance & Linear & $" + str(z_dim) + r"$ \\" + "\n"
+        latex += r"\midrule" + "\n"
+        
+        # Latent space section
+        latex += r"\multicolumn{3}{l}{\textit{Latent Space}} \\" + "\n"
+        latex += r"\quad Reparameterization & Sample & $" + str(z_dim) + r"$ \\" + "\n"
+        latex += r"\midrule" + "\n"
+        
+        # Decoder section
+        latex += r"\multicolumn{3}{l}{\textit{Decoder}} \\" + "\n"
+        latex += r"\quad Parameter Embed & Linear & $" + str(hidden_dim // 2) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim // 2) + r"$ \\" + "\n"
+        latex += r"\quad & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & Linear & $" + str(param_embed_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(param_embed_dim) + r"$ \\" + "\n"
+        latex += r"\quad Concatenate & Concat & $" + str(z_dim + param_embed_dim) + r"$ \\" + "\n"
+        latex += r"\quad & Dropout(0.2) & $" + str(z_dim + param_embed_dim) + r"$ \\" + "\n"
+        latex += r"\quad Hidden 1 & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Hidden 2 & Linear & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad & LeakyReLU & $" + str(hidden_dim) + r"$ \\" + "\n"
+        latex += r"\quad Output & Linear & $" + str(y_length) + r"$ \\" + "\n"
+        latex += r"\bottomrule" + "\n"
+        latex += r"\end{tabular}" + "\n"
+        latex += r"\end{table}" + "\n"
+        
+        return latex
 
 class ConditionalDecoder(nn.Module):
     """Conditional decoder network that maps latent vectors + parameters back to signal space."""

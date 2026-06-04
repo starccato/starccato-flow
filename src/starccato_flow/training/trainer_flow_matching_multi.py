@@ -1,7 +1,10 @@
 import os
 import time
+import csv
 
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -502,6 +505,7 @@ class FlowMatchingTrainerMulti:
 
         self.avg_mse_losses = []
         self.avg_mse_losses_val = []
+        self.flow_gradient_norms = []  # Track gradient norms for visualization
 
         epoch_bar = trange(self.num_epochs, desc="Epochs", position=0, leave=True)
         for epoch in epoch_bar:
@@ -572,7 +576,8 @@ class FlowMatchingTrainerMulti:
                 loss.backward()  # predict parameter velocity given signal
                 
                 # Clip gradients to prevent explosion
-                torch.nn.utils.clip_grad_norm_(self.flow.parameters(), self.max_grad_norm)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.flow.parameters(), self.max_grad_norm)
+                self.flow_gradient_norms.append(float(grad_norm))
                 
                 self.optimizer.step()
 
@@ -656,7 +661,8 @@ class FlowMatchingTrainerMulti:
         print("Plotting training/validation loss curves...")
         # Optionally: plot final results or save model
         self.save_models()
-        self.display_results()  
+        self.save_losses()
+        self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
     def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
@@ -920,51 +926,41 @@ class FlowMatchingTrainerMulti:
         # Extract only the requested parameter indices
         return full_params[:, self.param_extract_indices]
     
-    def display_results(self, background="black"):
+    def display_results(self, background="black", fname=None):
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background, fname=os.path.join(self.outdir, "flow_matching", "training_loss_curve.png"))        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background, fname=fname)        
         
-        # # Plot VAE gradient norms if available
-        # if hasattr(self, 'vae_gradient_norms'):
-        #     if len(self.vae_gradient_norms) > 0:
-        #         print("\nPlotting VAE Gradient Norms...")
-        #         fig, ax = plt.subplots(figsize=(10, 6))
-        #         ax.plot(self.vae_gradient_norms, label='VAE Gradient Norm', color='#3498db', linewidth=2)
-        #         ax.set_xlabel('Epoch', size=16)
-        #         ax.set_ylabel('Gradient Norm', size=16)
-        #         ax.set_title('VAE Gradient Norms During Training', size=18)
-        #         ax.legend(fontsize=12)
-        #         ax.grid(True, alpha=0.3)
-        #         ax.axhline(y=self.max_grad_norm, color='red', linestyle='--', alpha=0.5, label=f'Clipping Threshold ({self.max_grad_norm})')
-        #         ax.legend(fontsize=12)
-        #         plt.tight_layout()
-        #         plt.show()
-        
-        # # Plot Flow NLL losses if available
-        # if hasattr(self, 'flow_train_nll_losses') and hasattr(self, 'flow_val_nll_losses'):
-        #     if len(self.flow_train_nll_losses) > 0:
-        #         print("\nPlotting Flow NLL Losses...")
-        #         plot_loss(
-        #             train_losses=self.flow_train_nll_losses, 
-        #             val_losses=self.flow_val_nll_losses,
-        #             background="black",
-        #             fname="plots/flow_loss_curve.svg"
-        #         )
-        
-        # # Plot Flow gradient norms if available
-        # if hasattr(self, 'flow_gradient_norms'):
-        #     if len(self.flow_gradient_norms) > 0:
-        #         print("\nPlotting Flow Gradient Norms...")
-        #         fig, ax = plt.subplots(figsize=(10, 6))
-        #         ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
-        #         ax.set_xlabel('Epoch', size=16)
-        #         ax.set_ylabel('Gradient Norm', size=16)
-        #         ax.set_title('Flow Gradient Norms During Training', size=18)
-        #         ax.legend(fontsize=12)
-        #         ax.grid(True, alpha=0.3)
-        #         ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
-        #         plt.tight_layout()
-        #         plt.show()
+        # Plot Flow gradient norms if available
+        if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
+            print("\nPlotting Flow Gradient Norms...")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
+            ax.set_xlabel('Epoch', size=16)
+            ax.set_ylabel('Gradient Norm', size=16)
+            ax.set_title('Flow Gradient Norms During Training', size=18)
+            ax.legend(fontsize=12)
+            ax.grid(True, alpha=0.3)
+            ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
+            
+            # Set background color
+            ax.set_facecolor(background)
+            fig.patch.set_facecolor(background)
+            ax.spines['bottom'].set_color('white' if background == 'black' else 'black')
+            ax.spines['left'].set_color('white' if background == 'black' else 'black')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.tick_params(colors='white' if background == 'black' else 'black')
+            
+            plt.tight_layout()
+            
+            # Save if fname provided
+            if fname:
+                grad_fname = fname.replace('.png', '_gradient_norms.png')
+                plt.savefig(grad_fname, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
+                print(f"Saved gradient norms plot to {grad_fname}")
+            
+            plt.show()
+            plt.close()
         
     @property
     def save_fname(self):
@@ -973,6 +969,78 @@ class FlowMatchingTrainerMulti:
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
         print(f"Saved Flow model to {self.save_fname}")
+    
+    def save_losses(self, fname: str = None):
+        """Save training and validation losses to a CSV file.
+        
+        Args:
+            fname: Output CSV filename. If None, saves to outdir/flow_matching/losses.csv
+        """
+        if fname is None:
+            fname = os.path.join(self.outdir, "flow_matching", "losses.csv")
+        
+        os.makedirs(os.path.dirname(fname), exist_ok=True)
+        
+        # Create DataFrame with losses
+        data = {
+            'epoch': np.arange(len(self.avg_mse_losses)),
+            'train_loss': self.avg_mse_losses,
+            'val_loss': self.avg_mse_losses_val
+        }
+        
+        # Add gradient norms if available (pad with NaN if fewer entries)
+        if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
+            # Average gradient norms per epoch (there are many batches per epoch)
+            samples_per_epoch = self.samples_per_epoch
+            batch_size = self.batch_size
+            batches_per_epoch = max(1, samples_per_epoch // batch_size)
+            
+            epoch_avg_grads = []
+            for epoch_idx in range(len(self.avg_mse_losses)):
+                start_idx = epoch_idx * batches_per_epoch
+                end_idx = min((epoch_idx + 1) * batches_per_epoch, len(self.flow_gradient_norms))
+                if start_idx < len(self.flow_gradient_norms):
+                    epoch_avg_grads.append(np.mean(self.flow_gradient_norms[start_idx:end_idx]))
+                else:
+                    epoch_avg_grads.append(np.nan)
+            data['avg_gradient_norm'] = epoch_avg_grads
+        
+        df = pd.DataFrame(data)
+        df.to_csv(fname, index=False)
+        print(f"Saved losses to {fname}")
+        return fname
+    
+    def load_losses(self, fname: str = None) -> dict:
+        """Load training and validation losses from a CSV file.
+        
+        Args:
+            fname: Input CSV filename. If None, loads from outdir/flow_matching/losses.csv
+            
+        Returns:
+            Dictionary with keys 'train_loss' and 'val_loss' containing the loss arrays
+        """
+        if fname is None:
+            fname = os.path.join(self.outdir, "flow_matching", "losses.csv")
+        
+        if not os.path.exists(fname):
+            print(f"Losses file not found at {fname}")
+            return None
+        
+        df = pd.read_csv(fname)
+        self.avg_mse_losses = df['train_loss'].values.tolist()
+        self.avg_mse_losses_val = df['val_loss'].values.tolist()
+        
+        # Load gradient norms if available
+        if 'avg_gradient_norm' in df.columns:
+            self.flow_gradient_norms = df['avg_gradient_norm'].dropna().values.tolist()
+        
+        print(f"Loaded {len(self.avg_mse_losses)} training loss entries from {fname}")
+        
+        return {
+            'train_loss': self.avg_mse_losses,
+            'val_loss': self.avg_mse_losses_val,
+            'avg_gradient_norm': self.flow_gradient_norms if hasattr(self, 'flow_gradient_norms') else None
+        }
 
     def export_strain_and_parameters(self, signal_idx: int, fname_prefix: str, ra: float = None, dec: float = None, d: float = None):
         """Export the signal and parameters for a specific index to CSV files (one per detector).
