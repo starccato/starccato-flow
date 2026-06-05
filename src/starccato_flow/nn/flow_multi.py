@@ -31,13 +31,16 @@ class FlowFCL(nn.Module):
         # Ensure t_start and t_end are on the same device as x_t
         t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
         t_end = t_end.to(x_t.device)
-        # TODO: implement another class with different ODE solvers
-        # Midpoint ODE solver, can use any other solver!
-        return x_t + (t_end - t_start) * self(
-            x_t + self(x_t, t_start, h) * (t_end - t_start) / 2,
-            t_start + (t_end - t_start) / 2,
-            h
-        )
+        
+        dt = t_end - t_start
+        
+        # RK4 (Runge-Kutta 4th order) ODE solver
+        k1 = self(x_t, t_start, h)
+        k2 = self(x_t + dt / 2 * k1, t_start + dt / 2, h)
+        k3 = self(x_t + dt / 2 * k2, t_start + dt / 2, h)
+        k4 = self(x_t + dt * k3, t_end, h)
+        
+        return x_t + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
 
 class FlowCNN(nn.Module):
@@ -78,12 +81,16 @@ class FlowCNN(nn.Module):
         # Ensure t_start and t_end are on the same device as x_t
         t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
         t_end = t_end.to(x_t.device)
-        # Midpoint ODE solver
-        return x_t + (t_end - t_start) * self(
-            x_t + self(x_t, t_start, h) * (t_end - t_start) / 2,
-            t_start + (t_end - t_start) / 2,
-            h
-        )
+        
+        dt = t_end - t_start
+        
+        # RK4 (Runge-Kutta 4th order) ODE solver
+        k1 = self(x_t, t_start, h)
+        k2 = self(x_t + dt / 2 * k1, t_start + dt / 2, h)
+        k3 = self(x_t + dt / 2 * k2, t_start + dt / 2, h)
+        k4 = self(x_t + dt * k3, t_end, h)
+        
+        return x_t + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
 
 # Default to FCL for backward compatibility
