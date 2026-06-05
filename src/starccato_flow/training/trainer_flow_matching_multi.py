@@ -42,7 +42,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
-        samples_per_epoch: int = 20000,
+        samples_per_epoch: int = 18000,
         validation_split: float = VALIDATION_SPLIT,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
@@ -592,25 +592,37 @@ class FlowMatchingTrainerMulti:
             val_total_loss = 0
             val_samples = 0
             with torch.no_grad():
-                n_val_signals = int(self.validation_dataset.signals.shape[1])
-                val_ra, val_dec, val_d = self.supernovae.sample_supernovae_for_epoch(
-                    epoch, 
-                    n_val_signals, 
-                    self.num_epochs, 
-                    exponential=True, 
-                    validation=True, 
-                    epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data")
+                n_val_signals = 2000
+                # val_ra, val_dec, val_d = self.supernovae.sample_supernovae_for_epoch(
+                #     epoch, 
+                #     n_val_signals, 
+                #     self.num_epochs, 
+                #     exponential=True, 
+                #     validation=True, 
+                #     epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data")
+                # )
+                # signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
+
+
+                val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
+                    epoch,
+                    n_val_signals,
+                    self.num_epochs,
+                    exponential=True,
+                    validation=True,
+                    epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
                 )
-                signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
+                val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)                
+                
                 self.h_theta_multi_val = hThetaMulti(
-                    s=signals_val,
+                    s=val_signals,
                     max_strain=self.validation_dataset.max_strain,
-                    theta=params_val,
+                    theta=val_params,
                     min_theta=self.validation_dataset.min_theta,
                     max_theta=self.validation_dataset.max_theta,
-                    ra=val_ra,
-                    dec=val_dec,
-                    d=val_d,
+                    ra=val_sampled_ra,
+                    dec=val_sampled_dec,
+                    d=val_sampled_d,
                     batch_size=self.batch_size,
                     detector_noise_on=True,
                     random_polarization=True,
