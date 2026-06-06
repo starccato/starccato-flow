@@ -16,6 +16,7 @@ from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, D
 from . import create_train_val_split, plot_signal_grid
 
 from ..plotting.signals import plot_reconstruction, plot_candidate_signal
+from ..plotting.latent import plot_latent_space_2d_3d
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -63,7 +64,8 @@ class ConditionalVAETrainer:
         self.max_grad_norm = max_grad_norm
         self.varying_param_index = varying_param_index
         self.theta_label = theta_label
-        self.theta_param_index = theta_param_index
+        # Use provided theta_param_index, or default to varying_param_index for display
+        self.theta_param_index = theta_param_index if theta_param_index is not None else varying_param_index
         self.device = DEVICE
 
         # Create train/val split using shared utility function
@@ -123,8 +125,7 @@ class ConditionalVAETrainer:
         self.fixed_noise = noise_samples.repeat(num_rows, 1).to(DEVICE)  # Shape: (16, z_dim)
         
         # Define parameter sets for rows (already in normalized space [-1, 1])
-        self.varying_param_index = 3
-        # Varying parameter (index specified by varying_param_index) goes from -1 to 1, others are 0
+        # Varying parameter (index specified by self.varying_param_index) goes from -1 to 1, others are 0
         param_sets_norm = []
         for i in range(num_rows):
             varying_value = -1.0 + (2.0 * i / (num_rows - 1))  # Linspace: -1, -0.33, 0.33, 1
@@ -180,6 +181,11 @@ class ConditionalVAETrainer:
             p_max = self.training_dataset.parameters[:, i].max()
             param_name = self.training_dataset.parameter_names[i] if hasattr(self.training_dataset, 'parameter_names') else f"Param {i}"
             print(f"  {param_name}: [{p_min:.4f}, {p_max:.4f}]")
+            
+            # Print unique values for Ye parameter if present
+            if 'Ye_c' in param_name or 'ye' in param_name.lower():
+                unique_vals = np.unique(np.round(self.training_dataset.parameters[:, i], 4))
+                print(f"    Unique {param_name} values: {unique_vals}")
         
         # Test normalization
         print(f"\nTesting parameter normalization:")
@@ -307,100 +313,43 @@ class ConditionalVAETrainer:
                 print(f"\nEpoch {epoch+1}/{self.num_epochs}")
                 print(f"  Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
                 
-                # DIAGNOSTIC: Check if decoder is sensitive to parameter changes
-                # with torch.no_grad():
-                #     test_params_norm = [np.zeros(self.param_dim), np.ones(self.param_dim)]
+                # Extract Ye values for color-coding latent space
+                ye_colors = None
+                ye_param_label = None
+                if self.theta_param_index is not None:
+                    ye_values = param_denorm[:, self.theta_param_index]
                     
-                #     # test_params_norm = [self.training_dataset.normalize_parameters(p) for p in test_params]
+                    # Create color gradient from blue to yellow based on unique Ye values
+                    unique_ye_values = np.unique(np.round(ye_values, 4))
+                    ye_min = unique_ye_values.min()
+                    ye_max = unique_ye_values.max()
                     
-                #     # Use SAME noise for both parameter sets
-                #     z_test = torch.randn(1, self.z_dim).to(DEVICE)
+                    # Create colormap: blue to yellow
+                    from matplotlib.colors import LinearSegmentedColormap
+                    colors_list = ['blue', 'yellow']
+                    n_bins = len(unique_ye_values)
+                    cmap = LinearSegmentedColormap.from_list('blue_yellow', colors_list, N=n_bins)
                     
-                #     test_signals = []
-                #     for params_norm in test_params_norm:
-                #         params_tensor = torch.tensor(params_norm, dtype=torch.float32).unsqueeze(0).to(DEVICE)
-                #         signal = self.cvae.decoder(z_test, params_tensor).cpu().numpy()
-                #         test_signals.append(signal)
+                    # Map each Ye value to a color
+                    ye_colors = []
+                    for val in ye_values:
+                        normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
+                        ye_colors.append(cmap(normalized))
                     
-                #     # Check if signals are actually different
-                #     diff = np.abs(test_signals[0] - test_signals[1]).mean()
-                #     signal_std = np.mean([test_signals[0].std(), test_signals[1].std()])
-                #     relative_diff = diff / (signal_std + 1e-8)
-                    
-                #     print(f"  Parameter Sensitivity Check:")
-                #     print(f"    Mean absolute difference: {diff:.6f}")
-                #     print(f"    Relative difference: {relative_diff:.4f}")
-                    
-                #     if relative_diff < 0.1:
-                #         print(f"    ⚠️  WARNING: Model may be ignoring parameters (diff too small)")
-                #     else:
-                #         print(f"    ✓ Model is using parameters (signals differ)")
+                    ye_param_label = self.theta_label if self.theta_label else "Ye"
                 
-                
-                # Plot latent space (dark style)
-                fig = plt.figure(figsize=(15, 5), facecolor='black')
-                
-                # 2D: dims 0-1
-                ax1 = fig.add_subplot(131, facecolor='black')
-                scatter1 = ax1.scatter(latent_means[:, 0], latent_means[:, 1], 
-                                     c=param_denorm[:, 0], cmap='viridis', 
-                                     alpha=0.6, s=20)
-                ax1.set_xlabel('Latent Dim 0', fontsize=11, color='white')
-                ax1.set_ylabel('Latent Dim 1', fontsize=11, color='white')
-                ax1.set_title('Latent Space (0-1)', fontsize=12, color='white')
-                ax1.tick_params(colors='white')
-                for spine in ax1.spines.values():
-                    spine.set_color('white')
-                ax1.grid(True, alpha=0.3, color='gray')
-                cbar1 = plt.colorbar(scatter1, ax=ax1)
-                cbar1.set_label('β', fontsize=11, color='white')
-                cbar1.ax.yaxis.set_tick_params(color='white', labelcolor='white')
-                cbar1.outline.set_edgecolor('white')
-                
-                # 2D: dims 1-2
-                ax2 = fig.add_subplot(132, facecolor='black')
-                scatter2 = ax2.scatter(latent_means[:, 1], latent_means[:, 2], 
-                                     c=param_denorm[:, 0], cmap='viridis', 
-                                     alpha=0.6, s=20)
-                ax2.set_xlabel('Latent Dim 1', fontsize=11, color='white')
-                ax2.set_ylabel('Latent Dim 2', fontsize=11, color='white')
-                ax2.set_title('Latent Space (1-2)', fontsize=12, color='white')
-                ax2.tick_params(colors='white')
-                for spine in ax2.spines.values():
-                    spine.set_color('white')
-                ax2.grid(True, alpha=0.3, color='gray')
-                cbar2 = plt.colorbar(scatter2, ax=ax2)
-                cbar2.set_label('β', fontsize=11, color='white')
-                cbar2.ax.yaxis.set_tick_params(color='white', labelcolor='white')
-                cbar2.outline.set_edgecolor('white')
-                
-                # 3D view
-                ax3 = fig.add_subplot(133, projection='3d', facecolor='black')
-                scatter3 = ax3.scatter(latent_means[:, 0], latent_means[:, 1], latent_means[:, 2],
-                                     c=param_denorm[:, 0], cmap='viridis', 
-                                     alpha=0.6, s=20)
-                ax3.set_xlabel('Latent Dim 0', fontsize=9, color='white')
-                ax3.set_ylabel('Latent Dim 1', fontsize=9, color='white')
-                ax3.set_zlabel('Latent Dim 2', fontsize=9, color='white')
-                ax3.set_title('3D Latent Space', fontsize=12, color='white')
-                ax3.tick_params(colors='white')
-                cbar3 = plt.colorbar(scatter3, ax=ax3, pad=0.1, shrink=0.8)
-                cbar3.set_label('β', fontsize=11, color='white')
-                cbar3.ax.yaxis.set_tick_params(color='white', labelcolor='white')
-                cbar3.outline.set_edgecolor('white')
-                
-                plt.suptitle(f'CVAE Latent Space (Epoch {epoch+1})', fontsize=14, color='white')
-                plt.tight_layout()
-                plt.savefig(
-                    os.path.join(self.outdir, "cvae", f'cvae_latent_space_epoch_{epoch+1}.svg'),
-                    bbox_inches='tight',
-                    dpi=150,
-                    facecolor='black',
-                    edgecolor='none'
+                # Plot latent space using dedicated function
+                latent_plot_fname = os.path.join(self.outdir, "cvae", f'cvae_latent_space_epoch_{epoch+1}.svg')
+                plot_latent_space_2d_3d(
+                    latent_means=latent_means,
+                    param_denorm=param_denorm,
+                    epoch=epoch + 1,
+                    fname=latent_plot_fname,
+                    background="black",
+                    param_label=ye_param_label,
+                    ye_colors=ye_colors
                 )
-                plt.close()
-                
-                print(f"  Saved latent space plot to {os.path.join(self.outdir, 'cvae', f'cvae_latent_space_epoch_{epoch+1}.svg')}")
+                print(f"  Saved latent space plot to {latent_plot_fname}")
 
 
         runtime = (time.time() - t0) / 60
@@ -446,30 +395,100 @@ class ConditionalVAETrainer:
     def _plot_signal_grid(self, epoch):
         generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
         
-        # Extract parameter values if theta_label is set
+        # Extract parameter values - use Ye if available, otherwise use theta_label
         param_values_to_display = None
-        if self.theta_label is not None and self.theta_param_index is not None:
+        param_colors = None
+        param_label_to_use = None
+        
+        if self.theta_param_index is not None:
             # Denormalize fixed parameters to physical units for display
             fixed_params_denorm = np.array([
                 self.training_dataset.denormalize_parameters(p) 
                 for p in self.fixed_params.cpu().numpy()
             ])
             param_values_to_display = fixed_params_denorm[:, self.theta_param_index]
+            
+            # Get parameter name
+            if hasattr(self.training_dataset, 'parameter_names'):
+                param_label_to_use = self.training_dataset.parameter_names[self.theta_param_index]
+            else:
+                param_label_to_use = self.theta_label if self.theta_label else f"Param {self.theta_param_index}"
+            
+            # Create color gradient from blue to yellow based on unique Ye values
+            unique_ye_values = np.unique(np.round(param_values_to_display, 4))
+            ye_min = unique_ye_values.min()
+            ye_max = unique_ye_values.max()
+            
+            # Create colormap: blue to yellow
+            from matplotlib.colors import LinearSegmentedColormap
+            colors_list = ['blue', 'yellow']
+            n_bins = len(unique_ye_values)
+            cmap = LinearSegmentedColormap.from_list('blue_yellow', colors_list, N=n_bins)
+            
+            # Map each Ye value to a color
+            param_colors = []
+            for val in param_values_to_display:
+                # Normalize value to [0, 1]
+                normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
+                param_colors.append(cmap(normalized))
         
-        plot_signal_grid(
+        # Plot signal grid with custom coloring
+        self._plot_signal_grid_with_colors(
             signals=generated_signals / TEN_KPC,
-            noisy_signals=None,
             max_value=self.validation_dataset.max_strain,
             num_cols=4,
             num_rows=4,
             fname=os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg"),
-            background="white",
-            generated=True,
             param_values=param_values_to_display,
-            param_label=self.theta_label,
-            font_family="Serif",
-            font_name="Times New Roman",
+            param_label=param_label_to_use,
+            param_colors=param_colors
         )
+
+    def _plot_signal_grid_with_colors(self, signals, max_value, num_cols, num_rows, fname, 
+                                       param_values=None, param_label=None, param_colors=None):
+        """Plot signal grid with color-coded frames based on parameter values."""
+        from ..plotting import set_plot_style, get_time_axis
+        from ..utils.plotting_defaults import GENERATED_SIGNAL_COLOUR, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
+        
+        set_plot_style("white", "Serif", "Times New Roman")
+        
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 10))
+        axes = axes.flatten()
+        
+        d = get_time_axis()
+        
+        for i, ax in enumerate(axes):
+            if i >= len(signals):
+                ax.axis('off')
+                continue
+            
+            y = signals[i].flatten()
+            y = y * max_value
+            ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
+            ax.set_xlim(min(d), max(d))
+            ax.plot(d, y, color=GENERATED_SIGNAL_COLOUR)
+            
+            ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
+            ax.grid(False)
+            
+            # Display parameter value above each subplot
+            if param_values is not None and param_label is not None and i < len(param_values):
+                param_text = f"{param_label} = {param_values[i]:.4f}"
+                ax.set_title(param_text, fontsize=11, color="black", pad=8, fontweight='bold')
+            
+            if i % num_cols != 0:
+                ax.yaxis.set_ticklabels([])
+            if i < num_cols * (num_rows - 1):
+                ax.xaxis.set_ticklabels([])
+        
+        fig.supxlabel('time (s)', fontsize=20)
+        fig.supylabel('h', fontsize=20)
+        
+        plt.tight_layout()
+        if fname:
+            plt.savefig(fname, dpi=300, bbox_inches="tight")
+        
+        plt.close()
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
@@ -501,6 +520,7 @@ class ConditionalVAETrainer:
             max_value=self.validation_dataset.max_strain / TEN_KPC,
             font_family="Serif",
             font_name="Times New Roman",
+            fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction.svg")
         )
 
     def display_results(self, background="black"):

@@ -144,9 +144,15 @@ class FlowMatchingTrainerMulti:
         print(f"Final flow parameter dimension: {len(self.param_extract_indices)}")
         print(f"{'='*40}\n")
 
-
+        # Construct absolute path to supernovae data file
+        # __file__ is at src/starccato_flow/training/trainer_flow_matching_multi.py
+        # We need to go up to starccato-flow root, then to data/supernovae/
+        trainer_dir = os.path.dirname(os.path.abspath(__file__))
+        starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(trainer_dir)))
+        supernovae_file = os.path.join(starccato_flow_root, "..", "data", "supernovae", "exploded_supernovae_t100_sf5.csv")
+        
         self.supernovae = Supernovae(
-            locations_file='../../exploded_supernovae_t100_sf5.csv',
+            locations_file=supernovae_file,
             rotation_offset=np.deg2rad(60.0),
         )  # locations of Galactic supernovae
 
@@ -676,7 +682,7 @@ class FlowMatchingTrainerMulti:
         self.save_losses()
         self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
-    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed):
+    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman"):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
         params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
         d = 5 # kpc
@@ -720,8 +726,9 @@ class FlowMatchingTrainerMulti:
             f_name_h=f_name_h,
             f_name_h_delayed=f_name_h_delayed,
             f_name_h_delayed_rescaled=f_name_h_rescaled_delayed,
-            font_family="Serif",
-            font_name="Times New Roman"
+            f_name_h_delayed_rescaled_noise=f_name_h_delayed_rescaled_noise,
+            font_family=font_family,
+            font_name=font_name
         )
 
 

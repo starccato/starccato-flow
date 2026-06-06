@@ -267,10 +267,10 @@ class hThetaMulti(Dataset):
         Returns:
             Tuple of (frequencies, psd_values)
         """
-        if not os.path.exists(AVIRGO_ASD_FILE):
-            raise FileNotFoundError(f"Sensitivity curve file not found: {AVIRGO_ASD_FILE}")
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Sensitivity curve file not found: {filepath}")
         
-        data = np.loadtxt(AVIRGO_ASD_FILE)
+        data = np.loadtxt(filepath)
         frequencies = data[:, 0]
         asd = data[:, 1]
         psd = asd ** 2  # Convert ASD to PSD
@@ -557,7 +557,7 @@ class hThetaMulti(Dataset):
             h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
         return h_delayed
     
-    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, font_family="serif", font_name="Times New Roman"):
+    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman"):
         n_samples = self.s.shape[1]
         h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
         h_delayed = np.zeros_like(h)
@@ -596,6 +596,17 @@ class hThetaMulti(Dataset):
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed_rescaled,
+            font_family=font_family,
+            font_name=font_name
+        )
+        # h_rescaled with noise
+        h_rescaled_noise = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
+        plot_detector_signal_channels(
+            signals=h_rescaled_noise,
+            max_value=self.max_strain,
+            detector_labels=self.detectors,
+            background="white",
+            fname=f_name_h_delayed_rescaled_noise,
             font_family=font_family,
             font_name=font_name
         )

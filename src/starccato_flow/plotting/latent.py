@@ -735,3 +735,122 @@ def plot_latent_space_3d(
     plt.show()
     plt.rcdefaults()
     return fig
+
+
+def plot_latent_space_2d_3d(
+    latent_means: np.ndarray,
+    param_denorm: np.ndarray,
+    epoch: int,
+    fname: Optional[str] = None,
+    background: str = "black",
+    param_label: str = "β",
+    ye_colors: Optional[list] = None
+) -> None:
+    """Plot 2D and 3D latent space representations colored by parameter values.
+    
+    Args:
+        latent_means (np.ndarray): Latent space means, shape (num_samples, latent_dim)
+        param_denorm (np.ndarray): Denormalized parameter values, shape (num_samples, param_dim)
+        epoch (int): Current training epoch for title
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color ("black" or "white")
+        param_label (str): Label for the parameter being visualized
+        ye_colors (Optional[list]): List of colors for each point (blue to yellow gradient)
+    """
+    fig = plt.figure(figsize=(15, 5), facecolor=background)
+    
+    # Use ye_colors if provided, otherwise use parameter gradient
+    if ye_colors is not None:
+        colors = ye_colors
+    else:
+        colors = param_denorm[:, 0]
+    
+    # 2D: dims 0-1
+    ax1 = fig.add_subplot(131, facecolor=background)
+    scatter1 = ax1.scatter(latent_means[:, 0], latent_means[:, 1], 
+                         c=colors if ye_colors is None else range(len(colors)), 
+                         cmap=None if ye_colors is not None else 'viridis',
+                         alpha=0.6, s=20)
+    if ye_colors is not None:
+        # Use custom colors directly
+        for i, point in enumerate(latent_means[:, :2]):
+            ax1.scatter(point[0], point[1], c=[colors[i]], s=20, alpha=0.6)
+    
+    ax1.set_xlabel('Latent Dim 0', fontsize=11, color='white' if background == 'black' else 'black')
+    ax1.set_ylabel('Latent Dim 1', fontsize=11, color='white' if background == 'black' else 'black')
+    ax1.set_title('Latent Space (0-1)', fontsize=12, color='white' if background == 'black' else 'black')
+    ax1.tick_params(colors='white' if background == 'black' else 'black')
+    for spine in ax1.spines.values():
+        spine.set_color('white' if background == 'black' else 'black')
+    ax1.grid(True, alpha=0.3, color='gray')
+    if ye_colors is None:
+        cbar1 = plt.colorbar(scatter1, ax=ax1)
+        cbar1.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
+        cbar1.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
+                                       labelcolor='white' if background == 'black' else 'black')
+        cbar1.outline.set_edgecolor('white' if background == 'black' else 'black')
+    
+    # 2D: dims 1-2
+    ax2 = fig.add_subplot(132, facecolor=background)
+    if ye_colors is not None:
+        for i, point in enumerate(latent_means[:, 1:3]):
+            ax2.scatter(point[0], point[1], c=[colors[i]], s=20, alpha=0.6)
+    else:
+        scatter2 = ax2.scatter(latent_means[:, 1], latent_means[:, 2], 
+                             c=colors, cmap='viridis', 
+                             alpha=0.6, s=20)
+    
+    ax2.set_xlabel('Latent Dim 1', fontsize=11, color='white' if background == 'black' else 'black')
+    ax2.set_ylabel('Latent Dim 2', fontsize=11, color='white' if background == 'black' else 'black')
+    ax2.set_title('Latent Space (1-2)', fontsize=12, color='white' if background == 'black' else 'black')
+    ax2.tick_params(colors='white' if background == 'black' else 'black')
+    for spine in ax2.spines.values():
+        spine.set_color('white' if background == 'black' else 'black')
+    ax2.grid(True, alpha=0.3, color='gray')
+    if ye_colors is None:
+        cbar2 = plt.colorbar(scatter2, ax=ax2)
+        cbar2.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
+        cbar2.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
+                                       labelcolor='white' if background == 'black' else 'black')
+        cbar2.outline.set_edgecolor('white' if background == 'black' else 'black')
+    
+    # 3D view
+    ax3 = fig.add_subplot(133, projection='3d', facecolor=background)
+    if ye_colors is not None:
+        for i, point in enumerate(latent_means[:, :3]):
+            ax3.scatter(point[0], point[1], point[2], c=[colors[i]], s=20, alpha=0.6)
+    else:
+        scatter3 = ax3.scatter(latent_means[:, 0], latent_means[:, 1], latent_means[:, 2],
+                             c=colors, cmap='viridis', 
+                             alpha=0.6, s=20)
+    
+    ax3.set_xlabel('Latent Dim 0', fontsize=9, color='white' if background == 'black' else 'black')
+    ax3.set_ylabel('Latent Dim 1', fontsize=9, color='white' if background == 'black' else 'black')
+    ax3.set_zlabel('Latent Dim 2', fontsize=9, color='white' if background == 'black' else 'black')
+    ax3.set_title('3D Latent Space', fontsize=12, color='white' if background == 'black' else 'black')
+    ax3.tick_params(colors='white' if background == 'black' else 'black')
+    if ye_colors is None:
+        cbar3 = plt.colorbar(scatter3, ax=ax3, pad=0.1, shrink=0.8)
+        cbar3.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
+        cbar3.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
+                                       labelcolor='white' if background == 'black' else 'black')
+        cbar3.outline.set_edgecolor('white' if background == 'black' else 'black')
+    else:
+        # Create legend for color-coded Ye values
+        unique_ye_values = np.unique(param_denorm[:, 0])
+        unique_ye_values = np.sort(unique_ye_values)
+        legend_elements = [plt.Line2D([0], [0], marker='o', color='w', 
+                                     markerfacecolor=ye_colors[np.where(np.isclose(param_denorm[:, 0], val))[0][0]], 
+                                     markersize=8, label=f'{param_label} = {val:.4f}')
+                         for val in unique_ye_values[:8]]  # Show first 8 values to avoid clutter
+        ax3.legend(handles=legend_elements, loc='upper left', fontsize=9, 
+                  facecolor=background, edgecolor='white' if background == 'black' else 'black',
+                  labelcolor='white' if background == 'black' else 'black')
+    
+    plt.suptitle(f'CVAE Latent Space (Epoch {epoch})', fontsize=14, color='white' if background == 'black' else 'black')
+    plt.tight_layout()
+    
+    if fname:
+        plt.savefig(fname, bbox_inches='tight', dpi=150, facecolor=background, edgecolor='none')
+    
+    plt.close()
