@@ -334,8 +334,67 @@ class FlowMatchingTrainer:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/generator_weights.pt"
+        return f"{self.outdir}/flow_weights.pt"
 
-    def save_models(self):
-        torch.save(self.vae.state_dict(), self.save_fname)
-        print(f"Saved VAE model to {self.save_fname}")
+    def save_data(self):
+        """Save flow model and training losses to disk."""
+        torch.save(self.flow.state_dict(), self.save_fname)
+        print(f"Saved Flow model to {self.save_fname}")
+        
+        # Save losses
+        losses_path = f"{self.outdir}/flow_losses.npz"
+        np.savez(
+            losses_path,
+            avg_mse_losses=np.array(self.avg_mse_losses),
+            avg_mse_losses_val=np.array(self.avg_mse_losses_val)
+        )
+        print(f"Saved losses to {losses_path}")
+
+    @classmethod
+    def load_model(
+        cls,
+        model_path: str,
+        param_dim: int = 4
+    ) -> Flow:
+        """Load a trained Flow model from disk.
+        
+        Args:
+            model_path: Path to the saved model weights (.pt file)
+            param_dim: Number of physical parameters
+            
+        Returns:
+            Loaded Flow model
+        """
+        # Reconstruct model architecture
+        flow = Flow(dim=param_dim).to(DEVICE)
+        
+        # Load saved weights
+        flow.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        flow.eval()
+        
+        print(f"✓ Loaded Flow model from {model_path}")        
+        return flow
+    
+    def load_pretrained(self, model_path: str) -> None:
+        """Load pretrained weights and loss history into the trainer's model.
+        
+        Args:
+            model_path: Path to the saved model weights (.pt file)
+        """
+        self.flow.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        self.flow.eval()
+        print(f"✓ Loaded pretrained weights from {model_path}")
+        
+        # Try to load loss history from the same directory
+        losses_path = model_path.replace('flow_weights_final.pt', 'flow_losses.npz')
+        losses_path = losses_path.replace('flow_weights.pt', 'flow_losses.npz')
+        
+        if os.path.exists(losses_path):
+            losses = np.load(losses_path)
+            self.avg_mse_losses = losses['avg_mse_losses'].tolist()
+            self.avg_mse_losses_val = losses['avg_mse_losses_val'].tolist()
+            print(f"✓ Loaded loss history from {losses_path}")
+        else:
+            # Initialize empty loss lists if file not found
+            self.avg_mse_losses = []
+            self.avg_mse_losses_val = []

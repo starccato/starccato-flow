@@ -15,6 +15,8 @@ from starccato_flow.plotting.signals import plot_detector_signal_channels
 
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
+# Optional: O3 actual noise curves with detector-specific ASD files
+# from ..utils.defaults import ALIGO_H1_ASD_FILE, ALIGO_L1_ASD_FILE
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 
 class hThetaMulti(Dataset):
@@ -82,6 +84,10 @@ class hThetaMulti(Dataset):
         # Preload sensitivity curves for use in rnoise
         self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
         self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
+        
+        # Optional: For O3 actual curves with separate H1/L1 sensitivity
+        # self._h1_freq_curve, self._h1_psd_curve = self._load_sensitivity_curve(ALIGO_H1_ASD_FILE)
+        # self._l1_freq_curve, self._l1_psd_curve = self._load_sensitivity_curve(ALIGO_L1_ASD_FILE)
 
         n_samples = self.s.shape[1]
         if self.ra is None or self.dec is None or self.d is None:
@@ -245,7 +251,7 @@ class hThetaMulti(Dataset):
         data = np.loadtxt(filepath)
         frequencies = data[:, 0]
         asd = data[:, 1]
-        psd = asd ** 2  # Convert ASD to PSD
+        psd = asd
         
         return frequencies, psd
     
@@ -292,12 +298,11 @@ class hThetaMulti(Dataset):
         
         return psd_query
     
-    def AdvLIGOPsd_measured(self, f: np.ndarray, asd_file: Optional[str] = None) -> np.ndarray:
+    def AdvLIGOPsd_measured(self, f: np.ndarray) -> np.ndarray:
         """Get Advanced LIGO PSD from measured sensitivity curve.
         
         Args:
             f: Frequencies (Hz)
-            asd_file: Path to ASD file. If None, constructs path relative to module location.
             
         Returns:
             PSD values at frequencies f
@@ -308,19 +313,18 @@ class hThetaMulti(Dataset):
         
         return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve)
     
-    def VirgoPsd_measured(self, f: np.ndarray, asd_file: Optional[str] = None) -> np.ndarray:
+    def VirgoPsd_measured(self, f: np.ndarray) -> np.ndarray:
         """Get Virgo PSD from measured sensitivity curve.
         
         Args:
             f: Frequencies (Hz)
-            asd_file: Path to ASD file. If None, constructs path relative to module location.
             
         Returns:
             PSD values at frequencies f
         """
         # Load and cache on first call
         if self._virgo_freq_curve is None or self._virgo_psd_curve is None:
-            self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(virgo_file)
+            self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
         
         return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve)
     
@@ -392,7 +396,9 @@ class hThetaMulti(Dataset):
             kappa[-1] = 0
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
+        # Get PSD based on detector
         if detector == "H1" or detector == "L1":
+            # Both LIGO detectors use same sensitivity curve (legacy behavior)
             psd = self._interpolate_psd(fourier_freq, self._ligo_freq_curve, self._ligo_psd_curve)
         elif detector == "V1":
             psd = self._interpolate_psd(fourier_freq, self._virgo_freq_curve, self._virgo_psd_curve)
