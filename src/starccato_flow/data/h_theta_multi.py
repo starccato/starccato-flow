@@ -71,14 +71,17 @@ class hThetaMulti(Dataset):
         self._current_epoch = 0
         self.include_sky_params = True
         
-        # Toggle between analytical and measured PSD for noise generation
-        self.use_measured_psd = True
+
         
         # Cache for measured sensitivity curves (loaded on first use)
         self._ligo_freq_curve = None
         self._ligo_psd_curve = None
         self._virgo_freq_curve = None
         self._virgo_psd_curve = None
+        
+        # Preload sensitivity curves for use in rnoise
+        self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
+        self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
 
         n_samples = self.s.shape[1]
         if self.ra is None or self.dec is None or self.d is None:
@@ -158,12 +161,9 @@ class hThetaMulti(Dataset):
         delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
         fourier_freq = np.arange(half_N + 1) * delta_f
 
-        if self.use_measured_psd:
-            self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
-            self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
-        else:
-            self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
-            self.VirgoPSD = self.VirgoPsd(fourier_freq)
+        # Use measured sensitivity curves for PSD
+        self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
+        self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
         
         # Project signals to multiple detectors
         self.multi_channel_signals = self._project_to_detectors()        
@@ -228,34 +228,6 @@ class hThetaMulti(Dataset):
             raise ValueError(f"Expected 2D theta matrix, got shape {theta.shape}.")
 
         return theta.astype(np.float32)
-    
-    def AdvLIGOPsd(self, f):
-        """Advanced LIGO power spectral density."""
-        # Avoid division by zero at f=0 by clipping to a small positive value
-        f = np.clip(f, 1e-10, None)
-        x = f / 215
-        x2 = x * x
-        psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
-        # The upper bound is 2e10 times the minimum value
-        cutoff = np.nanmin(psd) * 2e10
-        psd[(psd > cutoff) | np.isnan(psd)] = cutoff
-        # Ensure no zero or negative values in PSD
-        psd = np.maximum(psd, np.max(psd) * 1e-15)
-        return psd
-
-    def VirgoPsd(self, f):
-        """Virgo power spectral density."""
-        # Avoid division by zero at f=0 by clipping to a small positive value
-        f = np.clip(f, 1e-10, None)
-        x = f / 500
-        s0 = 10.2e-46
-        psd = s0*(pow(7.87*x,-4.8) + 6./17./x + 1. + x*x);
-        # The upper bound is 2e10 times the minimum value
-        cutoff = np.nanmin(psd) * 2e10
-        psd[(psd > cutoff) | np.isnan(psd)] = cutoff
-        # Ensure no zero or negative values in PSD
-        psd = np.maximum(psd, np.max(psd) * 1e-15)
-        return psd
     
     @staticmethod
     def _load_sensitivity_curve(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -348,7 +320,7 @@ class hThetaMulti(Dataset):
         """
         # Load and cache on first call
         if self._virgo_freq_curve is None or self._virgo_psd_curve is None:
-            self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
+            self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(virgo_file)
         
         return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve)
     
@@ -379,8 +351,7 @@ class hThetaMulti(Dataset):
             delta_t=dataDeltaT,
             one_sided=True,  # Use one-sided spectrum as in R
             pad=1,
-            detector=detector,
-            use_measured_psd=self.use_measured_psd
+            detector=detector
         ).reshape(1, -1)  # shape (1, Y_LENGTH)
 
         # Restore original random state if we changed it
@@ -392,7 +363,7 @@ class hThetaMulti(Dataset):
 
         return noise
     
-    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None, use_measured_psd: bool = False) -> np.ndarray:
+    def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None) -> np.ndarray:
         """Generate colored noise with given PSD.
         
         Args:
@@ -401,7 +372,6 @@ class hThetaMulti(Dataset):
             one_sided: Whether to use one-sided or two-sided spectral density
             pad: Padding factor (>=1)
             detector: Detector name ('H1', 'L1', or 'V1')
-            use_measured_psd: If True, use measured sensitivity curves; if False, use analytical formulas
             
         Returns:
             Colored noise array
@@ -423,9 +393,9 @@ class hThetaMulti(Dataset):
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
         if detector == "H1" or detector == "L1":
-            psd = self.AdvLIGOPSD
+            psd = self._interpolate_psd(fourier_freq, self._ligo_freq_curve, self._ligo_psd_curve)
         elif detector == "V1":
-            psd = self.VirgoPSD
+            psd = self._interpolate_psd(fourier_freq, self._virgo_freq_curve, self._virgo_psd_curve)
         else:
             raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
 
@@ -600,9 +570,10 @@ class hThetaMulti(Dataset):
             font_name=font_name
         )
         # h_rescaled with noise
-        h_rescaled_noise = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
+        h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
+        h_rescaled_noise = self.denormalise_signals(h_rescaled_noise_normalized)  # Denormalize to match other plots
         plot_detector_signal_channels(
-            signals=h_rescaled_noise,
+            signals=h_rescaled_noise / TEN_KPC,
             max_value=self.max_strain,
             detector_labels=self.detectors,
             background="white",

@@ -34,7 +34,7 @@ class FlowMatchingTrainer:
         validation_split: float = 0.1,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
-        outdir: str = "outdir",
+        outdir: str = None,
         detector_noise_on: bool = True,
         curriculum: bool = True,
         toy: bool = True,
@@ -48,6 +48,13 @@ class FlowMatchingTrainer:
         self.num_epochs = num_epochs
         self.validation_split = validation_split
         self.lr_flow = lr_flow
+        
+        # Construct absolute outdir path if not provided
+        if outdir is None:
+            _module_dir = os.path.dirname(os.path.abspath(__file__))  # /src/starccato_flow/training/
+            _starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(_module_dir)))  # /starccato-flow/
+            outdir = os.path.join(_starccato_flow_root, "outdir")
+        
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
         self.toy = toy

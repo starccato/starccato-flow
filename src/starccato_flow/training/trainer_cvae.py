@@ -17,6 +17,7 @@ from . import create_train_val_split, plot_signal_grid
 
 from ..plotting.signals import plot_reconstruction, plot_candidate_signal
 from ..plotting.latent import plot_latent_space_2d_3d
+from ..utils.plotting_defaults import PARAMETER_LABELS
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -39,9 +40,8 @@ class ConditionalVAETrainer:
         validation_split: float = 0.1,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
-        outdir: str = "outdir",
+        outdir: str = None,
         detector_noise_on: bool = True,
-        curriculum: bool = True,
         toy: bool = True,
         max_grad_norm: float = 1.0,
         varying_param_index: int = 0,
@@ -57,10 +57,16 @@ class ConditionalVAETrainer:
         self.validation_split = validation_split
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
+        
+        # Construct absolute outdir path if not provided
+        if outdir is None:
+            _module_dir = os.path.dirname(os.path.abspath(__file__))  # /src/starccato_flow/training/
+            _starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(_module_dir)))  # /starccato-flow/
+            outdir = os.path.join(_starccato_flow_root, "outdir")
+        
         self.outdir = outdir
         self.toy = toy
         self.detector_noise_on = detector_noise_on
-        self.curriculum = curriculum
         self.max_grad_norm = max_grad_norm
         self.varying_param_index = varying_param_index
         self.theta_label = theta_label
@@ -120,17 +126,32 @@ class ConditionalVAETrainer:
         num_cols = 4  # Different noise samples
         num_fixed_samples = num_rows * num_cols
         
+        # Find Ye parameter index for grid variation
+        self.ye_param_index = None
+        if hasattr(self.training_dataset, 'parameter_names'):
+            for i, name in enumerate(self.training_dataset.parameter_names):
+                if 'Ye' in name or 'ye' in name:
+                    self.ye_param_index = i
+                    break
+        
+        print(f"Ye parameter index found: {self.ye_param_index}")
+        if self.ye_param_index is not None:
+            print(f"  Ye parameter name: {self.training_dataset.parameter_names[self.ye_param_index]}")
+        
+        # Use Ye parameter for grid if found, otherwise use varying_param_index
+        grid_varying_index = self.ye_param_index if self.ye_param_index is not None else self.varying_param_index
+        
         # Create noise samples for columns (repeat across rows)
         noise_samples = torch.randn(num_cols, self.z_dim)  # 4 unique noise samples
         self.fixed_noise = noise_samples.repeat(num_rows, 1).to(DEVICE)  # Shape: (16, z_dim)
         
         # Define parameter sets for rows (already in normalized space [-1, 1])
-        # Varying parameter (index specified by self.varying_param_index) goes from -1 to 1, others are 0
+        # Grid varies by Ye parameter (or other varying_param_index if Ye not found)
         param_sets_norm = []
         for i in range(num_rows):
             varying_value = -1.0 + (2.0 * i / (num_rows - 1))  # Linspace: -1, -0.33, 0.33, 1
             params = [0.0] * self.param_dim
-            params[self.varying_param_index] = varying_value
+            params[grid_varying_index] = varying_value
             param_sets_norm.append(np.array(params))
 
         print(param_sets_norm)
@@ -280,76 +301,12 @@ class ConditionalVAETrainer:
 
             # Checkpoint: generate signals with fixed parameters
             if (epoch + 1) % self.checkpoint_interval == 0:
-                with torch.no_grad():
-                    self._plot_reconstruction(signal_idx=0)
-                    self._plot_signal_grid(epoch)
-                    # self._plot_latent_space(epoch)
-                    
-                    # Encode a sample of training data to visualize latent space
-                    num_samples_to_encode = min(500, len(self.training_dataset))
-                    sample_indices = np.random.choice(len(self.training_dataset), num_samples_to_encode, replace=False)
-                    
-                    latent_means = []
-                    parameters_list = []
-                    
-                    for idx in sample_indices:
-                        signal, noisy_signal, params = self.training_dataset[idx]
-                        noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
-                        params = params.view(1, -1).to(DEVICE)
-                        
-                        mean, logvar = self.cvae.encoder(noisy_signal, params)
-                        latent_means.append(mean.cpu().numpy().flatten())
-                        parameters_list.append(params.cpu().numpy().flatten())
-                    
-                    latent_means = np.array(latent_means)
-                    parameters_array = np.array(parameters_list)
-                    
-                    # Denormalize parameters for visualization
-                    param_denorm = np.array([
-                        self.training_dataset.denormalize_parameters(p) 
-                        for p in parameters_array
-                    ])
-                    
+                self._plot_reconstruction(signal_idx=0)
+                self._plot_signal_grid(epoch)
+                self._plot_latent_space()
+                
                 print(f"\nEpoch {epoch+1}/{self.num_epochs}")
                 print(f"  Train Loss: {avg_total_loss:.4f} | Val Loss: {avg_total_loss_val:.4f}")
-                
-                # Extract Ye values for color-coding latent space
-                ye_colors = None
-                ye_param_label = None
-                if self.theta_param_index is not None:
-                    ye_values = param_denorm[:, self.theta_param_index]
-                    
-                    # Create color gradient from blue to yellow based on unique Ye values
-                    unique_ye_values = np.unique(np.round(ye_values, 4))
-                    ye_min = unique_ye_values.min()
-                    ye_max = unique_ye_values.max()
-                    
-                    # Create colormap: blue to yellow
-                    from matplotlib.colors import LinearSegmentedColormap
-                    colors_list = ['blue', 'yellow']
-                    n_bins = len(unique_ye_values)
-                    cmap = LinearSegmentedColormap.from_list('blue_yellow', colors_list, N=n_bins)
-                    
-                    # Map each Ye value to a color
-                    ye_colors = []
-                    for val in ye_values:
-                        normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
-                        ye_colors.append(cmap(normalized))
-                    
-                    ye_param_label = self.theta_label if self.theta_label else "Ye"
-                
-                # Plot latent space using dedicated function
-                latent_plot_fname = os.path.join(self.outdir, "cvae", f'cvae_latent_space_epoch_{epoch+1}.svg')
-                plot_latent_space_2d_3d(
-                    latent_means=latent_means,
-                    param_denorm=param_denorm,
-                    epoch=epoch + 1,
-                    fname=latent_plot_fname,
-                    background="black",
-                    param_label=ye_param_label,
-                    ye_colors=ye_colors
-                )
-                print(f"  Saved latent space plot to {latent_plot_fname}")
 
 
         runtime = (time.time() - t0) / 60
@@ -392,38 +349,35 @@ class ConditionalVAETrainer:
         return generated
     
 
-    def _plot_signal_grid(self, epoch):
-        generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
+    def _plot_signal_grid(self, epoch, fname=None):
+        self.cvae.eval()  # Set to eval mode to disable dropout
+        with torch.no_grad():
+            generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
         
-        # Extract parameter values - use Ye if available, otherwise use theta_label
+        # Extract Ye parameter values for display
         param_values_to_display = None
         param_colors = None
         param_label_to_use = None
         
-        if self.theta_param_index is not None:
+        if self.ye_param_index is not None:
             # Denormalize fixed parameters to physical units for display
             fixed_params_denorm = np.array([
                 self.training_dataset.denormalize_parameters(p) 
                 for p in self.fixed_params.cpu().numpy()
             ])
-            param_values_to_display = fixed_params_denorm[:, self.theta_param_index]
-            
-            # Get parameter name
-            if hasattr(self.training_dataset, 'parameter_names'):
-                param_label_to_use = self.training_dataset.parameter_names[self.theta_param_index]
-            else:
-                param_label_to_use = self.theta_label if self.theta_label else f"Param {self.theta_param_index}"
+            param_values_to_display = fixed_params_denorm[:, self.ye_param_index]
+            param_label_to_use = self.training_dataset.parameter_names[self.ye_param_index] if hasattr(self.training_dataset, 'parameter_names') else "Ye"
             
             # Create color gradient from blue to yellow based on unique Ye values
             unique_ye_values = np.unique(np.round(param_values_to_display, 4))
             ye_min = unique_ye_values.min()
             ye_max = unique_ye_values.max()
             
-            # Create colormap: blue to yellow
+            # Create colormap: yellow to blue
             from matplotlib.colors import LinearSegmentedColormap
-            colors_list = ['blue', 'yellow']
+            colors_list = ['yellow', 'blue']
             n_bins = len(unique_ye_values)
-            cmap = LinearSegmentedColormap.from_list('blue_yellow', colors_list, N=n_bins)
+            cmap = LinearSegmentedColormap.from_list('yellow_blue', colors_list, N=n_bins)
             
             # Map each Ye value to a color
             param_colors = []
@@ -432,17 +386,23 @@ class ConditionalVAETrainer:
                 normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
                 param_colors.append(cmap(normalized))
         
+        # Ensure output directory exists
+        os.makedirs(os.path.join(self.outdir, "cvae"), exist_ok=True)
+        
         # Plot signal grid with custom coloring
+        fname = os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg") if fname is None else fname
+        print(f"\nGenerating signal grid for epoch {epoch}...")
         self._plot_signal_grid_with_colors(
             signals=generated_signals / TEN_KPC,
             max_value=self.validation_dataset.max_strain,
             num_cols=4,
             num_rows=4,
-            fname=os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg"),
+            fname=fname,
             param_values=param_values_to_display,
             param_label=param_label_to_use,
             param_colors=param_colors
         )
+        print(f"✓ Saved signal grid to: {fname}")
 
     def _plot_signal_grid_with_colors(self, signals, max_value, num_cols, num_rows, fname, 
                                        param_values=None, param_label=None, param_colors=None):
@@ -473,7 +433,9 @@ class ConditionalVAETrainer:
             
             # Display parameter value above each subplot
             if param_values is not None and param_label is not None and i < len(param_values):
-                param_text = f"{param_label} = {param_values[i]:.4f}"
+                # Use LaTeX label from PARAMETER_LABELS if available
+                latex_label = PARAMETER_LABELS.get(param_label, param_label)
+                param_text = f"{latex_label} = {param_values[i]:.4f}"
                 ax.set_title(param_text, fontsize=11, color="black", pad=8, fontweight='bold')
             
             if i % num_cols != 0:
@@ -486,7 +448,12 @@ class ConditionalVAETrainer:
         
         plt.tight_layout()
         if fname:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(fname), exist_ok=True)
             plt.savefig(fname, dpi=300, bbox_inches="tight")
+            print(f"  Plot saved to: {fname}")
+        else:
+            print("  No filename provided - plot not saved")
         
         plt.close()
 
@@ -512,16 +479,80 @@ class ConditionalVAETrainer:
         val_noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
         val_params = val_params.view(1, -1).to(DEVICE)
 
-        recon, _, _ = self.cvae(val_noisy_signal, val_params)
+        with torch.no_grad():
+            recon, _, _ = self.cvae(val_noisy_signal, val_params)
 
         plot_reconstruction(
-            original=val_signal.cpu().numpy(),
-            reconstructed=recon.cpu().numpy(),
+            original=val_signal.detach().cpu().numpy(),
+            reconstructed=recon.detach().cpu().numpy(),
             max_value=self.validation_dataset.max_strain / TEN_KPC,
             font_family="Serif",
             font_name="Times New Roman",
             fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction.svg")
         )
+
+    def _plot_latent_space(self, fname=None, epoch=None):
+        """Plot the latent space of the validation set colored by Ye parameter."""
+        self.cvae.eval()
+        
+        # Extract all latent means from validation dataset
+        latent_means_list = []
+        param_list = []
+        
+        with torch.no_grad():
+            for batch_idx in range(len(self.val_loader.dataset)):
+                _, noisy_signal, params = self.val_loader.dataset.__getitem__(batch_idx)
+                noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
+                params = params.view(1, -1).to(DEVICE)
+                
+                # Get latent means
+                mean, _ = self.cvae.encoder(noisy_signal, params)
+                latent_means_list.append(mean.cpu().detach().numpy())
+                param_list.append(params.cpu().detach().numpy())
+        
+        latent_means = np.vstack(latent_means_list)
+        param_denorm = self.validation_dataset.denormalize_parameters(np.vstack(param_list))
+        
+        # Create Ye colors if ye_param_index is available
+        ye_colors = None
+        ye_param_label = "Ye"
+        
+        if self.ye_param_index is not None:
+            ye_values = param_denorm[:, self.ye_param_index]
+            unique_ye_values = np.unique(np.round(ye_values, 4))
+            ye_min = unique_ye_values.min()
+            ye_max = unique_ye_values.max()
+            
+            # Create colormap: yellow to blue
+            from matplotlib.colors import LinearSegmentedColormap
+            colors_list = ['yellow', 'blue']
+            n_bins = len(unique_ye_values)
+            cmap = LinearSegmentedColormap.from_list('yellow_blue', colors_list, N=n_bins)
+            
+            # Map each Ye value to a color
+            ye_colors = []
+            for val in ye_values:
+                normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
+                ye_colors.append(cmap(normalized))
+            
+            # Use Ye parameter name if found
+            if hasattr(self.training_dataset, 'parameter_names'):
+                ye_param_label = self.training_dataset.parameter_names[self.ye_param_index]
+        
+        # Plot latent space
+        if fname is None:
+            fname = os.path.join(self.outdir, "cvae", "cvae_latent_space.svg")
+        
+        plot_latent_space_2d_3d(
+            latent_means=latent_means,
+            param_denorm=param_denorm,
+            epoch=epoch if epoch is not None else 0,
+            fname=fname,
+            background="white",
+            param_label=ye_param_label,
+            ye_colors=ye_colors
+        )
+        print(f"Saved latent space plot to {fname}")
 
     def display_results(self, background="black"):
         """Display training results."""
@@ -561,6 +592,19 @@ class ConditionalVAETrainer:
     def save_data(self):
         torch.save(self.cvae.state_dict(), self.save_fname)
         print(f"Saved CVAE model to {self.save_fname}")
+        
+        # Save losses for both training and validation
+        losses_path = f"{self.outdir}/cvae_losses.npz"
+        np.savez(
+            losses_path,
+            avg_total_losses=np.array(self.avg_total_losses),
+            avg_reproduction_losses=np.array(self.avg_reproduction_losses),
+            avg_kld_losses=np.array(self.avg_kld_losses),
+            avg_total_losses_val=np.array(self.avg_total_losses_val),
+            avg_reproduction_losses_val=np.array(self.avg_reproduction_losses_val),
+            avg_kld_losses_val=np.array(self.avg_kld_losses_val)
+        )
+        print(f"Saved losses to {losses_path}")
         
         # Save validation signals and parameters (real data for final testing)
         # Format: signals shape (signal_length, num_samples), params shape (num_samples, param_dim)
@@ -619,3 +663,36 @@ class ConditionalVAETrainer:
         print(f"  Architecture: y_length={y_length}, hidden_dim={hidden_dim}, z_dim={z_dim}, param_dim={param_dim}")
         
         return cvae
+    
+    def load_pretrained(self, model_path: str) -> None:
+        """Load pretrained weights and loss history into the trainer's model.
+        
+        Args:
+            model_path: Path to the saved model weights (.pt file)
+        """
+        self.cvae.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        self.cvae.eval()
+        print(f"✓ Loaded pretrained weights from {model_path}")
+        
+        # Try to load loss history from the same directory
+        losses_path = model_path.replace('cvae_weights_final.pt', 'cvae_losses.npz')
+        losses_path = losses_path.replace('cvae_weights.pt', 'cvae_losses.npz')
+        
+        if os.path.exists(losses_path):
+            losses = np.load(losses_path)
+            self.avg_total_losses = losses['avg_total_losses'].tolist()
+            self.avg_reproduction_losses = losses['avg_reproduction_losses'].tolist()
+            self.avg_kld_losses = losses['avg_kld_losses'].tolist()
+            self.avg_total_losses_val = losses['avg_total_losses_val'].tolist()
+            self.avg_reproduction_losses_val = losses['avg_reproduction_losses_val'].tolist()
+            self.avg_kld_losses_val = losses['avg_kld_losses_val'].tolist()
+            print(f"✓ Loaded loss history from {losses_path}")
+        else:
+            # Initialize empty loss lists if file not found
+            self.avg_total_losses = []
+            self.avg_reproduction_losses = []
+            self.avg_kld_losses = []
+            self.avg_total_losses_val = []
+            self.avg_reproduction_losses_val = []
+            self.avg_kld_losses_val = []
+            print(f"  (Loss history file not found at {losses_path})")

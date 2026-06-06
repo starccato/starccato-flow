@@ -84,6 +84,13 @@ class FlowMatchingTrainerMulti:
         self.validation_split = validation_split
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
+        
+        # Construct absolute outdir path if not provided
+        if outdir == "outdir" or (outdir and not os.path.isabs(outdir)):
+            _module_dir = os.path.dirname(os.path.abspath(__file__))  # /src/starccato_flow/training/
+            _starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(_module_dir)))  # /starccato-flow/
+            outdir = os.path.join(_starccato_flow_root, "outdir")
+        
         self.outdir = outdir
         self.toy = toy
         self.detector_noise_on = detector_noise_on
