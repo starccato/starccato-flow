@@ -766,7 +766,9 @@ def plot_latent_space_2d_3d(
     param_sample = param_denorm[sample_indices]
     colors_sample = [ye_colors[i] for i in sample_indices] if ye_colors is not None else None
     
-    fig = plt.figure(figsize=(16, 5), facecolor=background)
+    # Create figure with GridSpec for better control over colorbar spacing
+    fig = plt.figure(figsize=(17, 5), facecolor=background)
+    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.15], wspace=0.3)
     
     # Define the three 2D projections
     projections = [
@@ -775,8 +777,10 @@ def plot_latent_space_2d_3d(
         (0, 2, "Latent Dimension 0", "Latent Dimension 2")
     ]
     
+    scatter = None  # For colorbar reference if needed
+    
     for idx, (dim1, dim2, xlabel, ylabel) in enumerate(projections):
-        ax = fig.add_subplot(1, 3, idx + 1, facecolor=background)
+        ax = fig.add_subplot(gs[0, idx], facecolor=background)
         
         # Plot scatter
         if ye_colors is not None:
@@ -789,35 +793,39 @@ def plot_latent_space_2d_3d(
         
         ax.set_xlabel(xlabel, fontsize=11, color='white' if background == 'black' else 'black')
         ax.set_ylabel(ylabel, fontsize=11, color='white' if background == 'black' else 'black')
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-4, 4)
+        ax.set_aspect('equal')
         ax.tick_params(colors='white' if background == 'black' else 'black', labelsize=9)
         for spine in ax.spines.values():
             spine.set_color('white' if background == 'black' else 'black')
             spine.set_linewidth(1.5)
         ax.grid(True, alpha=0.3, color='gray', linestyle=':')
-        
-        # Add colorbar only on last plot
-        if idx == 2:
-            if ye_colors is not None:
-                from matplotlib.colors import LinearSegmentedColormap
-                # Gradient: red (low) to blue (high)
-                sm = plt.cm.ScalarMappable(cmap=LinearSegmentedColormap.from_list('red_blue', ['red', 'blue']), 
-                                           norm=plt.Normalize(vmin=param_sample[:, 0].min(), vmax=param_sample[:, 0].max()))
-                sm.set_array([])
-                cbar = plt.colorbar(sm, ax=ax, pad=0.02)
-                # Use PARAMETER_LABELS for param_label if available
-                label = PARAMETER_LABELS.get(param_label, param_label)
-                cbar.set_label(label, fontsize=11, color='white' if background == 'black' else 'black')
-                cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
-                                              labelcolor='white' if background == 'black' else 'black', labelsize=9)
-                cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
-                cbar.outline.set_linewidth(1.5)
-            else:
-                cbar = plt.colorbar(scatter, ax=ax, pad=0.02)
-                cbar.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
-                cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
-                                              labelcolor='white' if background == 'black' else 'black', labelsize=9)
-                cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
-                cbar.outline.set_linewidth(1.5)
+    
+    # Create separate axis for colorbar
+    cbar_ax = fig.add_subplot(gs[0, 3])
+    
+    if ye_colors is not None:
+        from matplotlib.colors import LinearSegmentedColormap
+        # Gradient: blue (low) to red (high) - higher values appear higher on colorbar
+        sm = plt.cm.ScalarMappable(cmap=LinearSegmentedColormap.from_list('blue_red', ['blue', 'red']), 
+                                   norm=plt.Normalize(vmin=param_sample[:, 0].max(), vmax=param_sample[:, 0].min()))
+        sm.set_array([])
+        cbar = plt.colorbar(sm, cax=cbar_ax)
+        # Use PARAMETER_LABELS for param_label if available
+        label = PARAMETER_LABELS.get(param_label, param_label)
+        cbar.set_label(label, fontsize=11, color='white' if background == 'black' else 'black')
+        cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
+                                      labelcolor='white' if background == 'black' else 'black', labelsize=9)
+        cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
+        cbar.outline.set_linewidth(1.5)
+    else:
+        cbar = plt.colorbar(scatter, cax=cbar_ax)
+        cbar.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
+        cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
+                                      labelcolor='white' if background == 'black' else 'black', labelsize=9)
+        cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
+        cbar.outline.set_linewidth(1.5)
     
     plt.tight_layout()
     

@@ -12,6 +12,8 @@ def plot_loss(
     train_losses: List[float],
     val_losses: Optional[List[float]] = None,
     loss_type: str = "Loss",
+    train_label: Optional[str] = None,
+    val_label: Optional[str] = None,
     fname: Optional[str] = None,
     axes: Optional[plt.Axes] = None,
     background: str = "white",
@@ -24,6 +26,8 @@ def plot_loss(
         train_losses (List[float]): List of training loss values
         val_losses (Optional[List[float]]): List of validation loss values
         loss_type (str): Type of loss for y-axis label
+        train_label (Optional[str]): Custom legend label for training loss
+        val_label (Optional[str]): Custom legend label for validation loss
         fname (Optional[str]): Filename to save plot
         axes (Optional[plt.Axes]): Existing axes to plot on
         background (str): Background color theme
@@ -39,11 +43,16 @@ def plot_loss(
         fig = plt.figure(figsize=(10, 6))
         axes = fig.gca()
     
-    axes.plot(train_losses, label="Training Loss", color=SIGNAL_COLOUR, 
+    if train_label is None:
+        train_label = "Training Loss"
+    if val_label is None:
+        val_label = "Validation Loss"
+    
+    axes.plot(train_losses, label=train_label, color=SIGNAL_COLOUR, 
               linewidth=3, alpha=1.0, linestyle='-')
     
     if val_losses is not None:
-        axes.plot(val_losses, label="Validation Loss", color=GENERATED_SIGNAL_COLOUR, 
+        axes.plot(val_losses, label=val_label, color=GENERATED_SIGNAL_COLOUR, 
                   linewidth=3, alpha=1.0, linestyle='-')
     
     axes.set_xlabel("Epoch", size=20)

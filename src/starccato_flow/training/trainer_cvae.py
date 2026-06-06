@@ -1,5 +1,6 @@
 import os
 import time
+from tkinter import font
 from typing import Optional
 
 import matplotlib.pyplot as plt
@@ -13,9 +14,9 @@ from ..nn.cvae import ConditionalVAE
 
 from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 
-from . import create_train_val_split, plot_signal_grid
-
-from ..plotting.signals import plot_reconstruction, plot_candidate_signal
+from . import create_train_val_split         
+from ..plotting import plot_loss
+from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
 from ..plotting.latent import plot_latent_space_2d_3d
 from ..utils.plotting_defaults import PARAMETER_LABELS
 
@@ -153,8 +154,6 @@ class ConditionalVAETrainer:
             params = [0.0] * self.param_dim
             params[grid_varying_index] = varying_value
             param_sets_norm.append(np.array(params))
-
-        print(param_sets_norm)
         
         # Create parameter tensor where each row has same params (repeated across columns)
         # Shape: (16, param_dim) where rows 0-3 have params[0], rows 4-7 have params[1], etc.
@@ -554,35 +553,127 @@ class ConditionalVAETrainer:
         )
         print(f"Saved latent space plot to {fname}")
 
-    def display_results(self, background="black"):
-        """Display training results."""
-        from ..plotting import plot_loss
+    def plot_latent_morphs(
+        self,
+        signal_1_idx: int,
+        signal_2_idx: int,
+        steps: int = 10,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "serif",
+        font_name: str = "Times New Roman"
+    ):
+        """Plot latent space morphing between two signals from the validation set.
         
+        Args:
+            signal_1_idx (int): Index of first signal in validation set
+            signal_2_idx (int): Index of second signal in validation set
+            steps (int): Number of interpolation steps
+            fname (Optional[str]): Filename to save plot
+            background (str): Background color theme
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+        """
+        from ..plotting.latent import plot_latent_morphs as plot_morphs
+        
+        signal_1 = self.val_loader.dataset[signal_1_idx][1].unsqueeze(0).to(DEVICE)
+        signal_2 = self.val_loader.dataset[signal_2_idx][1].unsqueeze(0).to(DEVICE)
+        
+        if fname is None:
+            fname = os.path.join(self.outdir, "cvae", "cvae_latent_morphs.svg")
+        
+        plot_morphs(
+            model=self.cvae,
+            signal_1=signal_1,
+            signal_2=signal_2,
+            max_value=self.validation_dataset.max_strain / TEN_KPC,
+            steps=steps,
+            fname=fname,
+            background=background,
+            font_family=font_family,
+            font_name=font_name
+        )
+        print(f"Saved latent morphs plot to {fname}")
+
+    def plot_latent_morph_up_and_down(
+        self,
+        signal_1_idx: int,
+        signal_2_idx: int,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "serif",
+        font_name: str = "Times New Roman"
+    ):
+        """Plot 2-panel figure showing signal interpolation and latent space path.
+        
+        Args:
+            signal_1_idx (int): Index of first signal in validation set
+            signal_2_idx (int): Index of second signal in validation set
+            fname (Optional[str]): Filename to save plot
+            background (str): Background color theme
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+        """
+        from ..plotting.latent import plot_latent_morph_up_and_down as plot_morph_ud
+        
+        signal_1 = self.val_loader.dataset[signal_1_idx][1].unsqueeze(0).to(DEVICE)
+        signal_2 = self.val_loader.dataset[signal_2_idx][1].unsqueeze(0).to(DEVICE)
+        
+        if fname is None:
+            fname = os.path.join(self.outdir, "cvae", "cvae_latent_morph_ud.svg")
+        
+        plot_morph_ud(
+            model=self.cvae,
+            signal_1=signal_1,
+            signal_2=signal_2,
+            max_value=self.validation_dataset.max_strain / TEN_KPC,
+            train_dataset=self.validation_dataset,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            fname=fname
+        )
+        print(f"Saved latent morph up/down plot to {fname}")
+
+    def display_results(self, background="black", fname_total=None, fname_recon=None, fname_kld=None, font_family="Serif", font_name="Times New Roman"):
+        """Display training results."""        
         # Plot total losses
-        print("\nPlotting Total Losses...")
         plot_loss(
             train_losses=self.avg_total_losses,
             val_losses=self.avg_total_losses_val,
+            loss_type="Total Loss",
+            train_label="Training total loss",
+            val_label="Validation total loss",
             background=background,
-            fname=os.path.join(self.outdir, "cvae", "cvae_total_loss.svg")
+            fname=fname_total,  
+            font_family=font_family,
+            font_name=font_name
         )
         
         # Plot reconstruction losses
-        print("Plotting Reconstruction Losses...")
         plot_loss(
             train_losses=self.avg_reproduction_losses,
             val_losses=self.avg_reproduction_losses_val,
+            loss_type="Reconstruction Loss",
+            train_label="Training reconstruction loss",
+            val_label="Validation reconstruction loss",
             background=background,
-            fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction_loss.svg")
+            fname=fname_recon,
+            font_family=font_family,
+            font_name=font_name
         )
         
-        # Plot KLD losses
-        print("Plotting KL Divergence Losses...")
+        # Plot KLD losses...
         plot_loss(
             train_losses=self.avg_kld_losses,
             val_losses=self.avg_kld_losses_val,
+            loss_type="KL Divergence Loss",
+            train_label="Training KLD loss",
+            val_label="Validation KLD loss",
             background=background,
-            fname=os.path.join(self.outdir, "cvae", "cvae_kld_loss.svg")
+            fname=fname_kld,
+            font_family=font_family,
+            font_name=font_name
         )
 
     @property
@@ -659,9 +750,7 @@ class ConditionalVAETrainer:
         cvae.load_state_dict(torch.load(model_path, map_location=DEVICE))
         cvae.eval()
         
-        print(f"✓ Loaded CVAE model from {model_path}")
-        print(f"  Architecture: y_length={y_length}, hidden_dim={hidden_dim}, z_dim={z_dim}, param_dim={param_dim}")
-        
+        print(f"✓ Loaded CVAE model from {model_path}")        
         return cvae
     
     def load_pretrained(self, model_path: str) -> None:
@@ -696,3 +785,84 @@ class ConditionalVAETrainer:
             self.avg_reproduction_losses_val = []
             self.avg_kld_losses_val = []
             print(f"  (Loss history file not found at {losses_path})")
+    
+    def generate_and_plot_signal_distribution(
+        self, 
+        num_samples: int = 10000,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "serif",
+        font_name: str = "Times New Roman",
+        sample_from_data: bool = False
+    ) -> np.ndarray:
+        """Generate signals by sampling from z and parameter space, then plot distribution.
+        
+        Samples z values from standard normal distribution and parameter values either:
+        - From training/validation dataset (with replacement) if sample_from_data=True
+        - Uniformly from [-1, 1] if sample_from_data=False
+        
+        Generates signals using the trained CVAE decoder and plots their distribution.
+        
+        Args:
+            num_samples: Number of signals to generate (default 10,000)
+            fname: Optional filename to save the distribution plot
+            background: Background color theme ("white" or "black")
+            font_family: Font family for plotting
+            font_name: Specific font name for plotting
+            sample_from_data: If True, sample parameters from training/validation dataset with replacement.
+                            If False, sample uniformly from [-1, 1] normalized space (default False)
+            
+        Returns:
+            np.ndarray: Generated signals with shape (signal_length, num_samples)
+        """        
+        # Get parameter dimension from training dataset
+        param_dim = self.training_dataset.parameters.shape[1]
+                
+        # Sample random z values from standard normal distribution
+        z_samples = np.random.randn(num_samples, self.z_dim).astype(np.float32)
+        z_tensor = torch.tensor(z_samples, dtype=torch.float32).to(DEVICE)
+        
+        # Sample parameters based on flag
+        if sample_from_data:
+            # Combine training and validation datasets
+            combined_params = np.vstack([
+                self.training_dataset.parameters,
+                self.validation_dataset.parameters
+            ])
+            total_params = combined_params.shape[0]
+                        
+            # Sample parameter indices with replacement
+            param_indices = np.random.choice(total_params, size=num_samples, replace=True)
+            params_sampled = combined_params[param_indices].astype(np.float32)
+
+            # normalised parmeters
+            params_sampled = self.training_dataset.normalize_parameters(params_sampled)
+        else:
+            params_sampled = np.random.uniform(
+                -1.0,
+                1.0,
+                size=(num_samples, param_dim)
+            ).astype(np.float32)
+        
+        params_tensor = torch.tensor(params_sampled, dtype=torch.float32).to(DEVICE)
+        
+        # Generate signals using decoder with eval mode
+        self.cvae.eval()
+        with torch.no_grad():
+            generated_signals_norm = self.cvae.decoder(z_tensor, params_tensor).cpu().numpy()
+                
+        # Signals are already in normalized space from decoder
+        # Reshape from (num_samples, signal_length) to (signal_length, num_samples)
+        signals_array = generated_signals_norm.T * self.training_dataset.max_strain  # Scale by max strain to get physical units
+                
+        # Plot signal distribution
+        plot_signal_distribution(
+            signals=signals_array / TEN_KPC,  # Convert to 10kpc distance
+            generated=True,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            fname=fname
+        )
+        
+        return signals_array
