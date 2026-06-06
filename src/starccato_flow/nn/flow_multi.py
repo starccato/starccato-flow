@@ -30,7 +30,7 @@ class FlowFCL(nn.Module):
     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
         # Ensure t_start and t_end are on the same device as x_t
         t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
-        t_end = t_end.to(x_t.device)
+        t_end = t_end.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
         
         dt = t_end - t_start
         
@@ -80,7 +80,7 @@ class FlowCNN(nn.Module):
     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
         # Ensure t_start and t_end are on the same device as x_t
         t_start = t_start.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
-        t_end = t_end.to(x_t.device)
+        t_end = t_end.to(x_t.device).view(1, 1).expand(x_t.shape[0], 1)
         
         dt = t_end - t_start
         
