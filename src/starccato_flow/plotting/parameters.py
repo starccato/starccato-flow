@@ -200,7 +200,6 @@ def plot_pp_coverage(
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
     figsize: Tuple[float, float] = (10, 8),
-    n_credible_levels: int = 20
 ) -> plt.Figure:
     """Plot credible interval coverage (p-p plot) for multiple parameters.
     
@@ -227,6 +226,7 @@ def plot_pp_coverage(
     fig, ax = plt.subplots(figsize=figsize)
     
     # Credible interval levels to evaluate (0-100%)
+    n_credible_levels = 100
     credible_levels = np.linspace(0.01, 0.99, n_credible_levels)
     
     # Define colors for each parameter
@@ -272,19 +272,18 @@ def plot_pp_coverage(
         # Plot line for this parameter
         param_label = PARAMETER_LABELS.get(param_names[param_idx], param_names[param_idx])
         color = colors[param_idx % len(colors)]
-        ax.plot(credible_levels * 100, np.array(empirical_coverage) * 100, 
-                color=color, linewidth=2.5, label=param_label, marker='o', markersize=4, alpha=0.8)
+        ax.plot(credible_levels, np.array(empirical_coverage), 
+                color=color, linewidth=2.5, label=param_label, alpha=0.8)
     
     # Plot diagonal (perfect calibration)
-    ax.plot([0, 100], [0, 100], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
+    ax.plot([0, 1], [0, 1], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
     
     # Formatting
-    ax.set_xlabel('Theoretical Credible Interval Level (%)', size=16, fontweight='bold')
-    ax.set_ylabel('Empirical Coverage (%)', size=16, fontweight='bold')
-    ax.set_title('P-P Plot: Credible Interval Coverage', size=18, fontweight='bold', pad=15)
+    ax.set_xlabel('Probability within the Credible Interval', size=16)
+    ax.set_ylabel(r'Fraction of events within the Credible Interval', size=16)
     
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     ax.set_aspect('equal')
     
     ax.tick_params(labelsize=12)

@@ -414,24 +414,24 @@ class Supernovae:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
         """
         import os
-        
-        min_kiloparsec = 0.0
-        max_kiloparsec = min(20.0, (epoch / num_epochs) * 20.0 + 1.0)
+        threshold_d = 20.0
+        min_d_mask = 0.0
+        max_d_mask = min(threshold_d, (epoch / num_epochs) * 20.0 + 1.0)
         distance_mask = (
-            (self.distances >= min_kiloparsec)
-            & (self.distances <= max_kiloparsec)
+            (self.distances >= min_d_mask)
+            & (self.distances <= max_d_mask)
         )
         candidate_indices = np.where(distance_mask)[0]
         if candidate_indices.size == 0:
             raise ValueError(
-                f"No supernovae found in [{min_kiloparsec:.3f}, {max_kiloparsec:.3f}] kpc range."
+                f"No supernovae found in [{min_d_mask:.3f}, {max_d_mask:.3f}] kpc range."
             )
 
         sample_probs = None
         if exponential:
             candidate_distances = self.distances[candidate_indices]
-            shell_width = max(max_kiloparsec - min_kiloparsec, 1e-8)
-            normalized_distance = np.clip((candidate_distances - min_kiloparsec) / shell_width, 0.0, 1.0)
+            shell_width = max(max_d_mask - min_d_mask, 1e-8)
+            normalized_distance = np.clip((candidate_distances - min_d_mask) / shell_width, 0.0, 1.0)
 
             # Increase bias through training so later epochs concentrate more strongly
             # near the far edge of each shell.

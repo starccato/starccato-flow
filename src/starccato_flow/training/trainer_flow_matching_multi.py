@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
-from torch import nn
+from torch import mean, nn
 from torch.utils.data import DataLoader
 
 from ..data.s_theta import sTheta
@@ -606,17 +606,6 @@ class FlowMatchingTrainerMulti:
             val_samples = 0
             with torch.no_grad():
                 n_val_signals = 2000
-                # val_ra, val_dec, val_d = self.supernovae.sample_supernovae_for_epoch(
-                #     epoch, 
-                #     n_val_signals, 
-                #     self.num_epochs, 
-                #     exponential=True, 
-                #     validation=True, 
-                #     epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data")
-                # )
-                # signals_val, params_val = self.validation_dataset.signals, self.validation_dataset.parameters # use all the strain data from the validation set
-
-
                 val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
                     epoch,
                     n_val_signals,
@@ -939,8 +928,8 @@ class FlowMatchingTrainerMulti:
             fname=fname
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 500, num_samples: int = 1000, n_steps: int = 20, 
-                                     fname: Optional[str] = None, background: str = "white") -> None:
+    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
+                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman") -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
         This plot shows empirical vs theoretical coverage of credible intervals for each parameter.
@@ -952,28 +941,21 @@ class FlowMatchingTrainerMulti:
             n_steps (int): Number of ODE solver steps for inference
             fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
             background (str): Background color theme ("white" or "black")
+            font_family (str): Font family for plot text
+            font_name (str): Font name for plot text
         """
         # Initialize validation dataset if not already present
-        if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:
-            print("Initializing validation dataset...")
-            
-            # Check if we have a validation_dataset (from training)
-            if not hasattr(self, 'validation_dataset') or self.validation_dataset is None:
-                print("Error: No validation dataset available.")
-                print("  - If you loaded a pretrained model, please train it first to create validation data")
-                print("  - Or run train() to generate the validation dataset")
-                return
-            
+        if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:            
             # Sample validation signals and parameters
-            n_val_signals = min(num_signals * 2, len(self.validation_dataset))
-            val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)
+            val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
             
             # Sample sky parameters for validation set
+            # Use uniform sampling (not exponential) for representative calibration assessment
             val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
-                epoch=self.num_epochs,  # Use epoch=num_epochs to get a different set of sky parameters than training
-                n_samples=n_val_signals,
+                epoch=self.num_epochs,
+                n_samples=num_signals,
                 num_epochs=self.num_epochs,
-                exponential=True,
+                exponential=False,  # Uniform sampling for p-p plot calibration
                 validation=True,
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
@@ -995,64 +977,78 @@ class FlowMatchingTrainerMulti:
                 intrinsic_param_names=self.intrinsic_params
             )
             print(f"✓ Created validation dataset with {len(self.h_theta_multi_val)} signals")
-        
-        if fname is None:
-            fname = os.path.join(self.outdir, "flow_matching", "pp_coverage_validation.png")
-        
-        os.makedirs(os.path.dirname(fname), exist_ok=True)
-        
+                
         self.flow.eval()
         
         posterior_samples_list = []
         true_params_list = []
         
-        print(f"Generating posterior samples for {num_signals} validation signals...")
+        # Create DataLoader for efficient batch iteration
+        use_cuda = str(DEVICE).startswith("cuda")
+        loader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": 0,
+            "pin_memory": use_cuda,
+            "persistent_workers": False,
+        }
+        val_loader = DataLoader(
+            self.h_theta_multi_val,
+            shuffle=False,
+            **loader_kwargs,
+        )
         
-        # Sample signals from validation dataset
-        val_dataset_size = len(self.h_theta_multi_val)
-        signal_indices = np.random.choice(val_dataset_size, size=min(num_signals, val_dataset_size), replace=False)
-        
+        total_processed = 0
         with torch.no_grad():
-            for idx, signal_idx in enumerate(signal_indices):
-                if (idx + 1) % max(1, num_signals // 5) == 0:
-                    print(f"  Processed {idx + 1}/{num_signals} signals...")
+            for signals_batch, noisy_signals_batch, true_params_batch in val_loader:
+                # Determine how many samples to process from this batch
+                num_to_process = min(len(signals_batch), num_signals - total_processed)
+                if num_to_process <= 0:
+                    break
                 
-                # Get signal and true parameters from validation set
-                signal, noisy_signal, true_params = self.h_theta_multi_val[signal_idx]
-                
-                if noisy_signal.dim() == 2:
-                    noisy_signal = noisy_signal.unsqueeze(0)
-                if true_params.dim() == 1:
-                    true_params = true_params.unsqueeze(0)
-                
-                noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
-                true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
-                
-                # Generate posterior samples using flow
-                posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
-                repeated_signal = noisy_signal.repeat(num_samples, 1)
-                
-                time_steps = torch.linspace(0, 1.0, n_steps + 1)
-                for i in range(n_steps):
-                    posterior_samples = self.flow.step(
-                        posterior_samples,
-                        time_steps[i],
-                        time_steps[i + 1],
-                        repeated_signal,
+                # Process each sample in the batch
+                for i in range(num_to_process):
+                    if (total_processed + 1) % max(1, num_signals // 5) == 0:
+                        print(f"  Processed {total_processed + 1}/{num_signals} signals...")
+                    
+                    # Extract individual sample from batch
+                    noisy_signal = noisy_signals_batch[i:i+1]
+                    true_params = true_params_batch[i:i+1]
+                    
+                    if noisy_signal.dim() == 2:
+                        noisy_signal = noisy_signal.unsqueeze(0)
+                    if true_params.dim() == 1:
+                        true_params = true_params.unsqueeze(0)
+                    
+                    noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
+                    true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
+                    
+                    # Generate posterior samples using flow
+                    posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
+                    repeated_signal = noisy_signal.repeat(num_samples, 1)
+                    
+                    time_steps = torch.linspace(0, 1.0, n_steps + 1)
+                    for j in range(n_steps):
+                        posterior_samples = self.flow.step(
+                            posterior_samples,
+                            time_steps[j],
+                            time_steps[j + 1],
+                            repeated_signal,
+                        )
+                    
+                    # Denormalize parameters
+                    samples_denorm = self._denormalize_extracted_params(
+                        posterior_samples.cpu().numpy(), 
+                        self.h_theta_multi_val
                     )
-                
-                # Denormalize parameters
-                samples_denorm = self._denormalize_extracted_params(
-                    posterior_samples.cpu().numpy(), 
-                    self.h_theta_multi_val
-                )
-                true_params_denorm = self._denormalize_extracted_params(
-                    true_params.cpu().numpy(),
-                    self.h_theta_multi_val
-                )
-                
-                posterior_samples_list.append(samples_denorm)
-                true_params_list.append(true_params_denorm.flatten())
+                    true_params_denorm = self._denormalize_extracted_params(
+                        true_params.cpu().numpy(),
+                        self.h_theta_multi_val
+                    )
+                    
+                    posterior_samples_list.append(samples_denorm)
+                    true_params_list.append(true_params_denorm.flatten())
+                    
+                    total_processed += 1
         
         print(f"Generating p-p coverage plot...")
         
@@ -1063,9 +1059,8 @@ class FlowMatchingTrainerMulti:
             param_names=self.parameters_to_estimate,
             fname=fname,
             background=background,
-            font_family="sans-serif",
-            font_name="Avenir",
-            n_credible_levels=20
+            font_family=font_family,
+            font_name=font_name,
         )
         
         print(f"✓ Saved p-p coverage plot to {fname}")
@@ -1082,41 +1077,41 @@ class FlowMatchingTrainerMulti:
         # Extract only the requested parameter indices
         return full_params[:, self.param_extract_indices]
     
-    def display_results(self, background="black", fname=None):
+    def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir") -> None:
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, background=background, fname=fname)        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="Mean Squared Error Loss", train_label="Training Mean Squared Error Loss", val_label="Validation Mean Squared Error Loss", background=background, fname=fname, font_family=font_family, font_name=font_name)        
         
-        # Plot Flow gradient norms if available
-        if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
-            print("\nPlotting Flow Gradient Norms...")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
-            ax.set_xlabel('Epoch', size=16)
-            ax.set_ylabel('Gradient Norm', size=16)
-            ax.set_title('Flow Gradient Norms During Training', size=18)
-            ax.legend(fontsize=12)
-            ax.grid(True, alpha=0.3)
-            ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
+        # # Plot Flow gradient norms if available
+        # if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
+        #     print("\nPlotting Flow Gradient Norms...")
+        #     fig, ax = plt.subplots(figsize=(10, 6))
+        #     ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
+        #     ax.set_xlabel('Epoch', size=16)
+        #     ax.set_ylabel('Gradient Norm', size=16)
+        #     ax.set_title('Flow Gradient Norms During Training', size=18)
+        #     ax.legend(fontsize=12)
+        #     ax.grid(True, alpha=0.3)
+        #     ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
             
-            # Set background color
-            ax.set_facecolor(background)
-            fig.patch.set_facecolor(background)
-            ax.spines['bottom'].set_color('white' if background == 'black' else 'black')
-            ax.spines['left'].set_color('white' if background == 'black' else 'black')
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.tick_params(colors='white' if background == 'black' else 'black')
+        #     # Set background color
+        #     ax.set_facecolor(background)
+        #     fig.patch.set_facecolor(background)
+        #     ax.spines['bottom'].set_color('white' if background == 'black' else 'black')
+        #     ax.spines['left'].set_color('white' if background == 'black' else 'black')
+        #     ax.spines['top'].set_visible(False)
+        #     ax.spines['right'].set_visible(False)
+        #     ax.tick_params(colors='white' if background == 'black' else 'black')
             
-            plt.tight_layout()
+        #     plt.tight_layout()
             
-            # Save if fname provided
-            if fname:
-                grad_fname = fname.replace('.png', '_gradient_norms.png')
-                plt.savefig(grad_fname, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
-                print(f"Saved gradient norms plot to {grad_fname}")
+        #     # Save if fname provided
+        #     if fname:
+        #         grad_fname = fname.replace('.png', '_gradient_norms.png')
+        #         plt.savefig(grad_fname, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
+        #         print(f"Saved gradient norms plot to {grad_fname}")
             
-            plt.show()
-            plt.close()
+        #     plt.show()
+        #     plt.close()
         
     @property
     def save_fname(self):
@@ -1228,8 +1223,9 @@ class FlowMatchingTrainerMulti:
         Returns:
             Loaded Flow model
         """
-        # Reconstruct model architecture
-        flow = FlowFCL(param_dim=param_dim).to(DEVICE)
+        # Reconstruct model architecture with correct parameter names
+        signal_dim = Y_LENGTH * 3  # 3 detectors
+        flow = FlowFCL(dim=param_dim, signal_dim=signal_dim).to(DEVICE)
         
         # Load saved weights
         flow.load_state_dict(torch.load(model_path, map_location=DEVICE))
@@ -1237,6 +1233,15 @@ class FlowMatchingTrainerMulti:
         
         print(f"✓ Loaded Flow model from {model_path}")        
         return flow
+    
+    def load_model_instance(self, model_path: str) -> None:
+        """Load a trained Flow model into this trainer instance.
+        
+        Args:
+            model_path: Path to the saved model weights (.pt file)
+        """
+        self.flow = self.load_model(model_path, param_dim=self.flow_param_dim)
+        print(f"✓ Loaded model into trainer from {model_path}")
     
     def load_pretrained(self, model_path: str) -> None:
         """Load pretrained weights and loss history into the trainer's model.
