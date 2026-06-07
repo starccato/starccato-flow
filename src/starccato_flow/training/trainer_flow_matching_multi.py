@@ -1,6 +1,7 @@
 import os
 import time
 import csv
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
-from ..plotting.parameters import plot_epoch_sky_parameters, plot_corner
+from ..plotting.parameters import plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT 
@@ -160,7 +161,7 @@ class FlowMatchingTrainerMulti:
         self.supernovae = Supernovae(
             locations_file=supernovae_file,
             rotation_offset=np.deg2rad(60.0),
-        )  # locations of Galactic supernovae
+        )
 
         # Load data from files if paths are provided
         if train_data_path is not None and val_data_path is not None:            
@@ -290,7 +291,7 @@ class FlowMatchingTrainerMulti:
         # setup Flow Matching model
         # Flow parameter dimension = number of parameters to estimate
         self.flow_param_dim = len(self.parameters_to_estimate)
-        self.flow_signal_dim = Y_LENGTH * 3 if not self.toy else Y_LENGTH
+        self.flow_signal_dim = Y_LENGTH * 3
         self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
@@ -683,7 +684,6 @@ class FlowMatchingTrainerMulti:
         runtime = (time.time() - t0) / 60
         print(f"Training Time: {runtime:.2f}min")
         print("Plotting training/validation loss curves...")
-        # Optionally: plot final results or save model
         self.save_models()
         self.save_losses()
         self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
@@ -761,7 +761,7 @@ class FlowMatchingTrainerMulti:
         t0 = time.time()
 
         # sample one signal from self.multi_channel_val dataset for corner plotting, ensuring it has the same sky parameters as the sky plot
-        signal, noisy_signal, params = sampled_case
+        _, noisy_signal, params = sampled_case
 
         if noisy_signal.dim() == 2:
             noisy_signal = noisy_signal.unsqueeze(0)
@@ -938,6 +938,137 @@ class FlowMatchingTrainerMulti:
             background=background,
             fname=fname
         )
+
+    def plot_pp_coverage_validation(self, num_signals: int = 500, num_samples: int = 1000, n_steps: int = 20, 
+                                     fname: Optional[str] = None, background: str = "white") -> None:
+        """Generate a p-p (credible interval coverage) plot using validation set signals.
+        
+        This plot shows empirical vs theoretical coverage of credible intervals for each parameter.
+        Each parameter is represented as a separate line. Perfect calibration is shown as the diagonal.
+        
+        Args:
+            num_signals (int): Number of validation signals to use for computing coverage
+            num_samples (int): Number of posterior samples to draw per signal
+            n_steps (int): Number of ODE solver steps for inference
+            fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
+            background (str): Background color theme ("white" or "black")
+        """
+        # Initialize validation dataset if not already present
+        if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:
+            print("Initializing validation dataset...")
+            
+            # Check if we have a validation_dataset (from training)
+            if not hasattr(self, 'validation_dataset') or self.validation_dataset is None:
+                print("Error: No validation dataset available.")
+                print("  - If you loaded a pretrained model, please train it first to create validation data")
+                print("  - Or run train() to generate the validation dataset")
+                return
+            
+            # Sample validation signals and parameters
+            n_val_signals = min(num_signals * 2, len(self.validation_dataset))
+            val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)
+            
+            # Sample sky parameters for validation set
+            val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
+                epoch=self.num_epochs,  # Use epoch=num_epochs to get a different set of sky parameters than training
+                n_samples=n_val_signals,
+                num_epochs=self.num_epochs,
+                exponential=True,
+                validation=True,
+                epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
+            )
+            
+            # Create hThetaMulti validation dataset
+            self.h_theta_multi_val = hThetaMulti(
+                s=val_signals,
+                max_strain=self.validation_dataset.max_strain,
+                theta=val_params,
+                min_theta=self.validation_dataset.min_theta,
+                max_theta=self.validation_dataset.max_theta,
+                ra=val_sampled_ra,
+                dec=val_sampled_dec,
+                d=val_sampled_d,
+                batch_size=self.batch_size,
+                detector_noise_on=True,
+                random_polarization=True,
+                seed=1000,
+                intrinsic_param_names=self.intrinsic_params
+            )
+            print(f"✓ Created validation dataset with {len(self.h_theta_multi_val)} signals")
+        
+        if fname is None:
+            fname = os.path.join(self.outdir, "flow_matching", "pp_coverage_validation.png")
+        
+        os.makedirs(os.path.dirname(fname), exist_ok=True)
+        
+        self.flow.eval()
+        
+        posterior_samples_list = []
+        true_params_list = []
+        
+        print(f"Generating posterior samples for {num_signals} validation signals...")
+        
+        # Sample signals from validation dataset
+        val_dataset_size = len(self.h_theta_multi_val)
+        signal_indices = np.random.choice(val_dataset_size, size=min(num_signals, val_dataset_size), replace=False)
+        
+        with torch.no_grad():
+            for idx, signal_idx in enumerate(signal_indices):
+                if (idx + 1) % max(1, num_signals // 5) == 0:
+                    print(f"  Processed {idx + 1}/{num_signals} signals...")
+                
+                # Get signal and true parameters from validation set
+                signal, noisy_signal, true_params = self.h_theta_multi_val[signal_idx]
+                
+                if noisy_signal.dim() == 2:
+                    noisy_signal = noisy_signal.unsqueeze(0)
+                if true_params.dim() == 1:
+                    true_params = true_params.unsqueeze(0)
+                
+                noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
+                true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
+                
+                # Generate posterior samples using flow
+                posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
+                repeated_signal = noisy_signal.repeat(num_samples, 1)
+                
+                time_steps = torch.linspace(0, 1.0, n_steps + 1)
+                for i in range(n_steps):
+                    posterior_samples = self.flow.step(
+                        posterior_samples,
+                        time_steps[i],
+                        time_steps[i + 1],
+                        repeated_signal,
+                    )
+                
+                # Denormalize parameters
+                samples_denorm = self._denormalize_extracted_params(
+                    posterior_samples.cpu().numpy(), 
+                    self.h_theta_multi_val
+                )
+                true_params_denorm = self._denormalize_extracted_params(
+                    true_params.cpu().numpy(),
+                    self.h_theta_multi_val
+                )
+                
+                posterior_samples_list.append(samples_denorm)
+                true_params_list.append(true_params_denorm.flatten())
+        
+        print(f"Generating p-p coverage plot...")
+        
+        # Create p-p coverage plot
+        plot_pp_coverage(
+            posterior_samples_list=posterior_samples_list,
+            true_params_list=true_params_list,
+            param_names=self.parameters_to_estimate,
+            fname=fname,
+            background=background,
+            font_family="sans-serif",
+            font_name="Avenir",
+            n_credible_levels=20
+        )
+        
+        print(f"✓ Saved p-p coverage plot to {fname}")
 
     def _extract_params_to_estimate(self, full_params: torch.Tensor) -> torch.Tensor:
         """Extract only the parameters we're estimating from the full parameter tensor.

@@ -3,7 +3,9 @@
 from typing import Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 import corner
+from scipy import stats
 from . import set_plot_style
 from ..utils.plotting_defaults import (
     SIGNAL_COLOUR,
@@ -187,6 +189,115 @@ def plot_parameter_distribution_grid(
     
     plt.rcdefaults()
     return fig
+
+
+def plot_pp_coverage(
+    posterior_samples_list: list,
+    true_params_list: list,
+    param_names: list,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    figsize: Tuple[float, float] = (10, 8),
+    n_credible_levels: int = 20
+) -> plt.Figure:
+    """Plot credible interval coverage (p-p plot) for multiple parameters.
+    
+    For each credible interval level (e.g., 68%, 95%), this plot shows the fraction of
+    true parameter values that fall within that interval (empirical) vs the theoretical
+    expectation. Each parameter is represented as a line.
+    
+    Args:
+        posterior_samples_list (list): List of posterior sample arrays, each shape (num_samples, num_params)
+        true_params_list (list): List of true parameter values, each shape (num_params,)
+        param_names (list): List of parameter names
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color theme ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        figsize (Tuple[float, float]): Figure size in inches
+        n_credible_levels (int): Number of credible interval levels to evaluate
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Credible interval levels to evaluate (0-100%)
+    credible_levels = np.linspace(0.01, 0.99, n_credible_levels)
+    
+    # Define colors for each parameter
+    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6']
+    
+    # For each parameter, calculate empirical coverage
+    num_params = len(param_names)
+    for param_idx in range(num_params):
+        empirical_coverage = []
+        
+        # For each credible level
+        for level in credible_levels:
+            # Calculate the quantiles for this credible level
+            lower_quantile = (1 - level) / 2
+            upper_quantile = 1 - lower_quantile
+            
+            n_in_interval = 0
+            total = 0
+            
+            # Check how many true values fall within their credible intervals
+            for posterior_samples, true_params in zip(posterior_samples_list, true_params_list):
+                if isinstance(posterior_samples, torch.Tensor):
+                    posterior_samples = posterior_samples.cpu().numpy()
+                if isinstance(true_params, torch.Tensor):
+                    true_params = true_params.cpu().numpy()
+                
+                # Get the posterior samples for this parameter
+                param_posterior = posterior_samples[:, param_idx]
+                true_value = true_params[param_idx]
+                
+                # Calculate credible interval
+                lower = np.quantile(param_posterior, lower_quantile)
+                upper = np.quantile(param_posterior, upper_quantile)
+                
+                # Check if true value is within interval
+                if lower <= true_value <= upper:
+                    n_in_interval += 1
+                total += 1
+            
+            # Empirical fraction
+            empirical_coverage.append(n_in_interval / total if total > 0 else 0)
+        
+        # Plot line for this parameter
+        param_label = PARAMETER_LABELS.get(param_names[param_idx], param_names[param_idx])
+        color = colors[param_idx % len(colors)]
+        ax.plot(credible_levels * 100, np.array(empirical_coverage) * 100, 
+                color=color, linewidth=2.5, label=param_label, marker='o', markersize=4, alpha=0.8)
+    
+    # Plot diagonal (perfect calibration)
+    ax.plot([0, 100], [0, 100], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
+    
+    # Formatting
+    ax.set_xlabel('Theoretical Credible Interval Level (%)', size=16, fontweight='bold')
+    ax.set_ylabel('Empirical Coverage (%)', size=16, fontweight='bold')
+    ax.set_title('P-P Plot: Credible Interval Coverage', size=18, fontweight='bold', pad=15)
+    
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.set_aspect('equal')
+    
+    ax.tick_params(labelsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=12, loc='lower right', framealpha=0.95)
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=background if background == "black" else "white")
+    
+    plt.rcdefaults()
+    return fig
+
 
 
 def plot_epoch_sky_parameters(
