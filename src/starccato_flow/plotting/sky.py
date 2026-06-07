@@ -1381,10 +1381,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         bbox_inches=None,
     )
 
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+    plt.show()
 
     plt.rcdefaults()
 

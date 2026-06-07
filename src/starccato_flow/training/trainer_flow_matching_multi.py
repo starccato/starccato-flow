@@ -396,7 +396,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, export_on: bool = False, random_psi: bool = True):
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white") -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -406,6 +406,12 @@ class FlowMatchingTrainerMulti:
             dec: Declination in radians (optional, random if None)
             export_on: Whether to export signal channels as .txt files
             random_psi: Whether to use random polarization angle (True) or fixed psi=0 (False)
+            font_family: Font family for plots
+            font_name: Font name for plots
+            fname_signal: Filename for the signal plot
+            fname_posterior: Filename for the posterior plot
+            fname_posterior_sky: Filename for the posterior sky plot
+            background: Background color for plots (e.g., "white", "black")
         """
         
         # Set up directory paths
@@ -483,25 +489,40 @@ class FlowMatchingTrainerMulti:
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
             max_value=active_h_theta_multi.max_strain,
             detector_labels=active_h_theta_multi.detectors,
-            background="black",
+            background="white",
             generated=False,
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png"),
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png") if fname_signal is None else fname_signal,
+            font_family=font_family,
+            font_name=font_name
         )
+        # Generate posterior samples once and reuse for both plots
+        posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
+            case, active_h_theta_multi, num_samples=3000, n_steps=20
+        )
+        
         self.plot_corner_sampled_signal(
             num_samples=3000,
             n_steps=20,
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png"),
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
             sampled_case=case,
-            h_theta_multi_dataset=active_h_theta_multi
+            h_theta_multi_dataset=active_h_theta_multi,
+            posterior_samples_denorm=posterior_samples_denorm,
+            true_param_denorm=true_param_denorm,
+            background="white",
+            font_family=font_family,
+            font_name=font_name
         )
         self.plot_sky_localisation_sampled_signal(
             num_samples=3000,
             n_steps=20,
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png"),
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png") if fname_posterior_sky is None else fname_posterior_sky,
             sampled_case=case,
             h_theta_multi_dataset=active_h_theta_multi,
+            posterior_samples_denorm=posterior_samples_denorm,
+            true_param_denorm=true_param_denorm,
+            font_family=font_family,
+            font_name=font_name
         )
-
         # export each channel of the signal as a separate .txt file for external analysis
         if export_on:
             export_dir = os.path.join(self.outdir, "exported_signals")
@@ -727,43 +748,36 @@ class FlowMatchingTrainerMulti:
         )
 
 
-    def plot_corner_sampled_signal(
-        self,
-        epoch: int = 0,
-        num_samples: int = 5000,
-        n_steps: int = 20,
-        fname: str = "plots/corner_plot_sampled_signal.png",
-        sampled_case=None,
-        h_theta_multi_dataset=None,
-    ):
-        """Generate a corner plot for one sampled multi-channel validation signal.
-
-        This samples one validation waveform and one sky location (RA/Dec/d), appends
-        sky parameters (including psi), and plots the posterior over the full parameter vector.
+    def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20):
+        """Generate posterior samples for a given signal case.
+        
+        Args:
+            sampled_case: Tuple of (signal, noisy_signal, params)
+            h_theta_multi_dataset: Dataset containing normalization bounds
+            num_samples: Number of posterior samples
+            n_steps: Number of ODE solver steps
+            
+        Returns:
+            Tuple of (samples_denorm, true_params_denorm) as numpy arrays
         """
         self.flow.eval()
         
-        # Use passed dataset or default to self.h_theta_multi_val
-        if h_theta_multi_dataset is None:
-            h_theta_multi_dataset = self.h_theta_multi_val
-
-        t0 = time.time()
-
-        # sample one signal from self.multi_channel_val dataset for corner plotting, ensuring it has the same sky parameters as the sky plot
         _, noisy_signal, params = sampled_case
-
+        
         if noisy_signal.dim() == 2:
             noisy_signal = noisy_signal.unsqueeze(0)
         if params.dim() == 1:
             params = params.unsqueeze(0)
-
+        
         noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
         params = params.view(params.size(0), -1).to(DEVICE).float()
-
+        
+        t0 = time.time()
+        
         with torch.no_grad():
             posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
             repeated_signal = noisy_signal.repeat(num_samples, 1)
-
+            
             time_steps = torch.linspace(0, 1.0, n_steps + 1)
             for i in range(n_steps):
                 posterior_samples = self.flow.step(
@@ -772,26 +786,57 @@ class FlowMatchingTrainerMulti:
                     time_steps[i + 1],
                     repeated_signal,
                 )
-
+            
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
-
-        # Denormalize extracted parameters
+        
+        # Denormalize parameters
         if self.toy:
-            # For toy data, we work in full parameter space so denormalize directly
-            # (toy parameters are already in the format we need)
-            samples_cpu = samples_cpu  # Already denormalized in toy case
-            true_params = true_params_norm
-            labels = self.parameters_to_estimate
+            samples_denorm = samples_cpu
+            true_params_denorm = true_params_norm
         else:
-            # For real data, always use extracted parameter denormalization
-            # since we're operating in the extracted parameter space
-            samples_cpu = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
-            true_params = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), h_theta_multi_dataset).flatten()
-            labels = self.parameters_to_estimate
-
+            samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+            true_params_denorm = self._denormalize_extracted_params(
+                true_params_norm.reshape(1, -1), h_theta_multi_dataset
+            ).flatten()
+        
         t1 = time.time()
-        print(f"Corner plot sampling and denormalisation took {(t1 - t0):.2f}s")
+        print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
+        
+        return samples_denorm, true_params_denorm
+
+    def plot_corner_sampled_signal(
+        self,
+        epoch: int = 0,
+        num_samples: int = 5000,
+        n_steps: int = 20,
+        fname: str = "plots/corner_plot_sampled_signal.png",
+        sampled_case=None,
+        h_theta_multi_dataset=None,
+        posterior_samples_denorm=None,
+        true_param_denorm=None,
+        background: str = "white",
+        font_family: str = "Serif",
+        font_name: str = "Times New Roman"
+    ):
+        """Generate a corner plot for one sampled multi-channel validation signal.
+
+        This samples one validation waveform and one sky location (RA/Dec/d), appends
+        sky parameters (including psi), and plots the posterior over the full parameter vector.
+        
+        Args:
+            posterior_samples_denorm: Optional pre-computed posterior samples. If None, generates them from sampled_case.
+            true_param_denorm: Optional pre-computed true parameters. If None, generates them from sampled_case.
+        """
+        # Use passed dataset or default to self.h_theta_multi_val
+        if h_theta_multi_dataset is None:
+            h_theta_multi_dataset = self.h_theta_multi_val
+        
+        # Generate posterior samples if not provided
+        if posterior_samples_denorm is None or true_param_denorm is None:
+            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
+                sampled_case, h_theta_multi_dataset, num_samples, n_steps
+            )
 
         # Convert parameter names to LaTeX labels using plotting_defaults
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
@@ -819,11 +864,14 @@ class FlowMatchingTrainerMulti:
             print(f"  Override d range to: {ranges[d_idx]}")
 
         plot_corner(
-            samples_cpu=samples_cpu,
-            true_params=true_params,
+            samples_cpu=posterior_samples_denorm,
+            true_param=true_param_denorm,
             fname=fname,
             labels=latex_labels,
-            ranges=ranges
+            ranges=ranges,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
         )
 
     def plot_sky_localisation_sampled_signal(
@@ -834,52 +882,26 @@ class FlowMatchingTrainerMulti:
         fname: str = "plots/sky_localisation_sampled_signal.png",
         sampled_case=None,
         h_theta_multi_dataset=None,
+        posterior_samples_denorm=None,
+        true_param_denorm=None,
+        font_family: str = "Serif",
+        font_name: str = "Times New Roman"
     ):
-        """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal."""
-        self.flow.eval()
+        """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal.
         
+        Args:
+            posterior_samples_denorm: Optional pre-computed posterior samples. If None, generates them from sampled_case.
+            true_param_denorm: Optional pre-computed true parameters. If None, generates them from sampled_case.
+        """
         # Use passed dataset or default to self.h_theta_multi_val
         if h_theta_multi_dataset is None:
             h_theta_multi_dataset = self.h_theta_multi_val
-
-        if sampled_case is None:
-            _, noisy_signal, params = self._sample_validation_plot_case(epoch)
-        else:
-            _, noisy_signal, params = sampled_case
-
-        if noisy_signal.dim() == 2:
-            noisy_signal = noisy_signal.unsqueeze(0)
-        if params.dim() == 1:
-            params = params.unsqueeze(0)
-
-        noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
-        params = params.view(params.size(0), -1).to(DEVICE).float()
-
-        with torch.no_grad():
-            posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
-            repeated_signal = noisy_signal.repeat(num_samples, 1)
-
-            time_steps = torch.linspace(0, 1.0, n_steps + 1)
-            for i in range(n_steps):
-                posterior_samples = self.flow.step(
-                    posterior_samples,
-                    time_steps[i],
-                    time_steps[i + 1],
-                    repeated_signal,
-                )
-
-            samples_cpu = posterior_samples.detach().cpu().numpy()
-            true_params_norm = params.detach().cpu().numpy().flatten()
-
-        # Denormalize the extracted parameters
-        if self.toy:
-            # For toy data, assume last 4 params are [ra, dec, d, psi]
-            samples_denorm = samples_cpu
-            true_params_denorm = true_params_norm
-        else:
-            # For real data, denormalize in the extracted parameter space
-            samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
-            true_params_denorm = self._denormalize_extracted_params(true_params_norm.reshape(1, -1), h_theta_multi_dataset).flatten()
+        
+        # Generate posterior samples if not provided
+        if posterior_samples_denorm is None or true_param_denorm is None:
+            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
+                sampled_case, h_theta_multi_dataset, num_samples, n_steps
+            )
         
         # Extract RA and Dec indices from the parameters_to_estimate list
         ra_idx = self._get_extracted_index("ra")
@@ -887,16 +909,16 @@ class FlowMatchingTrainerMulti:
         
         if ra_idx >= 0 and dec_idx >= 0:
             # Extract RA and Dec from the denormalized extracted parameters
-            ra_samples = samples_denorm[:, ra_idx]
-            dec_samples = samples_denorm[:, dec_idx]
-            true_ra = true_params_denorm[ra_idx]
-            true_dec = true_params_denorm[dec_idx]
+            ra_samples = posterior_samples_denorm[:, ra_idx]
+            dec_samples = posterior_samples_denorm[:, dec_idx]
+            true_ra = true_param_denorm[ra_idx]
+            true_dec = true_param_denorm[dec_idx]
         else:
             # Fallback: assume they are at the end (shouldn't happen with proper setup)
-            ra_samples = samples_denorm[:, -4]
-            dec_samples = samples_denorm[:, -3]
-            true_ra = true_params_denorm[-4]
-            true_dec = true_params_denorm[-3]
+            ra_samples = posterior_samples_denorm[:, -4]
+            dec_samples = posterior_samples_denorm[:, -3]
+            true_ra = true_param_denorm[-4]
+            true_dec = true_param_denorm[-3]
 
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
@@ -907,10 +929,9 @@ class FlowMatchingTrainerMulti:
             true_dec_override=true_dec,
             show_constellation_borders=True,
             show_important_constellation_labels=True,
-            show=False,
             background="black",
-            font_family="sans-serif",
-            font_name="Avenir",
+            font_family=font_family,
+            font_name=font_name,
             red_blob_mode="density_peak",
         )
 

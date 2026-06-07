@@ -356,18 +356,23 @@ def plot_epoch_sky_parameters(
     plt.close()
 
 
-def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset=None, 
-                labels=None, ranges=None):
+def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 
+                labels=None, ranges=None, font_family="sans-serif", font_name="Avenir"):
     """Plot corner plot of parameter posterior distribution.
     
     Args:
         samples_cpu (np.ndarray): Posterior samples as numpy array, shape (num_samples, num_params)
-        true_params (np.ndarray): True parameter values as numpy array, shape (num_params,)
+        true_param (np.ndarray): True parameter values as numpy array, shape (num_params,)
+        background (str): Background color ("black" or "white")
         fname (str): Filename to save plot
         dataset: Optional dataset object (CCSNData or sThetaToy) to extract parameter metadata
         labels (list): Optional custom labels for parameters. If None, will be inferred from dataset or num_params
         ranges (list): Optional custom ranges for parameters as list of tuples [(min, max), ...]
+        font_family (str): Font family to use
+        font_name (str): Specific font name
     """
+    set_plot_style(background, font_family, font_name)
+    
     # Detect number of parameters
     num_params = samples_cpu.shape[1]
     
@@ -437,43 +442,57 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
             ranges = [PARAMETER_RANGES.get(name) for name in param_names]
         # Otherwise ranges will be None and corner will auto-determine
     
-    plt.rcParams['figure.facecolor'] = 'none'  # Transparent figure background
-    plt.rcParams['axes.facecolor'] = 'black'  # Black subplot backgrounds
-    plt.rcParams['savefig.facecolor'] = 'none'  # Also transparent when saving
-    plt.rcParams['text.color'] = 'white'
-    plt.rcParams['axes.labelcolor'] = 'white'
-    plt.rcParams['xtick.color'] = 'white'
-    plt.rcParams['ytick.color'] = 'white'
+    # Set rcParams based on background color
+    if background == "black":
+        text_color = 'white'
+        axes_color = 'black'
+        patch_color = 'white'
+        spine_color = 'white'
+        transparent = True
+    else:  # white background
+        text_color = 'black'
+        axes_color = 'white'
+        patch_color = 'black'
+        spine_color = 'black'
+        transparent = False
+    
+    plt.rcParams['figure.facecolor'] = axes_color
+    plt.rcParams['axes.facecolor'] = axes_color
+    plt.rcParams['savefig.facecolor'] = axes_color
+    plt.rcParams['text.color'] = text_color
+    plt.rcParams['axes.labelcolor'] = text_color
+    plt.rcParams['xtick.color'] = text_color
+    plt.rcParams['ytick.color'] = text_color
 
     # Special case for single parameter - corner library has issues with this
     if num_params == 1:
         fig, ax = plt.subplots(1, 1, figsize=(6, 6))
         ax.hist(samples_cpu.flatten(), bins=100, color=GENERATED_SIGNAL_COLOUR, 
                 alpha=0.7, density=True, edgecolor='none')
-        if true_params is not None and len(true_params) > 0:
-            ax.axvline(true_params[0], color=SIGNAL_COLOUR, linewidth=2, label='True value')
-        ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=24, color='white')
-        ax.set_ylabel('Density', fontsize=24, color='white')
+        if true_param is not None and len(true_param) > 0:
+            ax.axvline(true_param[0], color=SIGNAL_COLOUR, linewidth=2, label='True value')
+        ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=24, color=text_color)
+        ax.set_ylabel('Density', fontsize=24, color=text_color)
         if ranges is not None and ranges[0] is not None:
             ax.set_xlim(ranges[0])
-        ax.tick_params(labelsize=12, colors='white')
+        ax.tick_params(labelsize=12, colors=text_color)
         for spine in ax.spines.values():
-            spine.set_edgecolor('white')
-        ax.set_facecolor('black')
-        fig.patch.set_alpha(1.0)
+            spine.set_edgecolor(spine_color)
+        ax.set_facecolor(axes_color)
+        fig.patch.set_facecolor(axes_color)
         
         # Add title with quantiles
         q = np.percentile(samples_cpu.flatten(), [16, 50, 84])
         title = f"{q[1]:.4f}$_{{-{q[1]-q[0]:.4f}}}^{{+{q[2]-q[1]:.4f}}}$"
-        ax.set_title(title, fontsize=12, color='white')
+        ax.set_title(title, fontsize=12, color=text_color)
         
-        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
+        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=transparent)
         plt.show()
         return
 
     corner_kwargs = {
         'labels': labels,
-        'truths': true_params[:num_params],
+        'truths': true_param[:num_params],
         'truth_color': SIGNAL_COLOUR,
         'show_titles': True,
         'title_quantiles': [0.16, 0.5, 0.84],
@@ -495,27 +514,27 @@ def plot_corner(samples_cpu, true_params, fname="plots/corner_plot.png", dataset
     
     figure = corner.corner(samples_cpu, **corner_kwargs)
 
-    # Fill hist patches
+    # Fill hist patches with appropriate color
     for ax in figure.get_axes():
         for patch in ax.patches:
-            patch.set_facecolor("white")
+            patch.set_facecolor(patch_color)
             patch.set_alpha(1.0)
 
-    # Make axis lines white and adjust tick labels
+    # Make axis lines and adjust tick labels with appropriate colors
     for ax in figure.get_axes():
         for spine in ax.spines.values():
-            spine.set_edgecolor('white')
+            spine.set_edgecolor(spine_color)
         # Axis tick numbers
         ax.tick_params(labelsize=12)
         # Reduce label padding to save space
         ax.xaxis.labelpad = 2
         ax.yaxis.labelpad = 2
 
-    # Transparent canvas
-    figure.patch.set_alpha(1.0)
+    # Set figure background
+    figure.patch.set_facecolor(axes_color)
 
     # Reduce spacing between subplots to make plots bigger
     figure.subplots_adjust(hspace=0.05, wspace=0.05)
     
-    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=False)
+    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=transparent)
     plt.show()
