@@ -35,11 +35,16 @@ class Supernovae:
         self._galactic_coords = None
         self._equatorial_coords = None
         self._distances = None
+        self._train_indices = None
+        self._val_indices = None
         
         if locations_file is not None:
             self.load_locations(locations_file, limit)
         else:
             self.generate_locations(num_supernovae=2000000, seed=42)  # Generate a default set of locations if no file is provided
+        
+        # Split supernovae 90/10 for train/val
+        self._split_train_val(train_fraction=0.9, seed=42)
     
     def load_locations(self, filepath: str, limit: Optional[int] = None) -> None:
         """Load supernova locations from CSV file.
@@ -65,6 +70,28 @@ class Supernovae:
         self._compute_distances()
         
         print(f"✓ Loaded {len(self._galactic_coords)} supernova locations from {filepath}")
+
+    def _split_train_val(self, train_fraction: float = 0.9, seed: Optional[int] = None) -> None:
+        """Split supernovae into training and validation sets.
+        
+        Args:
+            train_fraction: Fraction of supernovae to use for training (default 0.9 for 90/10 split)
+            seed: Random seed for reproducibility
+        """
+        if self._galactic_coords is None:
+            raise ValueError("No galactic coordinates available. Load or generate locations first.")
+        
+        num_supernovae = len(self._galactic_coords)
+        indices = np.arange(num_supernovae)
+        
+        rng = np.random.RandomState(seed)
+        rng.shuffle(indices)
+        
+        split_idx = int(np.ceil(train_fraction * num_supernovae))
+        self._train_indices = indices[:split_idx]
+        self._val_indices = indices[split_idx:]
+        
+        print(f"✓ Split supernovae: {len(self._train_indices)} training ({train_fraction*100:.0f}%), {len(self._val_indices)} validation ({(1-train_fraction)*100:.0f}%)")
 
     def _plot_surface_density(self, fname: str, font_family: str = "serif", font_name: str = "Times New Roman", transparent: bool = True) -> None:
         """Plot surface density of supernovae in the galactic plane."""
@@ -388,6 +415,7 @@ class Supernovae:
         num_epochs: int,
         exponential: bool = True,
         validation: bool = False,
+        split: str = "train",
         epoch_dir: Optional[str] = None,
         fname: Optional[str] = None,
         font_family: str = "sans-serif",
@@ -404,7 +432,8 @@ class Supernovae:
             n_samples: Number of samples to draw
             num_epochs: Total number of epochs (for exponential weighting)
             exponential: Whether to use exponential weighting (favor larger distances)
-            validation: Whether this is for validation set
+            validation: Whether this is for validation set (deprecated, use split parameter)
+            split: Which split to sample from ("train" or "val")
             epoch_dir: Optional directory to save galactic distribution plots
             fname: Optional filename for thesis plots
             font_family: Font family for plots
@@ -422,9 +451,23 @@ class Supernovae:
             & (self.distances <= max_d_mask)
         )
         candidate_indices = np.where(distance_mask)[0]
+        
+        # Filter candidate indices to only include those in the appropriate split
+        if split == "val":
+            split_indices = self._val_indices
+        elif split == "train":
+            split_indices = self._train_indices
+        else:
+            raise ValueError(f"split must be 'train' or 'val', got {split}")
+        
+        # Only keep candidates that are in the split
+        mask = np.isin(candidate_indices, split_indices)
+        candidate_indices = candidate_indices[mask]
+        
         if candidate_indices.size == 0:
             raise ValueError(
-                f"No supernovae found in [{min_d_mask:.3f}, {max_d_mask:.3f}] kpc range."
+                f"No supernovae found in [{min_d_mask:.3f}, {max_d_mask:.3f}] kpc range "
+                f"in {split} split."
             )
 
         sample_probs = None
@@ -464,7 +507,7 @@ class Supernovae:
         elif epoch_dir is not None:
             # Construct filename from epoch_dir (training plots)
             os.makedirs(epoch_dir, exist_ok=True)
-            if validation:
+            if validation or split == "val":
                 filename_suffix = "validation"
             else:
                 filename_suffix = "training"

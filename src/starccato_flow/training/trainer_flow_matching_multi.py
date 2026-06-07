@@ -560,6 +560,7 @@ class FlowMatchingTrainerMulti:
                 self.num_epochs,
                 exponential=True,
                 validation=False,
+                split="train",
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
@@ -633,6 +634,7 @@ class FlowMatchingTrainerMulti:
                     self.num_epochs,
                     exponential=True,
                     validation=True,
+                    split="val",
                     epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
                 )
                 val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)                
@@ -978,6 +980,7 @@ class FlowMatchingTrainerMulti:
                 num_epochs=self.num_epochs,
                 exponential=False,  # Uniform sampling for p-p plot calibration
                 validation=True,
+                split="val",
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
