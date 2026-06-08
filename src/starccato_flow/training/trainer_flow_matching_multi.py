@@ -124,29 +124,31 @@ class FlowMatchingTrainerMulti:
         self.sky_param_dim = len(self.sky_params)
         
         # Build extraction indices based on actual dataset structure
-        # hThetaMulti always produces: [intrinsic_params..., ra, dec, d, psi]
+        # hThetaMulti always produces: [intrinsic_params (0-3), ra (4), dec (5), d (6), psi (7)]
         # We need to extract only the parameters we want in the order they appear
         self.param_extract_indices = []
-        n_intrinsic = len(self.intrinsic_params)
+        n_requested_intrinsic = len(self.intrinsic_params)
+        n_total_intrinsic_in_dataset = 4  # hThetaMulti always has exactly 4 intrinsic parameters
         
         # Add indices for intrinsic parameters (they come first in hThetaMulti)
-        for i in range(n_intrinsic):
+        for i in range(n_requested_intrinsic):
             self.param_extract_indices.append(i)
         
         # Add indices for sky parameters
-        # Sky parameters in hThetaMulti are always in order: [ra, dec, d, psi]
+        # Sky parameters in hThetaMulti are always in order: [ra, dec, d, psi] at indices [4, 5, 6, 7]
         sky_param_order = ["ra", "dec", "d", "psi"]
         for sky_param in self.sky_params:
             if sky_param in sky_param_order:
                 sky_idx = sky_param_order.index(sky_param)
-                self.param_extract_indices.append(n_intrinsic + sky_idx)
+                # Global index = start of sky params + local index
+                self.param_extract_indices.append(n_total_intrinsic_in_dataset + sky_idx)
             else:
                 raise ValueError(f"Unknown sky parameter '{sky_param}'. Available: {sky_param_order}")
         
         print(f"\n=== Parameter Extraction Setup ===")
         print(f"Requested parameters: {parameters}")
-        print(f"Intrinsic params in dataset: {self.intrinsic_params} (indices 0-{n_intrinsic-1})")
-        print(f"Sky params in dataset: {self.sky_params} (indices {n_intrinsic}-{len(self.param_extract_indices)-1})")
+        print(f"Intrinsic params in dataset: {self.intrinsic_params} (indices 0-{n_total_intrinsic_in_dataset-1})")
+        print(f"Sky params in dataset: {self.sky_params} (indices {n_total_intrinsic_in_dataset}-7)")
         print(f"Extract indices from hThetaMulti.parameters: {self.param_extract_indices}")
         print(f"Final flow parameter dimension: {len(self.param_extract_indices)}")
         print(f"{'='*40}\n")
@@ -305,14 +307,25 @@ class FlowMatchingTrainerMulti:
     def _denormalize_extracted_params(self, params_norm: np.ndarray, dataset) -> np.ndarray:
         """Denormalize extracted parameters using appropriate bounds.
         
-        The input params_norm is in the reduced parameter space (e.g., 5D if we extracted 5 params).
-        The dataset (hThetaMulti) already contains only the extracted parameters,
-        so we use its bounds directly without indexing.
+        The input params_norm is in the reduced parameter space (e.g., 4D if we extracted 4 sky params).
+        We need to extract bounds for each parameter IN THE ORDER THEY WERE REQUESTED.
         """
-        # dataset.min_theta and dataset.max_theta already have only the extracted parameters
-        # since they were built from training data with extracted parameters
-        min_vals = dataset.min_theta
-        max_vals = dataset.max_theta
+        # Build min/max bounds by looking up each requested parameter
+        # This ensures correct ordering even if parameters are requested out of dataset order
+        min_vals = []
+        max_vals = []
+        
+        for param_name in self.parameters_to_estimate:
+            # Use parameter_mapping to get the global dataset index for this parameter
+            if param_name in self.parameter_mapping:
+                _, dataset_idx = self.parameter_mapping[param_name]
+                min_vals.append(dataset.min_theta[dataset_idx])
+                max_vals.append(dataset.max_theta[dataset_idx])
+            else:
+                raise ValueError(f"Parameter '{param_name}' not found in parameter_mapping")
+        
+        min_vals = np.array(min_vals, dtype=np.float32)
+        max_vals = np.array(max_vals, dtype=np.float32)
         
         # Denormalize using those bounds
         return self._denormalize_with_bounds(params_norm, min_vals, max_vals)
@@ -798,8 +811,9 @@ class FlowMatchingTrainerMulti:
             true_params_denorm = true_params_norm
         else:
             samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+            # Extract only the relevant parameters from the full 8-parameter vector before denormalizing
             true_params_denorm = self._denormalize_extracted_params(
-                true_params_norm.reshape(1, -1), h_theta_multi_dataset
+                true_params_norm[self.param_extract_indices].reshape(1, -1), h_theta_multi_dataset
             ).flatten()
         
         t1 = time.time()
@@ -844,9 +858,9 @@ class FlowMatchingTrainerMulti:
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
         
         # Calculate axis ranges from extracted parameter bounds
-        # Use the dataset bounds which are already in extracted parameter space
-        mins = h_theta_multi_dataset.min_theta
-        maxs = h_theta_multi_dataset.max_theta
+        # Extract ranges only for the parameters we're actually estimating
+        mins = h_theta_multi_dataset.min_theta[self.param_extract_indices]
+        maxs = h_theta_multi_dataset.max_theta[self.param_extract_indices]
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
         ranges = [

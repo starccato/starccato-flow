@@ -17,7 +17,7 @@ from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, D
 from . import create_train_val_split         
 from ..plotting import plot_loss
 from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
-from ..plotting.latent import plot_latent_space_2d_3d
+from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down
 from ..utils.plotting_defaults import PARAMETER_LABELS
 
 def _set_seed(seed: int):
@@ -784,3 +784,171 @@ class ConditionalVAETrainer:
         )
         
         return signals_array
+    
+    def plot_latent_morphs_same_params(
+        self,
+        param_index: Optional[int] = None,
+        param_value: Optional[float] = None,
+        steps: int = 10,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "serif",
+        font_name: str = "Times New Roman",
+        use_grid: bool = True
+    ) -> None:
+        """Plot latent space morphing between two validation signals with matching parameters.
+        
+        Selects two signals from the validation dataset that have the same (or very similar)
+        parameter values. This visualizes pure latent space variation while keeping parameters
+        fixed. Useful for understanding what the latent dimensions represent.
+        
+        Args:
+            param_index (Optional[int]): Index of the parameter to match on (0-indexed).
+                                        If None, uses the first varying parameter.
+            param_value (Optional[float]): Specific normalized parameter value to match (-1 to 1).
+                                          If None, randomly selects from validation dataset.
+            steps (int): Number of interpolation steps (default 10)
+            fname (Optional[str]): Filename to save plot
+            background (str): Background color theme ("white" or "black")
+            font_family (str): Font family to use
+            font_name (str): Specific font name
+            use_grid (bool): If True, use plot_latent_morph_grid; if False, use plot_latent_morphs
+        """
+        # Default to first parameter if not specified
+        if param_index is None:
+            param_index = 0
+        
+        val_params = self.validation_dataset.parameters  # Shape: (num_val, param_dim)
+        val_signals = self.validation_dataset.signals    # Shape: (signal_length, num_val)
+        
+        # If param_value is specified, find signals with matching parameter
+        if param_value is not None:
+            # Tolerance for matching (normalized parameters are in [-1, 1])
+            tolerance = 0.05
+            matching_indices = np.where(
+                np.abs(val_params[:, param_index] - param_value) < tolerance
+            )[0]
+        else:
+            # Find all unique parameter values at param_index
+            unique_params = np.unique(val_params[:, param_index])
+            
+            # Find parameter value with at least 2 signals
+            matching_indices = None
+            for param_val in unique_params:
+                indices = np.where(val_params[:, param_index] == param_val)[0]
+                if len(indices) >= 2:
+                    matching_indices = indices
+                    param_value = param_val
+                    break
+            
+            # If no exact matches, find closest pairs with similar parameter values
+            if matching_indices is None or len(matching_indices) < 2:
+                print(f"No exact parameter matches found. Finding closest signal pairs...")
+                
+                # Try with increasing tolerance
+                for tolerance in [0.01, 0.02, 0.05, 0.1, 0.2]:
+                    # Get distribution of parameter values
+                    param_vals = val_params[:, param_index]
+                    
+                    # Find signals with similar parameters
+                    for test_val in unique_params:
+                        indices = np.where(np.abs(param_vals - test_val) < tolerance)[0]
+                        if len(indices) >= 2:
+                            matching_indices = indices
+                            param_value = test_val
+                            break
+                    
+                    if matching_indices is not None:
+                        print(f"Found {len(matching_indices)} signals within tolerance {tolerance:.3f}")
+                        break
+        
+        if matching_indices is None or len(matching_indices) < 2:
+            raise ValueError(
+                f"Could not find at least 2 signals with matching parameter value at index {param_index} "
+                f"in validation dataset (size: {len(val_params)}). "
+                f"Try a different param_index or provide a param_value."
+            )
+        
+        # Randomly select 2 signals from matching set
+        selected_indices = np.random.choice(matching_indices, size=2, replace=False)
+        idx_1, idx_2 = selected_indices
+        
+        # Get signals in normalized space (shape: 1, signal_length)
+        signal_1 = torch.tensor(
+            val_signals[:, idx_1] / self.training_dataset.max_strain,
+            dtype=torch.float32,
+            device=DEVICE
+        ).unsqueeze(0)  # Add batch dimension: (signal_length,) -> (1, signal_length)
+        signal_2 = torch.tensor(
+            val_signals[:, idx_2] / self.training_dataset.max_strain,
+            dtype=torch.float32,
+            device=DEVICE
+        ).unsqueeze(0)  # Add batch dimension: (signal_length,) -> (1, signal_length)
+        
+        # Get parameter info for title/info
+        param_name = self.training_dataset.parameter_names[param_index]
+        param_label = PARAMETER_LABELS.get(param_name, param_name)
+        
+        print(f"\nLatent Morph - Matching Parameter")
+        print(f"{'='*60}")
+        print(f"Parameter: {param_label} (index {param_index})")
+        print(f"Parameter value: {param_value:.4f}")
+        print(f"Signal 1 index: {idx_1} (params: {val_params[idx_1]})")
+        print(f"Signal 2 index: {idx_2} (params: {val_params[idx_2]})")
+        print(f"Parameter difference: {np.abs(val_params[idx_1, param_index] - val_params[idx_2, param_index]):.6f}")
+        print(f"{'='*60}\n")
+        
+        # Prepare filename if not provided
+        if fname is None:
+            fname = os.path.join(
+                self.outdir,
+                f"latent_morph_param{param_index}_{param_value:.2f}.png"
+            )
+        
+        # Set CVAE to eval mode
+        self.cvae.eval()
+        
+        # Get parameters for both signals
+        params_1 = torch.tensor(
+            val_params[idx_1:idx_1+1],
+            dtype=torch.float32,
+            device=DEVICE
+        )
+        params_2 = torch.tensor(
+            val_params[idx_2:idx_2+1],
+            dtype=torch.float32,
+            device=DEVICE
+        )
+        
+        # Plot morphing
+        if use_grid:
+            plot_latent_morph_up_and_down(
+                model=self.cvae,
+                signal_1=signal_1,
+                signal_2=signal_2,
+                params_1=params_1,
+                params_2=params_2,
+                max_value=self.training_dataset.max_strain,
+                train_dataset=self.training_dataset,
+                steps=steps,
+                background=background,
+                font_family=font_family,
+                font_name=font_name,
+                fname=fname
+            )
+        else:
+            plot_latent_morphs(
+                model=self.cvae,
+                signal_1=signal_1,
+                signal_2=signal_2,
+                params_1=params_1,
+                params_2=params_2,
+                max_value=self.training_dataset.max_strain,
+                steps=steps,
+                fname=fname,
+                background=background,
+                font_family=font_family,
+                font_name=font_name
+            )
+        
+        print(f"Latent morph plot saved to {fname}")

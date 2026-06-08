@@ -24,6 +24,8 @@ def plot_latent_morphs(
     model,
     signal_1: torch.Tensor,
     signal_2: torch.Tensor,
+    params_1: torch.Tensor,
+    params_2: torch.Tensor,
     max_value: float,
     steps: int = 10,
     fname: Optional[str] = None,
@@ -34,9 +36,11 @@ def plot_latent_morphs(
     """Plot a sequence of signals showing latent space morphing between two signals.
     
     Args:
-        model: VAE model for encoding/decoding
+        model: Conditional VAE model for encoding/decoding
         signal_1 (torch.Tensor): Starting signal
         signal_2 (torch.Tensor): Ending signal
+        params_1 (torch.Tensor): Parameters for signal 1
+        params_2 (torch.Tensor): Parameters for signal 2
         max_value (float): Maximum value for scaling
         steps (int): Number of interpolation steps
         fname (Optional[str]): Filename to save plot
@@ -52,14 +56,18 @@ def plot_latent_morphs(
     
     model.eval()
     with torch.no_grad():
-        mean_1, _ = model.encoder(signal_1)
-        mean_2, _ = model.encoder(signal_2)
+        mean_1, _ = model.encoder(signal_1, params_1)
+        mean_2, _ = model.encoder(signal_2, params_2)
         
         # Generate interpolated signals
         interpolated_latents = [mean_1 * (1 - alpha) + mean_2 * alpha 
                               for alpha in np.linspace(0, 1, steps)]
-        morphed_signals = [model.decoder(latent).cpu().detach().numpy() 
+        # Use params_1 for all decoder calls (morphing only in latent space)
+        morphed_signals = [model.decoder(latent, params_1).squeeze(0).cpu().detach().numpy() 
                           for latent in interpolated_latents]
+        
+        # Clip interpolated signals to be within [-1, 1] range (same as input normalization)
+        morphed_signals = [np.clip(signal, -1.0, 1.0) for signal in morphed_signals]
 
     # Setup figure
     num_plots = steps + 2
@@ -161,9 +169,9 @@ def plot_latent_morph_grid(
 
         # Posterior means for background latent scatter
         all_means = []
-        for x, _ in train_dataset:
-            x = torch.tensor(x).to(DEVICE)
-            mean, _ = model.encoder(x)
+        for s, d, params in train_dataset:
+            # Use clean signal s for latent space encoding
+            mean, _ = model.encoder(s, params)
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
 
@@ -299,9 +307,9 @@ def animate_latent_morphs(
 
         # Compute the posterior distribution
         all_means = []
-        for x, y in train_dataset:
-            x = torch.tensor(x).to(DEVICE)
-            mean, _ = model.encoder(x)
+        for s, d, params in train_dataset:
+            # Use clean signal s for latent space encoding
+            mean, _ = model.encoder(s, params)
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
 
@@ -372,6 +380,8 @@ def plot_latent_morph_up_and_down(
     model,
     signal_1: torch.Tensor,
     signal_2: torch.Tensor,
+    params_1: torch.Tensor,
+    params_2: torch.Tensor,
     max_value: float,
     train_dataset,
     steps=10,
@@ -384,17 +394,20 @@ def plot_latent_morph_up_and_down(
     model.eval()
     with torch.no_grad():
         # Encode signals
-        mean_1, _ = model.encoder(signal_1)
-        mean_2, _ = model.encoder(signal_2)
+        mean_1, _ = model.encoder(signal_1, params_1)
+        mean_2, _ = model.encoder(signal_2, params_2)
 
         # Get middle latent point
         alpha = 0.5
         mean_mid = mean_1 * (1 - alpha) + mean_2 * alpha
-        signal_mid = model.decoder(mean_mid).cpu().detach().numpy().flatten() * max_value
+        # Use params_1 for decoder (morphing only in latent space)
+        signal_mid = model.decoder(mean_mid, params_1).squeeze(0).cpu().detach().numpy().flatten()
+        # Clip to same range as input signals to avoid out-of-distribution decoder outputs
+        signal_mid = np.clip(signal_mid, -1.0, 1.0) * max_value
 
-        # Reconstruct signals
-        signal_1_np = signal_1.cpu().detach().numpy().flatten() * max_value
-        signal_2_np = signal_2.cpu().detach().numpy().flatten() * max_value
+        # Reconstruct signals (and clip to valid range)
+        signal_1_np = np.clip(signal_1.cpu().detach().numpy().flatten(), -1.0, 1.0) * max_value
+        signal_2_np = np.clip(signal_2.cpu().detach().numpy().flatten(), -1.0, 1.0) * max_value
 
         # X-axis
         x_vals = [i / 4096 for i in range(0, 256)]
@@ -402,9 +415,9 @@ def plot_latent_morph_up_and_down(
 
         # Posterior means for background latent scatter
         all_means = []
-        for x, _ in train_dataset:
-            x = torch.tensor(x).to(DEVICE)
-            mean, _ = model.encoder(x)
+        for s, d, params in train_dataset:
+            # Use clean signal s for latent space encoding
+            mean, _ = model.encoder(s, params)
             all_means.append(mean.cpu().numpy())
         all_means = np.concatenate(all_means, axis=0)
 
