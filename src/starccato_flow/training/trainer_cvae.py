@@ -42,7 +42,7 @@ class ConditionalVAETrainer:
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
         outdir: str = None,
-        detector_noise_on: bool = True,
+        detector_noise_on: bool = False,
         toy: bool = True,
         max_grad_norm: float = 1.0,
         varying_param_index: int = 0,

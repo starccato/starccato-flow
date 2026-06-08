@@ -32,7 +32,8 @@ class sTheta(BaseDataset, Dataset):
         detector_noise_on: bool = True,
         curriculum: bool = True,
         snr: bool = True,
-        rho_target: int = 10,
+        start_snr: float = 200.0,
+        end_snr: float = 8.0,
         indices: Optional[np.ndarray] = None,
         parameters: list = None,
         shared_min: Optional[np.ndarray] = None,
@@ -48,8 +49,12 @@ class sTheta(BaseDataset, Dataset):
         
         Args:
             batch_size (int): Batch size for data loading
+            num_epochs (int): Total number of training epochs for curriculum learning
             detector_noise_on (bool): Whether to add detector noise
-            curriculum (bool): Whether to use curriculum learning
+            curriculum (bool): Whether to use curriculum learning (SNR decreases from start_snr to end_snr)
+            snr (bool): Whether to calculate SNR (for curriculum learning)
+            start_snr (float): Starting SNR (Signal-to-Noise Ratio) in dB - used at epoch 0
+            end_snr (float): Ending SNR in dB - used at final epoch (curriculum learning target)
             indices (Optional[np.ndarray]): Specific indices to use
             parameters (list): List of parameter names to include. Examples:
                 ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"] - all parameters
@@ -98,7 +103,8 @@ class sTheta(BaseDataset, Dataset):
         self.detector_noise_on = detector_noise_on
         self.curriculum = curriculum
         self.snr = snr
-        self.rho_target = rho_target
+        self.start_snr = start_snr
+        self.end_snr = end_snr
 
         # Set default parameters if not provided
         if parameters is None:
@@ -322,8 +328,30 @@ class sTheta(BaseDataset, Dataset):
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"
 
-    def update_snr(self, snr):
-        self.rho_target = snr
+    def get_curriculum_snr(self) -> float:
+        """Get the current SNR based on curriculum learning schedule.
+        
+        SNR linearly interpolates from start_snr (at epoch 0) to end_snr (at final epoch).
+        If curriculum learning is disabled, returns end_snr.
+        
+        Returns:
+            float: Current SNR target in dB
+        """
+        if not self.curriculum:
+            return self.end_snr
+        
+        progress = self._current_epoch / max(self.num_epochs - 1, 1)
+        current_snr = self.start_snr + progress * (self.end_snr - self.start_snr)
+        return current_snr
+
+    def update_snr(self, snr: float) -> None:
+        """Update the SNR target (disables curriculum learning).
+        
+        Args:
+            snr (float): Target SNR in dB
+        """
+        self.end_snr = snr
+        self.curriculum = False
 
     @staticmethod
     def calculate_snr(h, Sn, fs=SAMPLING_RATE):
@@ -446,8 +474,11 @@ class sTheta(BaseDataset, Dataset):
             # Add noise with a consistent seed per signal index
             n = self.aLIGO_noise(seed_offset=idx)
             
+            # Get current SNR target (from curriculum learning)
+            rho_target = self.get_curriculum_snr()
+            
             s = s / 3.086e+22
-            d = s + n * (rho / self.rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
+            d = s + n * (rho / rho_target) * 100 # don't really get why it needs to scale by 100. Is there an issue with the noise units m vs. cm?
             s = s * 3.086e+22
             d = d * 3.086e+22
         else:
@@ -463,8 +494,14 @@ class sTheta(BaseDataset, Dataset):
             torch.tensor(parameters, dtype=torch.float32, device=DEVICE)
         )
     
-    def set_snr(self, snr):
-        self.rho_target = snr
+    def set_snr(self, snr: float) -> None:
+        """Set a fixed SNR target (disables curriculum learning).
+        
+        Args:
+            snr (float): Target SNR in dB
+        """
+        self.end_snr = snr
+        self.curriculum = False
 
     @property
     def current_epoch(self) -> int:
