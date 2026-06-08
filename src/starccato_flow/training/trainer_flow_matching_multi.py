@@ -1139,7 +1139,7 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_weights.pt"
+        return f"{self.outdir}/flow_sky_weights.pt"
 
     def save_data(self):
         """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""
