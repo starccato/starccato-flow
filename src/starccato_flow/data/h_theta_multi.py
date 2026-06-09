@@ -43,7 +43,7 @@ class hThetaMulti(Dataset):
         batch_size: int = BATCH_SIZE,
         detector_noise_on: bool = True,
         s: Optional[np.ndarray] = None,
-        max_strain: Optional[float] = None,
+        shared_max_strain: Optional[float] = None,
         theta: Optional[np.ndarray] = None,
         min_theta: Optional[np.ndarray] = None,
         max_theta: Optional[np.ndarray] = None,
@@ -59,7 +59,7 @@ class hThetaMulti(Dataset):
         self.batch_size = batch_size
         self.detector_noise_on = detector_noise_on
         self.s = self._coerce_signal_matrix(s)
-        self.max_strain = max_strain
+        self.shared_max_strain = shared_max_strain
         self.theta = self._coerce_theta_matrix(theta)
         self.ra = np.asarray(ra, dtype=np.float32) if ra is not None else None
         self.dec = np.asarray(dec, dtype=np.float32) if dec is not None else None
@@ -111,12 +111,12 @@ class hThetaMulti(Dataset):
             base_max = self.theta.max(axis=0).astype(np.float32)
 
         if base_min.shape[0] == self.parameters.shape[1] and base_max.shape[0] == self.parameters.shape[1]:
-            self.min_theta = base_min
-            self.max_theta = base_max
+            self.shared_min_theta = base_min
+            self.shared_max_theta = base_max
         elif base_min.shape[0] == theta_dim and base_max.shape[0] == theta_dim:
             # Append fixed sky bounds for consistent normalization across epochs/runs.
-            self.min_theta = np.concatenate([base_min, self.SKY_MIN]).astype(np.float32)
-            self.max_theta = np.concatenate([base_max, self.SKY_MAX]).astype(np.float32)
+            self.shared_min_theta = np.concatenate([base_min, self.SKY_MIN]).astype(np.float32)
+            self.shared_max_theta = np.concatenate([base_max, self.SKY_MAX]).astype(np.float32)
         else:
             raise ValueError(
                 "min_theta/max_theta dimensions do not match either theta or combined parameter dimensions. "
@@ -147,8 +147,8 @@ class hThetaMulti(Dataset):
                 print(f"  {label:20s}: [{self.min_theta[idx]:12.6f}, {self.max_theta[idx]:12.6f}]")
         print(f"{'='*70}\n")
 
-        if self.max_strain is None:
-            self.max_strain = np.max(np.abs(self.s))
+        if self.shared_max_strain is None:
+            self.shared_max_strain = np.max(np.abs(self.s))
         
         # Multi-detector setup
         self.detectors = detectors
@@ -491,7 +491,7 @@ class hThetaMulti(Dataset):
             
             # Get signal for this detector
             signal = noisy_signal[j, :]  # Shape: (Y_LENGTH,)
-            signal *= self.max_strain / TEN_KPC
+            signal *= self.shared_max_strain / TEN_KPC
             
             # Compute FFT
             hf = np.fft.rfft(signal, axis=0)[1]
@@ -512,11 +512,11 @@ class hThetaMulti(Dataset):
 
     def normalise_signals(self, signal):
         """Normalize signals by dividing by max strain."""
-        return signal / self.max_strain
+        return signal / self.shared_max_strain
     
     def denormalise_signals(self, signal):
         """Denormalize signals by multiplying by max strain."""
-        return signal * self.max_strain
+        return signal * self.shared_max_strain
     
     def normalize_parameters(self, params):
         """Normalize parameters to [-1, 1] range."""
@@ -575,7 +575,7 @@ class hThetaMulti(Dataset):
         # h
         plot_detector_signal_channels(
             signals=h / TEN_KPC,
-            max_value=self.max_strain,
+            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h,
@@ -585,7 +585,7 @@ class hThetaMulti(Dataset):
         # h_delayed
         plot_detector_signal_channels(
             signals=h_delayed / TEN_KPC,
-            max_value=self.max_strain,
+            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed,
@@ -595,7 +595,7 @@ class hThetaMulti(Dataset):
         # h_rescaled
         plot_detector_signal_channels(
             signals=h_rescaled / TEN_KPC,
-            max_value=self.max_strain,
+            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed_rescaled,
@@ -607,7 +607,7 @@ class hThetaMulti(Dataset):
         h_rescaled_noise = self.denormalise_signals(h_rescaled_noise_normalized)  # Denormalize to match other plots
         plot_detector_signal_channels(
             signals=h_rescaled_noise / TEN_KPC,
-            max_value=self.max_strain,
+            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed_rescaled_noise,

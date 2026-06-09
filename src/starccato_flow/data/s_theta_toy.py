@@ -47,9 +47,9 @@ class sThetaToy(BaseDataset):
         
         # Use shared max_strain if provided, otherwise compute from this subset
         if shared_max_strain is not None:
-            self.max_strain = shared_max_strain
+            self.shared_max_strain = shared_max_strain
         else:
-            self.max_strain = abs(self.signals).max()
+            self.shared_max_strain = abs(self.signals).max()
 
     def generate_parameters(self):
         # Generate parameters from two moons distribution

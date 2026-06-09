@@ -158,24 +158,24 @@ class sTheta(BaseDataset, Dataset):
 
         # Use shared max_strain if provided, otherwise compute from this subset
         if shared_max_strain is not None:
-            self.max_strain = shared_max_strain
+            self.shared_max_strain = shared_max_strain
         else:
-            self.max_strain = abs(self.signals).max()
+            self.shared_max_strain = abs(self.signals).max()
         
         # Use shared min/max if provided, otherwise compute from this subset
         if shared_min is not None and shared_max is not None:
-            self.min_theta = shared_min
-            self.max_theta = shared_max
+            self.shared_min_theta = shared_min
+            self.shared_max_theta = shared_max
         else:
-            self.min_theta = self.parameters.min(axis=0).astype(np.float32)
-            self.max_theta = self.parameters.max(axis=0).astype(np.float32)
+            self.shared_min_theta = self.parameters.min(axis=0).astype(np.float32)
+            self.shared_max_theta = self.parameters.max(axis=0).astype(np.float32)
 
         # Print parameter bounds
         print(f"\n{'='*70}")
         print(f"sTheta Dataset - Parameter Bounds ({len(self.parameter_names)} parameters)")
         print(f"{'='*70}")
         for i, param_name in enumerate(self.parameter_names):
-            print(f"{param_name:20s}: [{self.min_theta[i]:12.6f}, {self.max_theta[i]:12.6f}]")
+            print(f"{param_name:20s}: [{self.shared_min_theta[i]:12.6f}, {self.shared_max_theta[i]:12.6f}]")
         print(f"{'='*70}\n")
 
         self.PSD = self.AdvLIGOPsd(fourier_freq)
@@ -198,7 +198,7 @@ class sTheta(BaseDataset, Dataset):
         plot_signal_grid(
             signals=selected_signals/TEN_KPC,
             noisy_signals=None,
-            max_value=self.max_strain,
+            max_value=self.shared_max_strain,
             num_cols=1,
             num_rows=1,
             fname=fname,
@@ -323,7 +323,7 @@ class sTheta(BaseDataset, Dataset):
         """Display summary stats about the data"""
         str = f"Signal Dataset mean: {self.mean:.3f} +/- {self.std:.3f}\n"
         str += f"Signal Dataset scaling factor (to match noise in generator): {self.scaling_factor}\n"
-        str += f"Signal Dataset max value: {self.max_strain}\n"
+        str += f"Signal Dataset max value: {self.shared_max_strain}\n"
         # str += f"Signal Dataset max parameter value: {self.max_parameter_value}\n"
         str += f"Signal Dataset shape: {self.signals.shape}\n"
         str += f"Parameter Dataset shape: {self.parameters.shape}\n"

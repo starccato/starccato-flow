@@ -97,8 +97,6 @@ class FlowMatchingTrainerMulti:
         self.max_grad_norm = max_grad_norm
         
         # Set default parameters if not provided
-        if parameters is None:
-            parameters = ["beta1_IC_b", "ra", "dec", "d", "psi"]
         self.parameters_to_estimate = parameters
         
         # Parameter mapping: parameter names -> (full name, index in hThetaMulti output)
@@ -124,32 +122,17 @@ class FlowMatchingTrainerMulti:
         self.sky_param_dim = len(self.sky_params)
         
         # Build extraction indices based on actual dataset structure
-        # hThetaMulti always produces: [intrinsic_params (0-3), ra (4), dec (5), d (6), psi (7)]
-        # We need to extract only the parameters we want in the order they appear
-        self.param_extract_indices = []
-        n_requested_intrinsic = len(self.intrinsic_params)
-        n_total_intrinsic_in_dataset = 4  # hThetaMulti always has exactly 4 intrinsic parameters
-        
-        # Add indices for intrinsic parameters (they come first in hThetaMulti)
-        for i in range(n_requested_intrinsic):
-            self.param_extract_indices.append(i)
-        
-        # Add indices for sky parameters
-        # Sky parameters in hThetaMulti are always in order: [ra, dec, d, psi] at indices [4, 5, 6, 7]
-        sky_param_order = ["ra", "dec", "d", "psi"]
-        for sky_param in self.sky_params:
-            if sky_param in sky_param_order:
-                sky_idx = sky_param_order.index(sky_param)
-                # Global index = start of sky params + local index
-                self.param_extract_indices.append(n_total_intrinsic_in_dataset + sky_idx)
-            else:
-                raise ValueError(f"Unknown sky parameter '{sky_param}'. Available: {sky_param_order}")
+        # hThetaMulti concatenates: [intrinsic_params] + [sky_params]
+        # Since we request specific intrinsic + sky params, hThetaMulti only outputs those in order
+        # So extract_indices should just be sequential: [0, 1, 2, ..., n_total_params-1]
+        n_total_params = len(self.intrinsic_params) + len(self.sky_params)
+        self.param_extract_indices = list(range(n_total_params))
         
         print(f"\n=== Parameter Extraction Setup ===")
         print(f"Requested parameters: {parameters}")
-        print(f"Intrinsic params in dataset: {self.intrinsic_params} (indices 0-{n_total_intrinsic_in_dataset-1})")
-        print(f"Sky params in dataset: {self.sky_params} (indices {n_total_intrinsic_in_dataset}-7)")
-        print(f"Extract indices from hThetaMulti.parameters: {self.param_extract_indices}")
+        print(f"Intrinsic params: {self.intrinsic_params}")
+        print(f"Sky params: {self.sky_params}")
+        print(f"Extract indices (sequential from hThetaMulti): {self.param_extract_indices}")
         print(f"Final flow parameter dimension: {len(self.param_extract_indices)}")
         print(f"{'='*40}\n")
 
@@ -198,9 +181,9 @@ class FlowMatchingTrainerMulti:
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
-                shared_min=self.training_dataset.min_theta,
-                shared_max=self.training_dataset.max_theta,
-                shared_max_strain=self.training_dataset.max_strain,
+                shared_min=self.training_dataset.shared_min_theta,
+                shared_max=self.training_dataset.shared_max_theta,
+                shared_max_strain=self.training_dataset.shared_max_strain,
             )
             
         elif custom_data is not None:
@@ -241,9 +224,9 @@ class FlowMatchingTrainerMulti:
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 parameters=parameters,
-                shared_min=self.training_dataset.min_theta,
-                shared_max=self.training_dataset.max_theta,
-                shared_max_strain=self.training_dataset.max_strain
+                shared_min=self.training_dataset.shared_min_theta,
+                shared_max=self.training_dataset.shared_max_theta,
+                shared_max_strain=self.training_dataset.shared_max_strain
             )
         else:
             # Use standard train/val split. Probably the most acceptable
@@ -298,6 +281,10 @@ class FlowMatchingTrainerMulti:
         # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
+        
+        # Initialize loss tracking lists (populated during training or loading)
+        self.avg_mse_losses = []
+        self.avg_mse_losses_val = []
 
     @staticmethod
     def _denormalize_with_bounds(params_norm: np.ndarray, min_vals: np.ndarray, max_vals: np.ndarray) -> np.ndarray:
@@ -309,20 +296,35 @@ class FlowMatchingTrainerMulti:
         
         The input params_norm is in the reduced parameter space (e.g., 4D if we extracted 4 sky params).
         We need to extract bounds for each parameter IN THE ORDER THEY WERE REQUESTED.
+        
+        Note: When denormalizing from hThetaMulti datasets created with intrinsic_param_names,
+        the dataset only contains the requested parameters, so we use sequential local indices.
         """
         # Build min/max bounds by looking up each requested parameter
         # This ensures correct ordering even if parameters are requested out of dataset order
         min_vals = []
         max_vals = []
         
-        for param_name in self.parameters_to_estimate:
-            # Use parameter_mapping to get the global dataset index for this parameter
-            if param_name in self.parameter_mapping:
-                _, dataset_idx = self.parameter_mapping[param_name]
-                min_vals.append(dataset.min_theta[dataset_idx])
-                max_vals.append(dataset.max_theta[dataset_idx])
-            else:
-                raise ValueError(f"Parameter '{param_name}' not found in parameter_mapping")
+        # When the dataset was created with specific intrinsic_param_names (e.g., hThetaMulti_val),
+        # it only contains the requested parameters. Use sequential local indices.
+        # Otherwise, use the global parameter_mapping indices.
+        num_params_in_dataset = len(dataset.shared_min_theta)
+        num_requested_params = len(self.parameters_to_estimate)
+        
+        if num_params_in_dataset == num_requested_params:
+            # Dataset contains only the requested parameters (local indices)
+            for local_idx in range(num_requested_params):
+                min_vals.append(dataset.shared_min_theta[local_idx])
+                max_vals.append(dataset.shared_max_theta[local_idx])
+        else:
+            # Dataset contains all parameters (use global indices from parameter_mapping)
+            for param_name in self.parameters_to_estimate:
+                if param_name in self.parameter_mapping:
+                    _, dataset_idx = self.parameter_mapping[param_name]
+                    min_vals.append(dataset.shared_min_theta[dataset_idx])
+                    max_vals.append(dataset.shared_max_theta[dataset_idx])
+                else:
+                    raise ValueError(f"Parameter '{param_name}' not found in parameter_mapping")
         
         min_vals = np.array(min_vals, dtype=np.float32)
         max_vals = np.array(max_vals, dtype=np.float32)
@@ -409,7 +411,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white") -> None:
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white") -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -417,6 +419,7 @@ class FlowMatchingTrainerMulti:
             d: Distance in kpc
             ra: Right ascension in radians (optional, random if None)
             dec: Declination in radians (optional, random if None)
+            epoch: Epoch number (used for filenames when signal_idx is None)
             export_on: Whether to export signal channels as .txt files
             random_psi: Whether to use random polarization angle (True) or fixed psi=0 (False)
             font_family: Font family for plots
@@ -438,7 +441,7 @@ class FlowMatchingTrainerMulti:
             else:
                 filename_suffix = f"signal_{signal_idx:04d}_d_{d:.1f}"
         else:
-            filename_suffix = "epoch"
+            filename_suffix = f"epoch_{epoch+1:04d}" if epoch is not None else "epoch"
         
         if signal_idx is not None and d is not None:
             # Get RAW (unnormalized) signal and params from validation dataset
@@ -477,10 +480,10 @@ class FlowMatchingTrainerMulti:
             # Following the same pattern as train()
             temp_h_theta_multi_val = hThetaMulti(
                 s=signals,  # List of tensors with RAW signals
-                max_strain=self.validation_dataset.max_strain,
+                shared_max_strain=self.validation_dataset.shared_max_strain,
                 theta=params_tensor,  # Tensor
-                min_theta=self.validation_dataset.min_theta,
-                max_theta=self.validation_dataset.max_theta,
+                shared_min=self.validation_dataset.shared_min_theta,
+                shared_max=self.validation_dataset.shared_max_theta,
                 ra=sampled_ra,
                 dec=sampled_dec,
                 d=sampled_d,
@@ -500,7 +503,7 @@ class FlowMatchingTrainerMulti:
         plot_detector_signal_channels(
             signals=case[0].detach().cpu().numpy() / TEN_KPC,
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
-            max_value=active_h_theta_multi.max_strain,
+            max_value=active_h_theta_multi.shared_max_strain,
             detector_labels=active_h_theta_multi.detectors,
             background="white",
             generated=False,
@@ -572,8 +575,6 @@ class FlowMatchingTrainerMulti:
                 self.samples_per_epoch,
                 self.num_epochs,
                 exponential=True,
-                validation=False,
-                split="train",
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
@@ -582,10 +583,10 @@ class FlowMatchingTrainerMulti:
             # create multi-channel signals
             self.h_theta_multi_train = hThetaMulti(
                 s=signals,
-                max_strain=self.training_dataset.max_strain,
+                shared_max_strain=self.training_dataset.shared_max_strain,
                 theta=params,
-                min_theta=self.training_dataset.min_theta,
-                max_theta=self.training_dataset.max_theta,
+                min_theta=self.training_dataset.shared_min_theta,
+                max_theta=self.training_dataset.shared_max_theta,
                 ra=sampled_ra,
                 dec=sampled_dec,
                 d=sampled_d,
@@ -646,18 +647,16 @@ class FlowMatchingTrainerMulti:
                     n_val_signals,
                     self.num_epochs,
                     exponential=True,
-                    validation=True,
-                    split="val",
                     epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
                 )
                 val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)                
                 
                 self.h_theta_multi_val = hThetaMulti(
                     s=val_signals,
-                    max_strain=self.validation_dataset.max_strain,
+                    shared_max_strain=self.validation_dataset.shared_max_strain,
                     theta=val_params,
-                    min_theta=self.validation_dataset.min_theta,
-                    max_theta=self.validation_dataset.max_theta,
+                    min_theta=self.validation_dataset.shared_min_theta,
+                    max_theta=self.validation_dataset.shared_max_theta,
                     ra=val_sampled_ra,
                     dec=val_sampled_dec,
                     d=val_sampled_d,
@@ -702,7 +701,7 @@ class FlowMatchingTrainerMulti:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None) 
+            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None, epoch=epoch) 
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
@@ -738,10 +737,10 @@ class FlowMatchingTrainerMulti:
 
         temp_h_theta_multi = hThetaMulti(
             s=signals,  # List of tensors with RAW signals
-            max_strain=self.validation_dataset.max_strain,
+            shared_max_strain=self.validation_dataset.shared_max_strain,
             theta=params_np,  # Tensor
-            min_theta=self.validation_dataset.min_theta,
-            max_theta=self.validation_dataset.max_theta,
+            shared_min=self.validation_dataset.shared_min_theta,
+            shared_max=self.validation_dataset.shared_max_theta,
             ra=sampled_ra,
             dec=sampled_dec,
             d=sampled_d,
@@ -811,9 +810,18 @@ class FlowMatchingTrainerMulti:
             true_params_denorm = true_params_norm
         else:
             samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
-            # Extract only the relevant parameters from the full 8-parameter vector before denormalizing
+            
+            # Extract relevant parameters from true_params if dataset has all 8 parameters
+            num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
+            if num_params_in_dataset == 8:
+                # Dataset has all parameters; extract only the requested ones
+                true_params_extracted = true_params_norm[self.param_extract_indices]
+            else:
+                # Dataset has only requested parameters
+                true_params_extracted = true_params_norm
+            
             true_params_denorm = self._denormalize_extracted_params(
-                true_params_norm[self.param_extract_indices].reshape(1, -1), h_theta_multi_dataset
+                true_params_extracted.reshape(1, -1), h_theta_multi_dataset
             ).flatten()
         
         t1 = time.time()
@@ -859,8 +867,19 @@ class FlowMatchingTrainerMulti:
         
         # Calculate axis ranges from extracted parameter bounds
         # Extract ranges only for the parameters we're actually estimating
-        mins = h_theta_multi_dataset.min_theta[self.param_extract_indices]
-        maxs = h_theta_multi_dataset.max_theta[self.param_extract_indices]
+        # Handle both cases: dataset with all 8 parameters, or dataset with only requested parameters
+        num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
+        num_requested_params = len(self.parameters_to_estimate)
+        
+        if num_params_in_dataset == num_requested_params:
+            # Dataset contains only requested parameters (use sequential indices)
+            mins = h_theta_multi_dataset.shared_min_theta
+            maxs = h_theta_multi_dataset.shared_max_theta
+        else:
+            # Dataset contains all parameters (use extraction indices)
+            mins = h_theta_multi_dataset.shared_min_theta[self.param_extract_indices]
+            maxs = h_theta_multi_dataset.shared_max_theta[self.param_extract_indices]
+        
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
         ranges = [
@@ -960,7 +979,7 @@ class FlowMatchingTrainerMulti:
         plot_candidate_signal(
             signal=signal_denorm,
             noisy_signal=noisy_signal_denorm,
-            max_value=self.val_loader.dataset.max_strain,
+            max_value=self.val_loader.dataset.shared_max_strain,
             background=background,
             fname=fname
         )
@@ -993,18 +1012,16 @@ class FlowMatchingTrainerMulti:
                 n_samples=num_signals,
                 num_epochs=self.num_epochs,
                 exponential=False,  # Uniform sampling for p-p plot calibration
-                validation=True,
-                split="val",
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
             # Create hThetaMulti validation dataset
-            self.h_theta_multi_val = hThetaMulti(
+            h_theta_multi_val = hThetaMulti(
                 s=val_signals,
-                max_strain=self.validation_dataset.max_strain,
+                shared_max_strain=self.validation_dataset.shared_max_strain,
                 theta=val_params,
-                min_theta=self.validation_dataset.min_theta,
-                max_theta=self.validation_dataset.max_theta,
+                shared_min=self.validation_dataset.shared_min_theta,
+                shared_max=self.validation_dataset.shared_max_theta,
                 ra=val_sampled_ra,
                 dec=val_sampled_dec,
                 d=val_sampled_d,
@@ -1014,7 +1031,7 @@ class FlowMatchingTrainerMulti:
                 seed=1000,
                 intrinsic_param_names=self.intrinsic_params
             )
-            print(f"✓ Created validation dataset with {len(self.h_theta_multi_val)} signals")
+            print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
                 
         self.flow.eval()
         
@@ -1030,7 +1047,7 @@ class FlowMatchingTrainerMulti:
             "persistent_workers": False,
         }
         val_loader = DataLoader(
-            self.h_theta_multi_val,
+            h_theta_multi_val,
             shuffle=False,
             **loader_kwargs,
         )
@@ -1076,11 +1093,13 @@ class FlowMatchingTrainerMulti:
                     # Denormalize parameters
                     samples_denorm = self._denormalize_extracted_params(
                         posterior_samples.cpu().numpy(), 
-                        self.h_theta_multi_val
+                        h_theta_multi_val
                     )
+                    # Extract only the requested parameters from the full 8-parameter vector
+                    true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
                     true_params_denorm = self._denormalize_extracted_params(
-                        true_params.cpu().numpy(),
-                        self.h_theta_multi_val
+                        true_params_extracted,
+                        h_theta_multi_val
                     )
                     
                     posterior_samples_list.append(samples_denorm)
@@ -1119,41 +1138,9 @@ class FlowMatchingTrainerMulti:
         """Display training results."""
         plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="Mean Squared Error Loss", train_label="Training Mean Squared Error Loss", val_label="Validation Mean Squared Error Loss", background=background, fname=fname, font_family=font_family, font_name=font_name)        
         
-        # # Plot Flow gradient norms if available
-        # if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
-        #     print("\nPlotting Flow Gradient Norms...")
-        #     fig, ax = plt.subplots(figsize=(10, 6))
-        #     ax.plot(self.flow_gradient_norms, label='Flow Gradient Norm', color='#9b59b6', linewidth=2)
-        #     ax.set_xlabel('Epoch', size=16)
-        #     ax.set_ylabel('Gradient Norm', size=16)
-        #     ax.set_title('Flow Gradient Norms During Training', size=18)
-        #     ax.legend(fontsize=12)
-        #     ax.grid(True, alpha=0.3)
-        #     ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Clipping Threshold')
-            
-        #     # Set background color
-        #     ax.set_facecolor(background)
-        #     fig.patch.set_facecolor(background)
-        #     ax.spines['bottom'].set_color('white' if background == 'black' else 'black')
-        #     ax.spines['left'].set_color('white' if background == 'black' else 'black')
-        #     ax.spines['top'].set_visible(False)
-        #     ax.spines['right'].set_visible(False)
-        #     ax.tick_params(colors='white' if background == 'black' else 'black')
-            
-        #     plt.tight_layout()
-            
-        #     # Save if fname provided
-        #     if fname:
-        #         grad_fname = fname.replace('.png', '_gradient_norms.png')
-        #         plt.savefig(grad_fname, dpi=300, bbox_inches="tight", facecolor=fig.get_facecolor())
-        #         print(f"Saved gradient norms plot to {grad_fname}")
-            
-        #     plt.show()
-        #     plt.close()
-        
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_sky_weights.pt"
+        return f"{self.outdir}/flow_ye_sky_weights.pt"
 
     def save_data(self):
         """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""
@@ -1341,10 +1328,10 @@ class FlowMatchingTrainerMulti:
         
         temp_h_theta_multi = hThetaMulti(
             s=signals,
-            max_strain=self.validation_dataset.max_strain,
+            shared_max_strain=self.validation_dataset.shared_max_strain,
             theta=params_tensor,
-            min_theta=self.validation_dataset.min_theta,
-            max_theta=self.validation_dataset.max_theta,
+            shared_min=self.validation_dataset.shared_min_theta,
+            shared_max=self.validation_dataset.shared_max_theta,
             ra=sampled_ra,
             dec=sampled_dec,
             d=sampled_d,

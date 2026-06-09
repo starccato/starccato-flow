@@ -5,14 +5,14 @@ class BaseDataset:
     """Base class with shared functionality for all datasets."""
 
     def _get_parameter_bounds(self):
-        """Return parameter normalization bounds across legacy/new attribute names."""
-        if hasattr(self, "min_theta") and hasattr(self, "max_theta"):
-            return self.min_theta, self.max_theta
-        if hasattr(self, "min_parameter") and hasattr(self, "max_parameter"):
-            return self.min_parameter, self.max_parameter
+        """Return parameter normalization bounds (shared across train/val/inference)."""
+        if hasattr(self, "shared_min_theta") and hasattr(self, "shared_max_theta"):
+            return self.shared_min_theta, self.shared_max_theta
+        if hasattr(self, "shared_min_parameter") and hasattr(self, "shared_max_parameter"):
+            return self.shared_min_parameter, self.shared_max_parameter
         raise AttributeError(
-            "Dataset is missing parameter bounds. Expected either "
-            "(min_theta, max_theta) or (min_parameter, max_parameter)."
+            "Dataset is missing parameter bounds. Expected shared bounds: "
+            "(shared_min_theta, shared_max_theta) or (shared_min_parameter, shared_max_parameter)."
         )
     
     def normalise_signals(self, signal):
@@ -24,7 +24,7 @@ class BaseDataset:
         Returns:
             Normalized signal
         """
-        return signal / self.max_strain
+        return signal / self.shared_max_strain
     
     def denormalise_signals(self, signal):
         """Denormalize signals by multiplying by max strain.
@@ -35,7 +35,7 @@ class BaseDataset:
         Returns:
             Denormalized signal in original units
         """
-        return signal * self.max_strain
+        return signal * self.shared_max_strain
     
     def normalize_parameters(self, params):
         """Normalize parameters to [-1, 1] range using min-max normalization.

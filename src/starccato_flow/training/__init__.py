@@ -41,9 +41,8 @@ def create_train_val_split(
     # Sky parameters (ra, dec, d, psi) are added later by hThetaMulti
     intrinsic_params = {"beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"}
     stheta_parameters = [p for p in parameters if p in intrinsic_params]
-    # If no intrinsic parameters were specified, use all available ones
-    if not stheta_parameters:
-        stheta_parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
+    # If user requests ONLY sky parameters, stheta_parameters will be empty
+    # hThetaMulti will then only output sky parameters
     
     if toy:
         # Create full toy dataset
@@ -79,7 +78,7 @@ def create_train_val_split(
             shared_params=full_toy_dataset.parameters[train_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
-            shared_max_strain=full_toy_dataset.max_strain
+            shared_max_strain=full_toy_dataset.shared_max_strain
         )
         # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
         validation_dataset = sThetaToy(
@@ -89,7 +88,7 @@ def create_train_val_split(
             shared_params=full_toy_dataset.parameters[val_indices],
             shared_min=full_toy_dataset.min_parameter,
             shared_max=full_toy_dataset.max_parameter,
-            shared_max_strain=full_toy_dataset.max_strain
+            shared_max_strain=full_toy_dataset.shared_max_strain
         )
     else:
         # Create a temporary dataset to get the number of signals
@@ -127,9 +126,9 @@ def create_train_val_split(
             detector_noise_on=False,
             parameters=stheta_parameters,
             indices=train_indices,
-            shared_min=temp_dataset.min_theta,
-            shared_max=temp_dataset.max_theta,
-            shared_max_strain=temp_dataset.max_strain
+            shared_min=temp_dataset.shared_min_theta,
+            shared_max=temp_dataset.shared_max_theta,
+            shared_max_strain=temp_dataset.shared_max_strain
         )
         
         validation_dataset = sTheta(
@@ -137,9 +136,9 @@ def create_train_val_split(
             detector_noise_on=False,
             parameters=stheta_parameters,
             indices=val_indices,
-            shared_min=temp_dataset.min_theta,
-            shared_max=temp_dataset.max_theta,
-            shared_max_strain=temp_dataset.max_strain
+            shared_min=temp_dataset.shared_min_theta,
+            shared_max=temp_dataset.shared_max_theta,
+            shared_max_strain=temp_dataset.shared_max_strain
         )
     
     # Verify alignment
