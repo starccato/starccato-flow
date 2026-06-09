@@ -257,6 +257,28 @@ class FlowMatchingTrainerMulti:
         print(f"Validation samples: {len(self.validation_dataset)}")
         print("=" * 50)
 
+        # Print combined parameter bounds (intrinsic + sky)
+        print(f"\n======================================================================")
+        print(f"Combined Dataset - Parameter Bounds ({len(self.training_dataset.shared_min_theta)} parameters)")
+        print(f"======================================================================")
+        
+        # Get parameter names
+        param_names = self.intrinsic_params + ["ra", "dec", "d", "psi"]
+        
+        # Print bounds for each parameter
+        for i, (name, min_val, max_val) in enumerate(zip(param_names, self.training_dataset.shared_min_theta, self.training_dataset.shared_max_theta)):
+            # Format based on parameter type
+            if name in ["ra", "dec", "psi"]:
+                # Angular parameters - show in radians and degrees
+                print(f"{name:20s}: [{min_val:12.6f}, {max_val:12.6f}] rad = [{np.degrees(min_val):8.2f}°, {np.degrees(max_val):8.2f}°]")
+            elif name == "d":
+                # Distance in kpc
+                print(f"{name:20s}: [{min_val:12.6f}, {max_val:12.6f}] kpc")
+            else:
+                # Other parameters
+                print(f"{name:20s}: [{min_val:12.6f}, {max_val:12.6f}]")
+        print(f"======================================================================\n")
+
         if len(self.training_dataset) == 0:
             raise ValueError(
                 "Training dataset is empty after filtering/splitting. "
@@ -1140,7 +1162,7 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_ye_sky_weights.pt"
+        return f"{self.outdir}/flow_sky_weights.pt"
 
     def save_data(self):
         """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""

@@ -126,7 +126,7 @@ class Supernovae:
         y = r * np.sin(theta)
         
         # Sample z heights from Gaussian (scale height ~100 pc = 0.1 kpc)
-        z = np.random.normal(loc=0, scale=0.1, size=num_supernovae)
+        z = np.random.normal(loc=0, scale=0.3, size=num_supernovae)
         
         # Store galactic coordinates
         self._galactic_coords = np.column_stack([x, y, z])

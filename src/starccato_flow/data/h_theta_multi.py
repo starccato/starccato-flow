@@ -45,8 +45,8 @@ class hThetaMulti(Dataset):
         s: Optional[np.ndarray] = None,
         shared_max_strain: Optional[float] = None,
         theta: Optional[np.ndarray] = None,
-        min_theta: Optional[np.ndarray] = None,
-        max_theta: Optional[np.ndarray] = None,
+        shared_min: Optional[np.ndarray] = None,
+        shared_max: Optional[np.ndarray] = None,
         ra: Optional[np.ndarray] = None,
         dec: Optional[np.ndarray] = None,
         d: Optional[np.ndarray] = None,
@@ -103,9 +103,9 @@ class hThetaMulti(Dataset):
         self.parameters = np.concatenate([self.theta, sky_params], axis=1)
 
         theta_dim = self.theta.shape[1]
-        if min_theta is not None and max_theta is not None:
-            base_min = np.asarray(min_theta, dtype=np.float32)
-            base_max = np.asarray(max_theta, dtype=np.float32)
+        if shared_min is not None and shared_max is not None:
+            base_min = np.asarray(shared_min, dtype=np.float32)
+            base_max = np.asarray(shared_max, dtype=np.float32)
         else:
             base_min = self.theta.min(axis=0).astype(np.float32)
             base_max = self.theta.max(axis=0).astype(np.float32)
@@ -119,14 +119,14 @@ class hThetaMulti(Dataset):
             self.shared_max_theta = np.concatenate([base_max, self.SKY_MAX]).astype(np.float32)
         else:
             raise ValueError(
-                "min_theta/max_theta dimensions do not match either theta or combined parameter dimensions. "
+                "shared_min/shared_max dimensions do not match either theta or combined parameter dimensions. "
                 f"theta_dim={theta_dim}, combined_dim={self.parameters.shape[1]}, "
                 f"min_dim={base_min.shape[0]}, max_dim={base_max.shape[0]}"
             )
 
         # Print parameter bounds
         print(f"\n{'='*70}")
-        print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.min_theta)} parameters)")
+        print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.shared_min_theta)} parameters)")
         print(f"{'='*70}")
         print("INTRINSIC PARAMETERS:")
         # Use provided intrinsic parameter names, or fall back to generic labels
@@ -137,14 +137,14 @@ class hThetaMulti(Dataset):
         
         for i in range(theta_dim):
             param_label = intrinsic_labels[i] if i < len(intrinsic_labels) else f'theta_{i}'
-            print(f"  {param_label:20s}: [{self.min_theta[i]:12.6f}, {self.max_theta[i]:12.6f}]")
+            print(f"  {param_label:20s}: [{self.shared_min_theta[i]:12.6f}, {self.shared_max_theta[i]:12.6f}]")
         
         print("\nEXTRINSIC (SKY) PARAMETERS:")
         extrinsic_labels = ['ra', 'dec', 'd', 'psi']
         for i, label in enumerate(extrinsic_labels):
             idx = theta_dim + i
-            if idx < len(self.min_theta):
-                print(f"  {label:20s}: [{self.min_theta[idx]:12.6f}, {self.max_theta[idx]:12.6f}]")
+            if idx < len(self.shared_min_theta):
+                print(f"  {label:20s}: [{self.shared_min_theta[idx]:12.6f}, {self.shared_max_theta[idx]:12.6f}]")
         print(f"{'='*70}\n")
 
         if self.shared_max_strain is None:
@@ -521,15 +521,15 @@ class hThetaMulti(Dataset):
     def normalize_parameters(self, params):
         """Normalize parameters to [-1, 1] range."""
         params_norm = params.copy()
-        param_range = self.max_theta - self.min_theta
-        params_norm = 2 * (params - self.min_theta) / param_range - 1
+        param_range = self.shared_max_theta - self.shared_min_theta
+        params_norm = 2 * (params - self.shared_min_theta) / param_range - 1
         return params_norm
     
     def denormalize_parameters(self, params_norm):
         """Denormalize parameters from [-1, 1] back to original ranges."""
         params = params_norm.copy()
-        param_range = self.max_theta - self.min_theta
-        params = (params_norm + 1) / 2 * param_range + self.min_theta
+        param_range = self.shared_max_theta - self.shared_min_theta
+        params = (params_norm + 1) / 2 * param_range + self.shared_min_theta
         return params
     
     def project_signal(self, h_plus, h_cross, psi, ra, dec, gps):
