@@ -16,7 +16,7 @@ PARAMETER_LABELS = {
     'beta1_IC_b': r'$\beta_{IC,b}$',
     'omega_0(rad|s)': r'$\omega_0$',
     'A(km)': r'$A$',
-    'Ye_c_b': r'$Y_{e,c,b}$',
+    'Ye_c_b': r'$Y_e$',
     # Sky localization (extrinsic) parameters
     'ra': r'$\mathrm{RA}$',
     'dec': r'$\mathrm{Dec}$',

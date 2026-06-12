@@ -567,7 +567,7 @@ class FlowMatchingTrainerMulti:
             os.makedirs(export_dir, exist_ok=True)
             detector_labels = active_h_theta_multi.detectors
             for i in range(case[0].shape[0]):
-                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC  # Denormalize to physical units
+                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
                 detector_name = detector_labels[i] if i < len(detector_labels) else f"channel_{i+1}"
                 np.savetxt(os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"), channel_signal)
 
@@ -737,7 +737,7 @@ class FlowMatchingTrainerMulti:
     def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman"):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
         params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
-        d = 5 # kpc
+        d = 10 # kpc
         
         distance_mask = (
             (self.supernovae.distances >= d - 0.25)

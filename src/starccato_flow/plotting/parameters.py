@@ -2,7 +2,11 @@
 
 from typing import Optional, Tuple, Union
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.colors import Normalize
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import corner
 from scipy import stats
@@ -156,9 +160,6 @@ def plot_parameter_distribution_grid(
             alpha=alpha, 
             edgecolor='none'
         )
-        
-        mean_val = np.mean(values)
-        ax.axvline(mean_val, color=GENERATED_SIGNAL_COLOUR, linewidth=2.5, linestyle='--')
         
         if labels_dict and param_name in labels_dict:
             param_label = labels_dict[param_name]
@@ -402,19 +403,19 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         elif num_params == 4:
             # CCSN data with 4 parameters (use unified PARAMETER_LABELS)
             labels = [
-                PARAMETER_LABELS.get('beta1_IC_b', r"$\beta_{IC,b}$"),
-                PARAMETER_LABELS.get('omega_0(rad|s)', r"$\omega_0$"),
-                PARAMETER_LABELS.get('A(km)', r"$A$"),
-                PARAMETER_LABELS.get('Ye_c_b', r"$Y_{e,c,b}$"),
+                PARAMETER_LABELS['beta1_IC_b'],
+                PARAMETER_LABELS['omega_0(rad|s)'],
+                PARAMETER_LABELS['A(km)'],
+                PARAMETER_LABELS['Ye_c_b'],
             ]
         elif num_params == 5:
             # CCSN data with 5 parameters (intrinsic + 1 extrinsic like psi)
             labels = [
-                PARAMETER_LABELS.get('beta1_IC_b', r"$\beta_{IC,b}$"),
-                PARAMETER_LABELS.get('omega_0(rad|s)', r"$\omega_0$"),
-                PARAMETER_LABELS.get('A(km)', r"$A$"),
-                PARAMETER_LABELS.get('Ye_c_b', r"$Y_{e,c,b}$"),
-                PARAMETER_LABELS.get('psi', r"$\psi$"),
+                PARAMETER_LABELS['beta1_IC_b'],
+                PARAMETER_LABELS['omega_0(rad|s)'],
+                PARAMETER_LABELS['A(km)'],
+                PARAMETER_LABELS['Ye_c_b'],
+                PARAMETER_LABELS['psi'],
             ]
         elif num_params == 8:
             # Full dataset with all parameters
@@ -538,3 +539,94 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
     
     plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=transparent)
     plt.show()
+
+
+def plot_eos_ye_distribution(
+    eos_values: np.ndarray,
+    ye_values: np.ndarray,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (16, 8),
+    jitter_strength: float = 0.15,
+    alpha: float = 0.7,
+    point_size: float = 50
+) -> plt.Figure:
+    """Create a violin plot of Ye values across different EOS types.
+    
+    Shows the full distribution of electron fraction (Ye) for each Equation of State
+    using violin plots with individual points overlaid.
+    
+    Args:
+        eos_values (np.ndarray): Array of EOS values (categorical, strings)
+        ye_values (np.ndarray): Array of Ye values (continuous)
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        figsize (Tuple[float, float]): Figure size in inches
+        jitter_strength (float): Amount of horizontal jitter for points
+        alpha (float): Transparency of violin fill
+        point_size (float): Size of individual points
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    # Prepare data for plotting
+    df_plot = pd.DataFrame({
+        'EOS': eos_values.astype(str),
+        'Ye': ye_values
+    })
+    
+    # Sort EOS by mean Ye for better visualization
+    eos_order = df_plot.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Create violin plot
+    sns.violinplot(
+        data=df_plot,
+        x='EOS',
+        y='Ye',
+        hue='EOS',
+        order=eos_order,
+        palette='coolwarm',
+        ax=ax,
+        inner=None,  # Remove inner details for cleaner look
+        alpha=alpha,
+        legend=False
+    )
+    
+    # Overlay individual points with jitter
+    sns.stripplot(
+        data=df_plot,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        ax=ax,
+        size=point_size / 20,  # Scale down seaborn point size
+        color='black',
+        alpha=0.4,
+        jitter=True
+    )
+    
+    # Formatting
+    ax.set_xlabel('Equation of State (EOS)', fontsize=16)
+    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
+    ax.tick_params(labelsize=12, axis='x')
+    # Rotate x-axis labels for readability
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    
+    # Grid
+    ax.grid(True, alpha=0.3, linestyle='--', axis='y')
+    ax.set_axisbelow(True)
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=(background == "black"))
+    
+    plt.rcdefaults()
+    return fig

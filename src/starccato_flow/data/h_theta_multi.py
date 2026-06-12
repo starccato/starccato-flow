@@ -574,7 +574,7 @@ class hThetaMulti(Dataset):
 
         # h
         plot_detector_signal_channels(
-            signals=h / TEN_KPC,
+            signals=h / TEN_KPC / self.shared_max_strain,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -584,7 +584,7 @@ class hThetaMulti(Dataset):
         )
         # h_delayed
         plot_detector_signal_channels(
-            signals=h_delayed / TEN_KPC,
+            signals=h_delayed / TEN_KPC / self.shared_max_strain,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -594,7 +594,7 @@ class hThetaMulti(Dataset):
         )
         # h_rescaled
         plot_detector_signal_channels(
-            signals=h_rescaled / TEN_KPC,
+            signals=h_rescaled / TEN_KPC / self.shared_max_strain,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -606,7 +606,7 @@ class hThetaMulti(Dataset):
         h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
         h_rescaled_noise = self.denormalise_signals(h_rescaled_noise_normalized)  # Denormalize to match other plots
         plot_detector_signal_channels(
-            signals=h_rescaled_noise / TEN_KPC,
+            signals=h_rescaled_noise / TEN_KPC / self.shared_max_strain,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",

@@ -118,16 +118,19 @@ class sTheta(BaseDataset, Dataset):
             beta_keep_idx = np.ones(len(params_df), dtype=bool)
 
         # keep only the parameters we want
+        eos_df = params_df["EOS"]
         params_df = params_df[parameters]
         
         # Remove unusual parameters and corresponding signals using beta positivity.
         keep_idx = beta_keep_idx
         # print(f"Removing {(~keep_idx).sum()} signals with beta1_IC_b <= 0")
         params_df = params_df[keep_idx]
+        eos_df = eos_df[keep_idx]
         
         # Convert to numpy array and apply log transformations BEFORE computing min/max
         # This brings all parameters to similar scales for better training
         self.parameters = params_df.values.astype(np.float32)
+        self.eos = eos_df
         
         # Apply log transformations A (column 2)
         # if multi_param:
@@ -180,6 +183,27 @@ class sTheta(BaseDataset, Dataset):
 
         self.PSD = self.AdvLIGOPsd(fourier_freq)
         self.signal_rfft = np.fft.rfft(self.signals / TEN_KPC, axis=0)
+
+    @property
+    def eos_values(self) -> Optional[np.ndarray]:
+        """Extract EOS (Equation of State) values from parameters.
+        
+        Searches for a parameter containing 'EOS' (case-insensitive) and returns
+        those values as strings.
+        
+        Returns:
+            Optional[np.ndarray]: Array of EOS values as strings, or None if no EOS parameter found.
+        """
+        # Find parameter with "EOS" in the name (case-insensitive)
+        eos_param_names = [p for p in self.parameter_names if "EOS" in p.upper()]
+        
+        if eos_param_names:
+            eos_param_name = eos_param_names[0]  # Get first EOS parameter
+            eos_idx = self.parameter_names.index(eos_param_name)
+            return self.parameters[:, eos_idx].astype(str)
+        
+        return None
+
 
 
     def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None):
