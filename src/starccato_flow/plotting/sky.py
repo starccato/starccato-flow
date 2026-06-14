@@ -335,14 +335,14 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_n = ra_rot_supernovae[north_mask]
     dec_n = dec_supernovae[north_mask]
     r_n = (np.pi / 2 - dec_n) / (np.pi / 2)
-    x_n = r_n * np.sin(ra_n)
+    x_n = r_n * np.sin(ra_n)  # RA increases counter-clockwise for north pole
     y_n = r_n * np.cos(ra_n)
 
     south_mask = dec_supernovae <= 0
     ra_s = ra_rot_supernovae[south_mask]
     dec_s = dec_supernovae[south_mask]
     r_s = (np.pi / 2 + dec_s) / (np.pi / 2)
-    x_s = -r_s * np.sin(ra_s)
+    x_s = -r_s * np.sin(ra_s)  # RA increases clockwise for south pole
     y_s = r_s * np.cos(ra_s)
 
     theta = np.linspace(0, 2 * np.pi, 600)
@@ -409,6 +409,18 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_l.plot(np.cos(theta), np.sin(theta), color="white", lw=1.4)
     ax_l.axhline(0, color="white", alpha=0.18, lw=0.8)
     ax_l.axvline(0, color="white", alpha=0.18, lw=0.8)
+    # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
+    ax_l.text(
+        0.0,
+        1.12,
+        "Northern Sky",
+        color="white",
+        fontsize=12,
+        ha="center",
+        va="bottom",
+        fontweight="bold",
+        alpha=0.9,
+    )
     ax_l.text(
         0.0,
         0.0,
@@ -427,6 +439,18 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_r.plot(np.cos(theta), np.sin(theta), color="white", lw=1.4)
     ax_r.axhline(0, color="white", alpha=0.18, lw=0.8)
     ax_r.axvline(0, color="white", alpha=0.18, lw=0.8)
+    # Add "Southern Sky" label directly above 0h RA (top of hemisphere)
+    ax_r.text(
+        0.0,
+        1.12,
+        "Southern Sky",
+        color="white",
+        fontsize=12,
+        ha="center",
+        va="bottom",
+        fontweight="bold",
+        alpha=0.9,
+    )
     ax_r.text(
         0.0,
         0.0,
@@ -474,31 +498,51 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_label_deg = np.arange(0, 360, 60)
     for ra_deg in ra_tick_deg:
         ang = np.deg2rad(float(ra_deg))
-        x_in = 1.00 * np.sin(ang)
-        y_in = 1.00 * np.cos(ang)
-        x_out = 1.045 * np.sin(ang)
-        y_out = 1.045 * np.cos(ang)
-        for ax in (ax_l, ax_r):
-            ax.plot([x_in, x_out], [y_in, y_out], color="white", alpha=0.45, lw=0.75, zorder=6)
+        # North pole: RA increases counter-clockwise (keep sin positive)
+        x_in_n = 1.00 * np.sin(ang)
+        y_in_n = 1.00 * np.cos(ang)
+        x_out_n = 1.045 * np.sin(ang)
+        y_out_n = 1.045 * np.cos(ang)
+        # South pole: RA increases clockwise (flip sin)
+        x_in_s = -1.00 * np.sin(ang)
+        y_in_s = 1.00 * np.cos(ang)
+        x_out_s = -1.045 * np.sin(ang)
+        y_out_s = 1.045 * np.cos(ang)
+        ax_l.plot([x_in_n, x_out_n], [y_in_n, y_out_n], color="white", alpha=0.45, lw=0.75, zorder=6)
+        ax_r.plot([x_in_s, x_out_s], [y_in_s, y_out_s], color="white", alpha=0.45, lw=0.75, zorder=6)
 
     for ra_deg in ra_label_deg:
         ang = np.deg2rad(float(ra_deg))
-        x_lbl = 1.085 * np.sin(ang)
-        y_lbl = 1.085 * np.cos(ang)
+        # North pole: RA increases counter-clockwise (keep sin positive)
+        x_lbl_n = 1.085 * np.sin(ang)
+        y_lbl_n = 1.085 * np.cos(ang)
+        # South pole: RA increases clockwise (flip sin)
+        x_lbl_s = -1.085 * np.sin(ang)
+        y_lbl_s = 1.085 * np.cos(ang)
         ra_hours = int((ra_deg // 15) % 24)
         label = f"{ra_hours}h"
-        for ax in (ax_l, ax_r):
-            ax.text(
-                x_lbl,
-                y_lbl,
-                label,
-                color="white",
-                fontsize=7.0,
-                ha="center",
-                va="center",
-                alpha=0.75,
-                zorder=6,
-            )
+        ax_l.text(
+            x_lbl_n,
+            y_lbl_n,
+            label,
+            color="white",
+            fontsize=7.0,
+            ha="center",
+            va="center",
+            alpha=0.75,
+            zorder=6,
+        )
+        ax_r.text(
+            x_lbl_s,
+            y_lbl_s,
+            label,
+            color="white",
+            fontsize=7.0,
+            ha="center",
+            va="center",
+            alpha=0.75,
+            zorder=6,
+        )
 
     dec_abs_ticks = [80, 60, 40, 20]
     # Place Dec ticks on the 0h/24h RA meridian.
@@ -558,11 +602,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
             if seg_n.size:
                 ax_l.add_collection(
-                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.36, alpha=0.34, zorder=4)
+                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.2, alpha=0.34, zorder=4)
                 )
             if seg_s.size:
                 ax_r.add_collection(
-                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.36, alpha=0.34, zorder=4)
+                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.2, alpha=0.34, zorder=4)
                 )
 
             if show_important_constellation_labels:
@@ -617,6 +661,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Keep Galactic Center fixed to the physical galactic center direction.
     gc_ra, gc_dec = ccsn.get_galactic_center_direction()
+    
+    # Print galactic center coordinates
+    print(f"\n{'='*60}")
+    print(f"Galactic Center Direction:")
+    print(f"  RA:  {gc_ra:.6f} rad = {np.degrees(gc_ra):.2f}°")
+    print(f"  Dec: {gc_dec:.6f} rad = {np.degrees(gc_dec):.2f}°")
+    print(f"{'='*60}\n")
 
     # Use the true galactic center for black hole visualization.
     true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)

@@ -17,7 +17,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
-from ..plotting.parameters import plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
+from ..plotting.parameters import get_eos_posterior_from_ye, plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT 
@@ -470,7 +470,8 @@ class FlowMatchingTrainerMulti:
             # We need raw signals because hThetaMulti expects unnormalized input
             signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
             params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
-            
+            EOS = self.validation_dataset.eos.iloc[signal_idx]
+
             # Use specified sky parameters or randomly select a supernova at the specified distance
             if ra is not None and dec is not None:
                 # Use directly specified sky parameters
@@ -519,7 +520,8 @@ class FlowMatchingTrainerMulti:
             # Use temp_h_theta_multi_val for plotting since it was used to create case
             active_h_theta_multi = temp_h_theta_multi_val
         else:
-            case = self.h_theta_multi_val[np.random.randint(len(self.h_theta_multi_val))]
+            random_signal_idx = np.random.randint(len(self.validation_dataset))
+            case = self.h_theta_multi_val[random_signal_idx]
             active_h_theta_multi = self.h_theta_multi_val
         
         plot_detector_signal_channels(
@@ -566,11 +568,37 @@ class FlowMatchingTrainerMulti:
             export_dir = os.path.join(self.outdir, "exported_signals")
             os.makedirs(export_dir, exist_ok=True)
             detector_labels = active_h_theta_multi.detectors
-            for i in range(case[0].shape[0]):
-                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
+            for i in range(case[1].shape[0]):
+                channel_signal = case[1][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
                 detector_name = detector_labels[i] if i < len(detector_labels) else f"channel_{i+1}"
                 np.savetxt(os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"), channel_signal)
 
+        if "Ye_c_b" in self.parameters_to_estimate:
+            # get true ye and corresponding eos values for the signal (using random_signal_idx if signal_idx is None)
+            samples_ye = posterior_samples_denorm[:, self._get_extracted_index("Ye_c_b")]
+            true_ye = true_param_denorm[self._get_extracted_index("Ye_c_b")]
+            true_eos = self.validation_dataset.eos.iloc[signal_idx] if signal_idx is not None else self.validation_dataset.eos.iloc[random_signal_idx]
+
+            # extract all ye and corresponding eos values from the training and validation datasets for comparison
+            dataset_ye = [self.training_dataset.parameters[:, self._get_extracted_index("Ye_c_b")], self.validation_dataset.parameters[:, self._get_extracted_index("Ye_c_b")]]
+            dataset_eos = [self.training_dataset.eos.values, self.validation_dataset.eos.values]
+
+            plot_eos_ye_posterior_distribution(
+                samples_ye=samples_ye,
+                true_ye=true_ye,
+                true_eos=str(true_eos),
+                dataset_ye=dataset_ye,
+                dataset_eos=dataset_eos,
+                fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png")
+            ) 
+
+            posterior = get_eos_posterior_from_ye(
+                samples_ye=samples_ye,
+                training_ye=self.training_dataset.parameters[:, self._get_extracted_index("Ye_c_b")],
+                training_eos=self.training_dataset.eos.values
+            )
+
+            print(posterior)
 
     def train(self):
         t0 = time.time()

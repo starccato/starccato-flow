@@ -235,6 +235,18 @@ def plot_galactic_distribution(
                         markeredgecolor="none",
                     )
                 )
+            elif label == "Sampled Supernovae":
+                adjusted_handles.append(
+                    mlines.Line2D(
+                        [],
+                        [],
+                        linestyle="None",
+                        marker="o",
+                        markersize=9,
+                        markerfacecolor="yellow",
+                        markeredgecolor="none",
+                    )
+                )
             else:
                 adjusted_handles.append(handle)
 
@@ -286,7 +298,7 @@ def plot_galactic_distribution(
             hx,
             hy,
             hz,
-            s=max(sun_marker_size * 0.25, 18),
+            s=max(sun_marker_size * 0.1, 10),
             c="yellow",
             edgecolors="none",
             marker="o",
@@ -354,7 +366,7 @@ def plot_galactic_distribution(
         ax2.scatter(
             hx,
             hy,
-            s=scatter_size * 100,
+            s=max(sun_marker_size * 0.1, 10),
             c="yellow",
             edgecolors="none",
             marker="o",
@@ -405,7 +417,7 @@ def plot_galactic_distribution(
         ax3.scatter(
             hx,
             hz,
-            s=scatter_size * 100,
+            s=max(sun_marker_size * 0.1, 18),
             c="yellow",
             edgecolors="none",
             marker="o",

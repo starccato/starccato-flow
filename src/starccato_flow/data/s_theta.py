@@ -131,10 +131,6 @@ class sTheta(BaseDataset, Dataset):
         # This brings all parameters to similar scales for better training
         self.parameters = params_df.values.astype(np.float32)
         self.eos = eos_df
-        
-        # Apply log transformations A (column 2)
-        # if multi_param:
-            # self.parameters[:, 2] = np.log(self.parameters[:, 2] + 1e-8)  # A(km)
 
         # Keep track of original indices
         signal_indices = np.where(keep_idx)[0]
@@ -157,6 +153,7 @@ class sTheta(BaseDataset, Dataset):
         if indices is not None:
             self.signals = self.signals[:, indices]
             self.parameters = self.parameters[indices]
+            self.eos = self.eos.iloc[indices]
             self.indices = indices
 
         # Use shared max_strain if provided, otherwise compute from this subset

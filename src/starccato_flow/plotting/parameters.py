@@ -549,7 +549,6 @@ def plot_eos_ye_distribution(
     font_family: str = "serif",
     font_name: str = "Times New Roman",
     figsize: Tuple[float, float] = (16, 8),
-    jitter_strength: float = 0.15,
     alpha: float = 0.7,
     point_size: float = 50
 ) -> plt.Figure:
@@ -630,3 +629,393 @@ def plot_eos_ye_distribution(
     
     plt.rcdefaults()
     return fig
+
+
+def plot_eos_ye_posterior_distribution(
+    samples_ye: np.ndarray,
+    true_ye: float,
+    true_eos: str,
+    dataset_ye: list,
+    dataset_eos: list,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (18, 8),
+    alpha: float = 0.7,
+    point_size: float = 50
+) -> plt.Figure:
+    """Plot EOS-Ye distribution with posterior overlay and marginal posterior.
+    
+    Creates a violin plot of Ye across EOS types from the dataset, overlays posterior
+    samples, and shows the marginal posterior distribution of Ye on the left side.
+    
+    Args:
+        samples_ye (np.ndarray): Posterior samples for Ye
+        true_ye (float): True Ye value
+        true_eos (str): True EOS type
+        dataset_ye (list): List of [training_ye, validation_ye] arrays
+        dataset_eos (list): List of [training_eos, validation_eos] arrays
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        figsize (Tuple[float, float]): Figure size in inches
+        alpha (float): Transparency of violin fill
+        point_size (float): Size of individual points
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    # Combine training and validation dataset
+    combined_ye = np.concatenate(dataset_ye)
+    combined_eos = np.concatenate([eos.astype(str) for eos in dataset_eos])
+    
+    # Prepare data for plotting
+    df_plot = pd.DataFrame({
+        'EOS': combined_eos,
+        'Ye': combined_ye,
+        'Source': 'Dataset'
+    })
+    
+    # Prepare posterior samples
+    df_posterior = pd.DataFrame({
+        'EOS': [str(true_eos)] * len(samples_ye),
+        'Ye': samples_ye,
+        'Source': 'Posterior'
+    })
+    
+    # Sort EOS by mean Ye for better visualization
+    eos_order = df_plot.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
+    
+    # Create figure with GridSpec for marginal plot (swapped: marginal on left 1/4, main on right 3/4)
+    from matplotlib.gridspec import GridSpec
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(1, 2, width_ratios=[1, 3], wspace=0.3)
+    ax_marginal = fig.add_subplot(gs[0, 0])
+    ax_main = fig.add_subplot(gs[0, 1])
+    
+    # Marginal plot: KDE of posterior Ye with true value marked
+    from scipy.stats import gaussian_kde
+    
+    # Create KDE of posterior samples
+    kde = gaussian_kde(samples_ye)
+    ye_range = np.linspace(np.min(samples_ye) - 0.005, np.max(samples_ye) + 0.005, 200)
+    kde_values = kde(ye_range)
+    
+    # Plot KDE
+    ax_marginal.fill_betweenx(ye_range, kde_values, alpha=0.6, color='red')
+    ax_marginal.plot(kde_values, ye_range, color='darkred', linewidth=2)
+    
+    # Mark true Ye value
+    ax_marginal.axhline(true_ye, color='darkgreen', linestyle='--', linewidth=2.5)
+    
+    # Marginal plot formatting
+    ax_marginal.set_xlabel('Density', fontsize=12)
+    ax_marginal.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=14)
+    ax_marginal.tick_params(labelsize=11)
+    ax_marginal.grid(True, alpha=0.3, linestyle='--', axis='y')
+    ax_marginal.set_axisbelow(True)
+    
+    # Main plot: violin plot of dataset
+    sns.violinplot(
+        data=df_plot,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        palette='coolwarm',
+        ax=ax_main,
+        inner=None,
+        alpha=alpha,
+        legend=False
+    )
+    
+    # Overlay dataset points with jitter
+    sns.stripplot(
+        data=df_plot,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        ax=ax_main,
+        size=point_size / 20,
+        color='black',
+        alpha=0.2,
+        jitter=True
+    )
+    
+    # Highlight true EOS with background box
+    true_eos_idx = eos_order.index(str(true_eos))
+    ax_main.axvspan(true_eos_idx - 0.45, true_eos_idx + 0.45, 
+                    alpha=0.15, color='red', zorder=0)
+    
+    # Overlay posterior samples in red on the true EOS
+    sns.stripplot(
+        data=df_posterior,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        ax=ax_main,
+        size=point_size / 10,
+        color='red',
+        alpha=0.5,
+        jitter=True
+    )
+    
+    # Add true Ye line to main plot
+    ax_main.axhline(true_ye, color='darkgreen', linestyle='--', linewidth=2.5)
+    
+    # Main plot formatting
+    ax_main.set_xlabel('Equation of State (EOS)', fontsize=16)
+    ax_main.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
+    ax_main.tick_params(labelsize=12, axis='x')
+    
+    # Highlight true EOS on x-axis with red color
+    ax_main_xticklabels = ax_main.get_xticklabels()
+    for i, label in enumerate(ax_main_xticklabels):
+        if label.get_text() == str(true_eos):
+            label.set_color('red')
+            label.set_weight('bold')
+    
+    plt.setp(ax_main.get_xticklabels(), rotation=45, ha='right')
+    ax_main.grid(True, alpha=0.3, linestyle='--', axis='y')
+    ax_main.set_axisbelow(True)
+    
+    # Sync y-axis limits between marginal and main
+    ax_marginal.set_ylim(ax_main.get_ylim())
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=(background == "black"))
+    
+    plt.rcdefaults()
+    return fig
+
+
+def plot_ye_posterior_by_eos(
+    dataset_ye_values: np.ndarray,
+    dataset_eos_values: np.ndarray,
+    ye_posterior_samples: np.ndarray,
+    true_eos: str,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (16, 8),
+    alpha: float = 0.7,
+    point_size: float = 50
+) -> plt.Figure:
+    """Plot marginalized posterior distribution of Ye overlaid on dataset distribution.
+    
+    Creates a violin plot of Ye across all EOS types from the dataset, then overlays
+    the posterior samples for the true EOS in red.
+    
+    Args:
+        dataset_ye_values (np.ndarray): Ye values from the full dataset
+        dataset_eos_values (np.ndarray): EOS values from the full dataset (categorical)
+        ye_posterior_samples (np.ndarray): Posterior samples for Ye from flow matching inference
+        true_eos (str): True EOS type for the signal being analyzed
+        fname (Optional[str]): Filename to save plot
+        background (str): Background color ("white" or "black")
+        font_family (str): Font family to use
+        font_name (str): Specific font name
+        figsize (Tuple[float, float]): Figure size in inches
+        jitter_strength (float): Amount of horizontal jitter for posterior points
+        alpha (float): Transparency of violin fill
+        point_size (float): Size of posterior sample points
+    
+    Returns:
+        plt.Figure: The figure object
+    """
+    set_plot_style(background, font_family, font_name)
+    
+    # Prepare dataset for plotting (background)
+    df_dataset = pd.DataFrame({
+        'EOS': dataset_eos_values.astype(str),
+        'Ye': dataset_ye_values,
+        'Source': 'Dataset'
+    })
+    
+    # Prepare posterior samples (overlay on true EOS)
+    df_posterior = pd.DataFrame({
+        'EOS': [str(true_eos)] * len(ye_posterior_samples),
+        'Ye': ye_posterior_samples,
+        'Source': 'Posterior'
+    })
+    
+    # Sort EOS by mean Ye for better visualization
+    eos_order = df_dataset.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot dataset as violin plot with coolwarm colors
+    sns.violinplot(
+        data=df_dataset,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        palette='coolwarm',
+        ax=ax,
+        inner=None,
+        alpha=alpha,
+        legend=False
+    )
+    
+    # Overlay dataset points with jitter
+    sns.stripplot(
+        data=df_dataset,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        ax=ax,
+        size=point_size / 20,
+        color='black',
+        alpha=0.2,
+        jitter=True
+    )
+    
+    # Highlight true EOS with background box
+    true_eos_idx = eos_order.index(str(true_eos))
+    ax.axvspan(true_eos_idx - 0.45, true_eos_idx + 0.45, 
+               alpha=0.15, color='red', zorder=0)
+    
+    # Overlay posterior samples in red on the true EOS
+    sns.stripplot(
+        data=df_posterior,
+        x='EOS',
+        y='Ye',
+        order=eos_order,
+        ax=ax,
+        size=point_size / 10,
+        color='red',
+        alpha=0.6,
+        jitter=True,
+        label='Posterior Samples'
+    )
+    
+    # Formatting
+    ax.set_xlabel('Equation of State (EOS)', fontsize=16)
+    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
+    ax.tick_params(labelsize=12, axis='x')
+    
+    # Rotate x-axis labels for readability
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    
+    # Grid
+    ax.grid(True, alpha=0.3, linestyle='--', axis='y')
+    ax.set_axisbelow(True)
+    
+    # Add legend for posterior samples
+    ax.legend(loc='upper right', fontsize=12)
+    
+    # Add annotation showing true EOS
+    ax.text(0.02, 0.98, f'True EOS: {true_eos}',
+            transform=ax.transAxes,
+            fontsize=14,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='red', alpha=0.2))
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=(background == "black"))
+    
+    plt.rcdefaults()
+    return fig
+
+
+def get_eos_posterior_from_ye(
+    ye_posterior_samples: np.ndarray,
+    dataset_ye: np.ndarray,
+    dataset_eos: np.ndarray,
+    return_probabilities: bool = False,
+    sample_mode: str = "mode",
+    verbose: bool = False
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    """Convert Ye posterior samples to EOS posterior using KDE and Bayes rule.
+    
+    Uses the dataset to fit KDE models for each EOS's Ye distribution:
+        P(EOS | Ye) ∝ P(Ye | EOS) * P(EOS)
+    
+    For each Ye posterior sample, computes class probabilities via Bayes rule,
+    then either samples from the multinomial or takes the mode.
+    
+    Args:
+        ye_posterior_samples (np.ndarray): Posterior samples for Ye, shape (num_samples,)
+        dataset_ye (np.ndarray): Array of Ye values from dataset
+        dataset_eos (np.ndarray): Array of EOS values from dataset (strings)
+        return_probabilities (bool): If True, also return the full probability matrix
+        sample_mode (str): "mode" (argmax) or "sample" (multinomial sample)
+        verbose (bool): Print conversion statistics
+    
+    Returns:
+        np.ndarray: EOS posterior (strings), length num_samples
+        or tuple of (np.ndarray, np.ndarray) if return_probabilities=True
+            - eos_posterior: EOS samples
+            - eos_probabilities: shape (num_samples, num_eos) with posterior P(EOS_i | Ye)
+    """
+    from scipy.stats import gaussian_kde
+    
+    # Get unique EOS types and compute prior
+    unique_eos = np.unique(dataset_eos.astype(str))
+    unique_eos = sorted(unique_eos)
+    num_eos = len(unique_eos)
+    
+    # Build KDE for each EOS
+    kde_models = {}
+    prior_eos = {}
+    for eos in unique_eos:
+        mask = dataset_eos.astype(str) == eos
+        ye_for_eos = dataset_ye[mask]
+        
+        # Fit KDE
+        kde_models[eos] = gaussian_kde(ye_for_eos)
+        
+        # Prior: fraction of dataset with this EOS
+        prior_eos[eos] = mask.sum() / len(dataset_eos)
+        
+        if verbose:
+            print(f"{eos}: {mask.sum()} samples, prior P(EOS)={prior_eos[eos]:.4f}, "
+                  f"Ye range=[{ye_for_eos.min():.4f}, {ye_for_eos.max():.4f}]")
+    
+    # For each Ye sample, compute P(EOS | Ye) via Bayes rule
+    eos_probabilities = np.zeros((len(ye_posterior_samples), num_eos))
+    
+    for i, ye_sample in enumerate(ye_posterior_samples):
+        # Compute likelihood P(Ye | EOS) for each EOS
+        likelihoods = np.array([kde_models[eos](ye_sample) for eos in unique_eos])
+        
+        # Prior P(EOS)
+        priors = np.array([prior_eos[eos] for eos in unique_eos])
+        
+        # Bayes rule: P(EOS | Ye) ∝ P(Ye | EOS) * P(EOS)
+        posteriors = likelihoods * priors
+        
+        # Normalize to get probabilities
+        posteriors = posteriors / posteriors.sum()
+        eos_probabilities[i] = posteriors
+    
+    # Convert to EOS samples
+    if sample_mode == "mode":
+        # Take argmax
+        eos_indices = np.argmax(eos_probabilities, axis=1)
+        eos_posterior = np.array([unique_eos[idx] for idx in eos_indices])
+    elif sample_mode == "sample":
+        # Sample from multinomial
+        eos_posterior = []
+        for probs in eos_probabilities:
+            sampled_idx = np.random.choice(num_eos, p=probs)
+            eos_posterior.append(unique_eos[sampled_idx])
+        eos_posterior = np.array(eos_posterior)
+    else:
+        raise ValueError(f"sample_mode must be 'mode' or 'sample', got {sample_mode}")
+    
+    if verbose:
+        unique_eos_pred, counts = np.unique(eos_posterior, return_counts=True)
+        print(f"\nEOS Posterior Distribution:")
+        for eos, count in zip(unique_eos_pred, counts):
+            print(f"  {eos}: {count} samples ({100*count/len(eos_posterior):.1f}%)")
+    
+    if return_probabilities:
+        return eos_posterior, eos_probabilities
+    return eos_posterior
