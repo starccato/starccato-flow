@@ -17,7 +17,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
-from ..plotting.parameters import get_eos_posterior_from_ye, plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
+from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT 
@@ -591,14 +591,6 @@ class FlowMatchingTrainerMulti:
                 dataset_eos=dataset_eos,
                 fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png")
             ) 
-
-            posterior = get_eos_posterior_from_ye(
-                samples_ye=samples_ye,
-                training_ye=self.training_dataset.parameters[:, self._get_extracted_index("Ye_c_b")],
-                training_eos=self.training_dataset.eos.values
-            )
-
-            print(posterior)
 
     def train(self):
         t0 = time.time()
