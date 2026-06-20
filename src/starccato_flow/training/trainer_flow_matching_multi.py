@@ -568,8 +568,8 @@ class FlowMatchingTrainerMulti:
             export_dir = os.path.join(self.outdir, "exported_signals")
             os.makedirs(export_dir, exist_ok=True)
             detector_labels = active_h_theta_multi.detectors
-            for i in range(case[1].shape[0]):
-                channel_signal = case[1][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
+            for i in range(case[0].shape[0]):
+                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
                 detector_name = detector_labels[i] if i < len(detector_labels) else f"channel_{i+1}"
                 np.savetxt(os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"), channel_signal)
 

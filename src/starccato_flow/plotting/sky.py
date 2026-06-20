@@ -285,6 +285,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
     red_blob_mode: str = "middle_star",
+    example: bool = False,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -308,6 +309,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         font_name: Specific font name.
         red_blob_mode: Red contour center mode. One of
             ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
+        example: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
+            and highlight the first supernova as the true location.
     """
     set_plot_style(background, font_family, font_name)
     astropy_rotation_offset_deg = 0.0
@@ -668,6 +671,21 @@ def plot_galactic_supernovae_polar_hemispheres(
     print(f"  RA:  {gc_ra:.6f} rad = {np.degrees(gc_ra):.2f}°")
     print(f"  Dec: {gc_dec:.6f} rad = {np.degrees(gc_dec):.2f}°")
     print(f"{'='*60}\n")
+
+    # Handle example mode: use first supernova as true location and prepare detector markers.
+    detector_markers = []
+    if example:
+        # Use first supernova as true location if not overridden
+        if true_ra_override is None or true_dec_override is None:
+            true_ra_override = float(ra_supernovae[0])
+            true_dec_override = float(dec_supernovae[0])
+        
+        # Prepare detector markers (RA in degrees, Dec in degrees, converted to radians)
+        detector_markers = [
+            ("LIGO Hanford", np.deg2rad(240.0), np.deg2rad(46.5), "#e74c3c"),
+            ("LIGO Livingston", np.deg2rad(268.0), np.deg2rad(30.5), "#e74c3c"),
+            ("Virgo", np.deg2rad(10.0), np.deg2rad(43.6), "#9b59b6"),
+        ]
 
     # Use the true galactic center for black hole visualization.
     true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)
@@ -1389,6 +1407,37 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
 
+    # Plot detector markers when example mode is enabled.
+    if example and detector_markers:
+        for det_name, det_ra, det_dec, det_color in detector_markers:
+            det_panel, det_x, det_y = _project_to_hemisphere(det_ra, det_dec)
+            det_ax = ax_l if det_panel == "north" else ax_r
+            det_ax.scatter(
+                [det_x],
+                [det_y],
+                s=80,
+                marker="s",
+                c=det_color,
+                edgecolors="white",
+                linewidths=1.2,
+                alpha=0.9,
+                zorder=10,
+            )
+            # Add detector label
+            label_offset_x = 0.045 if "Hanford" in det_name or "Livingston" in det_name else 0.045
+            label_offset_y = 0.025
+            det_ax.text(
+                det_x + label_offset_x,
+                det_y + label_offset_y,
+                det_name,
+                color=det_color,
+                fontsize=7.5,
+                ha="left",
+                va="center",
+                alpha=0.95,
+                zorder=10,
+            )
+
     ax_r.plot(
         [],
         [],
@@ -1413,6 +1462,20 @@ def plot_galactic_supernovae_polar_hemispheres(
             markeredgewidth=1.6,
             label="True Supernova Location",
         )
+    
+    if example and detector_markers:
+        ax_r.plot(
+            [],
+            [],
+            marker="s",
+            linestyle="None",
+            markersize=7,
+            markerfacecolor="#e74c3c",
+            markeredgecolor="white",
+            markeredgewidth=1.0,
+            label="Gravitational Wave Detectors",
+        )
+    
     ax_r.legend(
         loc="lower right",
         bbox_to_anchor=(1.03, -0.08),

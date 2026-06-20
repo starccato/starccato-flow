@@ -72,7 +72,7 @@ class hThetaMulti(Dataset):
         self.include_sky_params = True
         
         # Toggle between analytical and measured PSD for noise generation
-        self.use_measured_psd = True
+        self.use_measured_psd = False
         
         # Cache for measured sensitivity curves (loaded on first use)
         self._ligo_freq_curve = None
@@ -234,18 +234,13 @@ class hThetaMulti(Dataset):
 
         return theta.astype(np.float32)
     
-    def AdvLIGOPsd(self, f):
-        """Advanced LIGO power spectral density."""
-        # Avoid division by zero at f=0 by clipping to a small positive value
-        f = np.clip(f, 1e-10, None)
+    def AdvLIGOPsd(self,f):
         x = f / 215
         x2 = x * x
         psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
         # The upper bound is 2e10 times the minimum value
         cutoff = np.nanmin(psd) * 2e10
         psd[(psd > cutoff) | np.isnan(psd)] = cutoff
-        # Ensure no zero or negative values in PSD
-        psd = np.maximum(psd, np.max(psd) * 1e-15)
         return psd
 
     def VirgoPsd(self, f):
