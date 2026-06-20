@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from scipy.interpolate import interp1d
+from scipy.fft import fft, ifft
 
 from starccato_flow.plotting.signals import plot_detector_signal_channels
 
@@ -406,7 +407,7 @@ class hThetaMulti(Dataset):
         """
         if pad < 1 or int(pad) != pad:
             raise ValueError("pad must be an integer >= 1")
-
+        
         orig_N = N
         N *= pad
         is_even = (N % 2 == 0)
@@ -426,11 +427,9 @@ class hThetaMulti(Dataset):
             psd = self.VirgoPSD
         else:
             raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
-
-        # Clean PSD: replace inf/NaN with reasonable default, clamp to positive range
-        psd = psd.copy()  # Make a copy to avoid modifying cached arrays
-        psd = np.nan_to_num(psd, nan=1e-45, posinf=1e-45, neginf=1e-50)
-        psd = np.maximum(psd, 1e-50)  # Ensure all values are positive and finite
+        
+        psd[~np.isfinite(psd)] = 0
+        psd[psd < 0] = 0
 
         if one_sided:
             sd_vec = np.sqrt(psd / ((1 + kappa) * lambda_factors))
@@ -449,7 +448,6 @@ class hThetaMulti(Dataset):
         imag_full = np.concatenate([imag, -imag[mirror_idx[::-1]]])
 
         noise_ft = real_full + 1j * imag_full
-        from scipy.fft import ifft
         noise = np.real(ifft(noise_ft)) / N
 
         if pad > 1:
@@ -555,6 +553,10 @@ class hThetaMulti(Dataset):
             h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
         return h_delayed
     
+    def rescale_by_distance(self, signal, distance_kpc):
+        """Rescale signal by distance (inverse proportionality)."""
+        return signal * (10.0 / max(distance_kpc, 1e-8))
+    
     def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman"):
         n_samples = self.s.shape[1]
         h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
@@ -565,11 +567,11 @@ class hThetaMulti(Dataset):
 
         h = self.project_signal(h_plus, h_cross, self.polar_angle[signal_idx], self.ra[signal_idx], self.dec[signal_idx], self.gps_time)
         h_delayed = self.apply_time_delay(h, self.ra[signal_idx], self.dec[signal_idx], self.gps_time)
-        h_rescaled = h_delayed * (10.0 / max(self.d[signal_idx], 1e-8))
+        h_rescaled = self.rescale_by_distance(h_delayed, self.d[signal_idx])
 
         # h
         plot_detector_signal_channels(
-            signals=h / TEN_KPC / self.shared_max_strain,
+            signals=h / TEN_KPC,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -579,7 +581,7 @@ class hThetaMulti(Dataset):
         )
         # h_delayed
         plot_detector_signal_channels(
-            signals=h_delayed / TEN_KPC / self.shared_max_strain,
+            signals=h_delayed / TEN_KPC,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -589,7 +591,7 @@ class hThetaMulti(Dataset):
         )
         # h_rescaled
         plot_detector_signal_channels(
-            signals=h_rescaled / TEN_KPC / self.shared_max_strain,
+            signals=h_rescaled / TEN_KPC,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -601,7 +603,7 @@ class hThetaMulti(Dataset):
         h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
         h_rescaled_noise = self.denormalise_signals(h_rescaled_noise_normalized)  # Denormalize to match other plots
         plot_detector_signal_channels(
-            signals=h_rescaled_noise / TEN_KPC / self.shared_max_strain,
+            signals=h_rescaled_noise / TEN_KPC,
             max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
@@ -628,7 +630,7 @@ class hThetaMulti(Dataset):
             h_plus = self.s[:, i]
             h[i, :, :] = self.project_signal(h_plus, h_cross, self.polar_angle[i], self.ra[i], self.dec[i], self.gps_time)
             h_delayed[i, :, :] = self.apply_time_delay(h[i, :, :], self.ra[i], self.dec[i], self.gps_time)
-            h_rescaled[i, :, :] = h_delayed[i, :, :] * (10.0 / max(self.d[i], 1e-8))
+            h_rescaled[i, :, :] = self.rescale_by_distance(h_delayed[i, :, :], self.d[i])
                 
         return h_rescaled
     
@@ -663,7 +665,6 @@ class hThetaMulti(Dataset):
                 n = self.detector_noise(seed_offset=j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
                 
                 # Add noise with target SNR
-                # d_normalized = s_normalized + n * (self.d[original_idx] / 10) * 100
                 d_normalized = s_normalized + n * 100
                 d = d_normalized * TEN_KPC
                 

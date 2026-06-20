@@ -157,16 +157,16 @@ def plot_detector_signal_channels(
     tick_step = 0.01
     xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
     y_expand = 1.5
-    max_absolute_value = np.max(np.abs(channel_signals)) * max_value
+    max_absolute_value = np.max(np.abs(channel_signals))
     y_min = -max_absolute_value * y_expand
     y_max = max_absolute_value * y_expand
 
     for i, ax in enumerate(axes):
-        y_clean = channel_signals[i].flatten() * max_value
+        y_clean = channel_signals[i].flatten()
         
         # Plot noisy signal first (if provided) with lower opacity
         if channel_noisy is not None:
-            y_noisy = channel_noisy[i].flatten() * max_value
+            y_noisy = channel_noisy[i].flatten()
             ax.plot(d, y_noisy, color=signal_colour, linewidth=1.5, alpha=0.5, label="Signal + Noise")
         
         # Plot clean signal on top with full opacity
