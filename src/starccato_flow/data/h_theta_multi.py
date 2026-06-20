@@ -389,6 +389,7 @@ class hThetaMulti(Dataset):
         # The noise is now properly scaled due to correct PSD implementation
         noise = noise - noise.mean()  # Mean center as in R implementation
 
+
         return noise
     
     def rnoise(self, N: int, delta_t: float, one_sided: bool = True, pad: int = 1, detector: str = None, use_measured_psd: bool = False) -> np.ndarray:
@@ -657,7 +658,7 @@ class hThetaMulti(Dataset):
                 s = clean_signal[j:j+1, :].flatten()  # Shape: (1, Y_LENGTH)
                 
                 # Compute SNR (using base class method)
-                s_normalized = s / TEN_KPC
+                s_normalized = s / TEN_KPC # now in units of strain, which matches the PSD scaling for noise generation
                 # hf = np.fft.rfft(s_normalized, axis=1)[0]
                 # rho = self.calculate_snr_from_fft(hf)
                 
@@ -665,7 +666,7 @@ class hThetaMulti(Dataset):
                 n = self.detector_noise(seed_offset=j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
                 
                 # Add noise with target SNR
-                d_normalized = s_normalized + n * 100
+                d_normalized = s_normalized + n
                 d = d_normalized * TEN_KPC
                 
                 noisy_signal[j:j+1, :] = d
