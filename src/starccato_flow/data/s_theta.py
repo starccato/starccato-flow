@@ -8,7 +8,7 @@ from scipy.fft import ifft
 
 from ..plotting import plot_signal_distribution, plot_signal_grid, plot_parameter_distribution
 from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
-from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
+from ..utils.defaults import SAMPLING_FREQ, Y_LENGTH
 from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 from . import BaseDataset
@@ -17,7 +17,7 @@ from . import BaseDataset
 
 is_even = (Y_LENGTH % 2 == 0)
 half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
+delta_f = 1 / (Y_LENGTH * SAMPLING_FREQ)
 fourier_freq = np.arange(half_N + 1) * delta_f
 
 class sTheta(BaseDataset, Dataset):
@@ -375,7 +375,7 @@ class sTheta(BaseDataset, Dataset):
         self.curriculum = False
 
     @staticmethod
-    def calculate_snr(h, Sn, fs=SAMPLING_RATE):
+    def calculate_snr(h, Sn, fs=SAMPLING_FREQ):
         """Calculate SNR from signal and PSD.
         
         Args:
@@ -393,7 +393,7 @@ class sTheta(BaseDataset, Dataset):
         return np.sqrt(rho2)
     
     @staticmethod
-    def calculate_snr_from_fft(hf, Sn, fs=SAMPLING_RATE, N=Y_LENGTH):
+    def calculate_snr_from_fft(hf, Sn, fs=SAMPLING_FREQ, N=Y_LENGTH):
         """Calculate SNR directly from pre-computed FFT.
         
         Args:
@@ -425,8 +425,8 @@ class sTheta(BaseDataset, Dataset):
             original_state = np.random.get_state()
             np.random.set_state(random_state.get_state())
         
-        dataDeltaT = SAMPLING_RATE  # Sampling rate: 4096 Hz
-        dataSec = Y_LENGTH * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
+        dataDeltaT = SAMPLING_FREQ  # Sampling rate: 4096 Hz
+        dataSec = Y_LENGTH * SAMPLING_FREQ   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
         
         # Generate noise with proper PSD scaling

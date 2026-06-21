@@ -14,7 +14,7 @@ from scipy.fft import fft, ifft
 
 from starccato_flow.plotting.signals import plot_detector_signal_channels
 
-from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_RATE, GPS_TIME
+from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 
@@ -157,19 +157,21 @@ class hThetaMulti(Dataset):
         bilby_detector = importlib.import_module("bilby.gw.detector")
         self.ifos = [bilby_detector.get_empty_interferometer(det_name) for det_name in detectors]
         
-        # Set up PSD for noise generation.
-        is_even = (Y_LENGTH % 2 == 0)
-        half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-        delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
-        fourier_freq = np.arange(half_N + 1) * delta_f
+        # # Set up PSD for noise generation.
+        # is_even = (Y_LENGTH % 2 == 0)
+        # half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
+        # delta_f = 1 / (Y_LENGTH * SAMPLING_FREQ)
+        # fourier_freq = np.arange(half_N + 1) * delta_f
 
-        # Use analytical or measured PSD based on flag
-        if self.use_measured_psd:
-            self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
-            self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
-        else:
-            self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
-            self.VirgoPSD = self.VirgoPsd(fourier_freq)
+        # # Use analytical or measured PSD based on flag
+        # if self.use_measured_psd:
+        #     self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
+        #     self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
+        # else:
+        #     self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
+        #     self.VirgoPSD = self.VirgoPsd(fourier_freq)
+
+        self.FreqArray()
         
         # Project signals to multiple detectors
         self.multi_channel_signals = self._project_to_detectors()        
@@ -235,7 +237,50 @@ class hThetaMulti(Dataset):
 
         return theta.astype(np.float32)
     
-    def AdvLIGOPsd(self,f):
+
+    # Given a one-sided PSD, generate colored noise in the time domain
+    def NoiseGenerator(self, detector: str):
+        # Generate noise based on the input signal
+        # Mean Centering
+        noise = self.ColoredNoise(detector)
+        noise = noise - noise.mean()
+        return noise
+    
+    def ColoredNoise(self, detector: str):
+        # SD of Fourier frequencies
+        psd = self.AdvLIGOPsd if detector in ["H1", "L1"] else self.VirgoPsd
+        sigma_f = np.sqrt(psd(self.f) / pow(self.k + 1, 2))
+        # Sample of normal random variable
+        a = np.random.normal(loc = 0, scale = sigma_f, size =self.N // 2 + 1)
+        b = np.random.normal(loc = 0, scale = sigma_f, size = self.N // 2 + 1) * self.k
+        # Find real and imaginary parts
+        real = np.sqrt(self.N / self.delta_t) * a
+        real = np.concatenate([real, np.flip(real[self.k == 1])])
+        imag = np.sqrt(self.N / self.delta_t) * b
+        imag = np.concatenate([- imag, np.flip(imag[self.k == 1])])
+        # Complex noise vector in frequency domain
+        noiseFT = real + 1j * imag
+        # Inverse FT to TS and take real parts
+        noiseTS = np.fft.ifft(noiseFT).real
+        return noiseTS
+    
+    def FreqArray(self):
+        # Convert to even for symmetry
+        N = Y_LENGTH // 2 * 2
+        # Sampling interval
+        delta_t = 1 / SAMPLING_FREQ
+        # Frequency interval
+        delta_f = SAMPLING_FREQ / N
+        # Fourier frequencies
+        f = np.arange(N // 2 + 1) * delta_f
+        k = np.array([0] + [1] * (N // 2 - 1) + [0])
+
+        self.N = N
+        self.delta_t = delta_t
+        self.f = f
+        self.k = k
+    
+    def AdvLIGOPsd(self, f):
         x = f / 215
         x2 = x * x
         psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
@@ -368,8 +413,8 @@ class hThetaMulti(Dataset):
             original_state = np.random.get_state()
             np.random.set_state(random_state.get_state())
         
-        dataDeltaT = SAMPLING_RATE  # Sampling rate: 4096 Hz
-        dataSec = Y_LENGTH * SAMPLING_RATE   # Duration: 256 samples at 4096 Hz
+        dataDeltaT = SAMPLING_FREQ  # Sampling rate: 4096 Hz
+        dataSec = Y_LENGTH * SAMPLING_FREQ   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
         
         # Generate noise with proper PSD scaling
@@ -457,7 +502,7 @@ class hThetaMulti(Dataset):
 
         return noise
     
-    def calculate_snr_from_fft(self, idx=0, fs=SAMPLING_RATE, N=Y_LENGTH):
+    def calculate_snr_from_fft(self, idx=0, fs=SAMPLING_FREQ, N=Y_LENGTH):
         """Calculate SNR directly from pre-computed FFT for a sample index.
         
         Args:
@@ -548,7 +593,7 @@ class hThetaMulti(Dataset):
             dtype=np.float64,
         )
         relative_dts = dts - dts.min()
-        t = np.arange(Y_LENGTH) * SAMPLING_RATE
+        t = np.arange(Y_LENGTH) * SAMPLING_FREQ
         h_delayed = np.zeros_like(signal)
         for j, dt_rel in enumerate(relative_dts):
             h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
@@ -654,18 +699,15 @@ class hThetaMulti(Dataset):
         # Add noise to each detector channel if enabled
         if self.detector_noise_on:
             for j in range(self.num_detectors):
-                # Get signal for this detector
                 s = clean_signal[j:j+1, :].flatten()  # Shape: (1, Y_LENGTH)
                 
-                # Compute SNR (using base class method)
                 s_normalized = s / TEN_KPC # now in units of strain, which matches the PSD scaling for noise generation
                 # hf = np.fft.rfft(s_normalized, axis=1)[0]
                 # rho = self.calculate_snr_from_fft(hf)
                 
                 # Generate detector-specific noise
-                n = self.detector_noise(seed_offset=j * 1000, detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
+                n = self.NoiseGenerator(detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
                 
-                # Add noise with target SNR
                 d_normalized = s_normalized + n
                 d = d_normalized * TEN_KPC
                 

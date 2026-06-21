@@ -817,11 +817,11 @@ def create_snr_variation_gif(
     frames = []
     
     # Import required utilities
-    from ..utils.defaults import SAMPLING_RATE, Y_LENGTH
+    from ..utils.defaults import SAMPLING_FREQ, Y_LENGTH
     
     is_even = (Y_LENGTH % 2 == 0)
     half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-    delta_f = 1 / (Y_LENGTH * SAMPLING_RATE)
+    delta_f = 1 / (Y_LENGTH * SAMPLING_FREQ)
     fourier_freq = np.arange(half_N + 1) * delta_f
     
     Sn = dataset.AdvLIGOPsd(fourier_freq)
