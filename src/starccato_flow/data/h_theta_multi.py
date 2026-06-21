@@ -281,6 +281,9 @@ class hThetaMulti(Dataset):
         self.k = k
     
     def AdvLIGOPsd(self, f):
+        """Advanced LIGO power spectral density."""
+        # Avoid division by zero at f=0 by clipping to a small positive value
+        f = np.clip(f, 1e-10, None)
         x = f / 215
         x2 = x * x
         psd = 1e-49 * (pow(x, - 4.14) - 5 / x2 + 111 * (1 - x2 + 0.5 * x2 * x2) / (1 + 0.5 * x2))
