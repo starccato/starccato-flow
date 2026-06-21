@@ -425,8 +425,8 @@ class sTheta(BaseDataset, Dataset):
             original_state = np.random.get_state()
             np.random.set_state(random_state.get_state())
         
-        dataDeltaT = SAMPLING_FREQ  # Sampling rate: 4096 Hz
-        dataSec = Y_LENGTH * SAMPLING_FREQ   # Duration: 256 samples at 4096 Hz
+        dataDeltaT = 1 / SAMPLING_FREQ  # Sampling rate: 4096 Hz
+        dataSec = Y_LENGTH / SAMPLING_FREQ   # Duration: 256 samples at 4096 Hz
         dataN = int(dataSec / dataDeltaT)  # Number of samples
         
         # Generate noise with proper PSD scaling

@@ -160,7 +160,7 @@ class hThetaMulti(Dataset):
         # # Set up PSD for noise generation.
         # is_even = (Y_LENGTH % 2 == 0)
         # half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-        # delta_f = 1 / (Y_LENGTH * SAMPLING_FREQ)
+        # delta_f = 1 / (Y_LENGTH / SAMPLING_FREQ)
         # fourier_freq = np.arange(half_N + 1) * delta_f
 
         # # Use analytical or measured PSD based on flag
@@ -593,7 +593,7 @@ class hThetaMulti(Dataset):
             dtype=np.float64,
         )
         relative_dts = dts - dts.min()
-        t = np.arange(Y_LENGTH) * SAMPLING_FREQ
+        t = np.arange(Y_LENGTH) / SAMPLING_FREQ
         h_delayed = np.zeros_like(signal)
         for j, dt_rel in enumerate(relative_dts):
             h_delayed[j, :] = np.interp(t - dt_rel, t, signal[j, :], left=0.0, right=0.0)
@@ -657,6 +657,8 @@ class hThetaMulti(Dataset):
             font_family=font_family,
             font_name=font_name
         )
+
+        return
     
     def _project_to_detectors(self) -> np.ndarray:
         """Project single-channel signals to multiple detectors using antenna patterns.

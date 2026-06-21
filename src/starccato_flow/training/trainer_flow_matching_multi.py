@@ -754,10 +754,10 @@ class FlowMatchingTrainerMulti:
         self.save_losses()
         self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
-    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_rescaled_delayed, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman"):
+    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman"):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
         params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
-        d = 10 # kpc
+        d = 5 # kpc
         
         distance_mask = (
             (self.supernovae.distances >= d - 0.25)
@@ -797,7 +797,7 @@ class FlowMatchingTrainerMulti:
             signal_idx=0,
             f_name_h=f_name_h,
             f_name_h_delayed=f_name_h_delayed,
-            f_name_h_delayed_rescaled=f_name_h_rescaled_delayed,
+            f_name_h_delayed_rescaled=f_name_h_delayed_rescaled,
             f_name_h_delayed_rescaled_noise=f_name_h_delayed_rescaled_noise,
             font_family=font_family,
             font_name=font_name
