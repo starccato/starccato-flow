@@ -418,7 +418,7 @@ class Supernovae:
         
         threshold_d = MAX_DISTANCE_KPC
         min_d_mask = 0.0
-        max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 1.0)
+        max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 0.5)
         distance_mask = (
             (self.distances >= min_d_mask)
             & (self.distances <= max_d_mask)

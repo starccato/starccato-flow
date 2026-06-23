@@ -433,7 +433,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white") -> None:
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white", transparent: bool = False) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -450,6 +450,7 @@ class FlowMatchingTrainerMulti:
             fname_posterior: Filename for the posterior plot
             fname_posterior_sky: Filename for the posterior sky plot
             background: Background color for plots (e.g., "white", "black")
+            transparent: Whether to save plots with transparent background
         """
         
         # Set up directory paths
@@ -529,11 +530,12 @@ class FlowMatchingTrainerMulti:
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
             max_value=active_h_theta_multi.shared_max_strain,
             detector_labels=active_h_theta_multi.detectors,
-            background="white",
+            background="black",
             generated=False,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png") if fname_signal is None else fname_signal,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            transparent=transparent
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
@@ -548,9 +550,10 @@ class FlowMatchingTrainerMulti:
             h_theta_multi_dataset=active_h_theta_multi,
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
-            background="white",
+            background="black",
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            transparent=transparent
         )
         self.plot_sky_localisation_sampled_signal(
             num_samples=3000,
@@ -561,7 +564,8 @@ class FlowMatchingTrainerMulti:
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            transparent=transparent
         )
         # export each channel of the signal as a separate .txt file for external analysis
         if export_on:
@@ -743,7 +747,7 @@ class FlowMatchingTrainerMulti:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None, epoch=epoch) 
+            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None, epoch=epoch, transparent=True) 
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
@@ -883,7 +887,8 @@ class FlowMatchingTrainerMulti:
         true_param_denorm=None,
         background: str = "white",
         font_family: str = "Serif",
-        font_name: str = "Times New Roman"
+        font_name: str = "Times New Roman",
+        transparent: bool = False
     ):
         """Generate a corner plot for one sampled multi-channel validation signal.
 
@@ -988,7 +993,8 @@ class FlowMatchingTrainerMulti:
         posterior_samples_denorm=None,
         true_param_denorm=None,
         font_family: str = "Serif",
-        font_name: str = "Times New Roman"
+        font_name: str = "Times New Roman",
+        transparent: bool = False
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal.
         
@@ -1036,6 +1042,7 @@ class FlowMatchingTrainerMulti:
             font_family=font_family,
             font_name=font_name,
             red_blob_mode="density_peak",
+            transparent=transparent,
         )
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):

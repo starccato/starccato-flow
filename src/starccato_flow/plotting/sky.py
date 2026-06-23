@@ -116,6 +116,26 @@ def _project_to_hemisphere(
 
 
 @lru_cache(maxsize=8)
+def _get_brightest_stars(n_stars: int = 500) -> tuple[np.ndarray, np.ndarray] | None:
+    """Get the N brightest stars as a synthetic deterministic set across the sky.
+    
+    Returns:
+        Tuple of (ra_rad, dec_rad) arrays
+    """
+    # Use a deterministic seed so we always get the same stars
+    rng = np.random.RandomState(seed=42)
+    
+    # Generate stars uniformly across the sky (in lon/lat)
+    # Use sin for latitude to get proper spherical distribution
+    ra_deg = rng.uniform(0, 360, n_stars)
+    dec_deg = np.arcsin(rng.uniform(-1, 1, n_stars)) * 180 / np.pi
+    
+    ra_rad = np.deg2rad(ra_deg)
+    dec_rad = np.deg2rad(dec_deg)
+    
+    return ra_rad, dec_rad
+
+
 def _constellation_border_segments(
     astropy_rotation_offset_deg: float = 0.0,
     n_ra: int = 720,
@@ -286,6 +306,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     font_name: str = "Avenir",
     red_blob_mode: str = "middle_star",
     example: bool = False,
+    transparent: bool = False,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -313,6 +334,13 @@ def plot_galactic_supernovae_polar_hemispheres(
             and highlight the first supernova as the true location.
     """
     set_plot_style(background, font_family, font_name)
+    
+    # If transparent, override rcParams to allow transparent background
+    if transparent:
+        plt.rcParams['figure.facecolor'] = 'none'
+        plt.rcParams['axes.facecolor'] = 'none'
+        plt.rcParams['savefig.facecolor'] = 'none'
+    
     astropy_rotation_offset_deg = 0.0
     ra_supernovae = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
     dec_supernovae = np.asarray(ccsn.dec)
@@ -329,10 +357,11 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Build the galactic streak directly from Supernovae RA/Dec.
     ra_rot_supernovae = ra_supernovae
 
-    fig = plt.figure(figsize=(12, 6.8), facecolor="black")
+    fig_facecolor = None if transparent else "black"
+    fig = plt.figure(figsize=(12, 6.8), facecolor=fig_facecolor)
     # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
-    ax_l = fig.add_axes([0.03, 0.03, 0.47, 0.94], facecolor="black")
-    ax_r = fig.add_axes([0.50, 0.03, 0.47, 0.94], facecolor="black")
+    ax_l = fig.add_axes([0.03, 0.03, 0.47, 0.94], facecolor=fig_facecolor)
+    ax_r = fig.add_axes([0.50, 0.03, 0.47, 0.94], facecolor=fig_facecolor)
 
     north_mask = dec_supernovae >= 0
     ra_n = ra_rot_supernovae[north_mask]
@@ -407,6 +436,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     ]
 
     ax_l.contourf(xcenters, ycenters, h_n_plot, levels=fill_levels_shared, colors=fill_colors, antialiased=True)
+    
     for r_lat in lat_radii:
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
     ax_l.plot(np.cos(theta), np.sin(theta), color="white", lw=1.4)
@@ -465,6 +495,32 @@ def plot_galactic_supernovae_polar_hemispheres(
         multialignment="center",
         alpha=0.95,
     )
+    
+    # Add brightest stars to both hemispheres
+    stars = _get_brightest_stars(n_stars=500)
+    if stars is not None:
+        ra_stars, dec_stars = stars
+        ra_stars_rot = np.mod(ra_stars, 2 * np.pi)
+        
+        # Plot stars on northern hemisphere
+        north_star_mask = dec_stars >= 0
+        if np.any(north_star_mask):
+            ra_n_stars = ra_stars_rot[north_star_mask]
+            dec_n_stars = dec_stars[north_star_mask]
+            r_n_stars = (np.pi / 2 - dec_n_stars) / (np.pi / 2)
+            x_n_stars = r_n_stars * np.sin(ra_n_stars)
+            y_n_stars = r_n_stars * np.cos(ra_n_stars)
+            ax_l.scatter(x_n_stars, y_n_stars, s=8, c='white', alpha=0.3, edgecolors='none', zorder=2)
+        
+        # Plot stars on southern hemisphere
+        south_star_mask = dec_stars <= 0
+        if np.any(south_star_mask):
+            ra_s_stars = ra_stars_rot[south_star_mask]
+            dec_s_stars = dec_stars[south_star_mask]
+            r_s_stars = (np.pi / 2 + dec_s_stars) / (np.pi / 2)
+            x_s_stars = -r_s_stars * np.sin(ra_s_stars)
+            y_s_stars = r_s_stars * np.cos(ra_s_stars)
+            ax_r.scatter(x_s_stars, y_s_stars, s=8, c='white', alpha=0.3, edgecolors='none', zorder=2)
 
     # Add curved "MILKY WAY" text below south pole, following the arc
     milky_way_text = "MILKY WAY"
@@ -1488,10 +1544,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     plt.savefig(
         fname,
         dpi=dpi,
-        facecolor="black",
+        facecolor="black" if not transparent else None,
         edgecolor="none",
         pad_inches=0,
-        transparent=False,
+        transparent=transparent,
         bbox_inches=None,
     )
 

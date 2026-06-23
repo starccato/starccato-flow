@@ -106,6 +106,7 @@ def plot_detector_signal_channels(
     background: str = "black",
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
+    transparent: bool = False,
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
@@ -204,7 +205,7 @@ def plot_detector_signal_channels(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=transparent)
 
     plt.show()
     plt.rcdefaults()
