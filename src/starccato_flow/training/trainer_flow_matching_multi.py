@@ -20,7 +20,7 @@ from ..plotting.signals import plot_detector_signal_channels, plot_candidate_sig
 from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT 
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC 
 from ..utils.plotting_defaults import PARAMETER_LABELS 
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
@@ -627,8 +627,8 @@ class FlowMatchingTrainerMulti:
                 s=signals,
                 shared_max_strain=self.training_dataset.shared_max_strain,
                 theta=params,
-                min_theta=self.training_dataset.shared_min_theta,
-                max_theta=self.training_dataset.shared_max_theta,
+                shared_min=self.training_dataset.shared_min_theta,
+                shared_max=self.training_dataset.shared_max_theta,
                 ra=sampled_ra,
                 dec=sampled_dec,
                 d=sampled_d,
@@ -697,8 +697,8 @@ class FlowMatchingTrainerMulti:
                     s=val_signals,
                     shared_max_strain=self.validation_dataset.shared_max_strain,
                     theta=val_params,
-                    min_theta=self.validation_dataset.shared_min_theta,
-                    max_theta=self.validation_dataset.shared_max_theta,
+                    shared_min=self.validation_dataset.shared_min_theta,
+                    shared_max=self.validation_dataset.shared_max_theta,
                     ra=val_sampled_ra,
                     dec=val_sampled_dec,
                     d=val_sampled_d,
@@ -937,8 +937,34 @@ class FlowMatchingTrainerMulti:
         # manually set limits on d if it's in the extracted parameters
         if 'd' in self.parameters_to_estimate:
             d_idx = self.parameters_to_estimate.index('d')
-            ranges[d_idx] = (0.1, 20.0)
+            ranges[d_idx] = (0.1, MAX_DISTANCE_KPC)
             print(f"  Override d range to: {ranges[d_idx]}")
+
+        # Debug: validate ranges and samples before plotting
+        print("\nDebug: Validating ranges and samples...")
+        print(f"  Posterior samples shape: {posterior_samples_denorm.shape}")
+        print(f"  True param shape: {true_param_denorm.shape}")
+        print(f"  Number of ranges: {len(ranges)}")
+        print(f"  Number of sample dimensions: {posterior_samples_denorm.shape[1] if posterior_samples_denorm.ndim > 1 else 1}")
+        
+        # Check for NaN values in samples
+        nan_count = np.isnan(posterior_samples_denorm).sum()
+        inf_count = np.isinf(posterior_samples_denorm).sum()
+        print(f"  NaN values in samples: {nan_count}")
+        print(f"  Inf values in samples: {inf_count}")
+        
+        # Validate ranges
+        print(f"  Validating ranges:")
+        for i, (r_min, r_max) in enumerate(ranges):
+            if r_min >= r_max:
+                print(f"    ERROR: Range {i} ({r_min}, {r_max}) is invalid (min >= max)!")
+            else:
+                print(f"    Range {i}: ({r_min:.4f}, {r_max:.4f}) ✓")
+            # Also check sample statistics for this dimension
+            if posterior_samples_denorm.ndim > 1 and i < posterior_samples_denorm.shape[1]:
+                sample_min = np.nanmin(posterior_samples_denorm[:, i])
+                sample_max = np.nanmax(posterior_samples_denorm[:, i])
+                print(f"      Sample range: [{sample_min:.4f}, {sample_max:.4f}]")
 
         plot_corner(
             samples_cpu=posterior_samples_denorm,
@@ -1182,7 +1208,7 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_sky_weights.pt"
+        return f"{self.outdir}/flow_sky_weights_test.pt"
 
     def save_data(self):
         """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""
@@ -1190,7 +1216,7 @@ class FlowMatchingTrainerMulti:
         print(f"Saved Flow model to {self.save_fname}")
         
         # Save losses to npz file (consistent with CVAE trainer)
-        losses_path = f"{self.outdir}/flow_losses.npz"
+        losses_path = f"{self.outdir}/flow_losses_test.npz"
         np.savez(
             losses_path,
             avg_mse_losses=np.array(self.avg_mse_losses),

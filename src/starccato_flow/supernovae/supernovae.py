@@ -336,6 +336,7 @@ class Supernovae:
         sun_marker_size: float = 100,
         show: bool = False,
         dpi: int = 150,
+        figsize: tuple = (16, 16),
     ):
         """Plot galactic supernova locations in 3D and projected views.
 
@@ -352,6 +353,7 @@ class Supernovae:
             sun_marker_size: Marker size for the sun marker
             show: Whether to display plots instead of closing after creation
             dpi: DPI used when saving output files
+            figsize: Figure size in inches as (width, height). Default (16, 16) produces ~2400x2400 pixels at 150 dpi.
 
         Returns:
             List of matplotlib figures in [3D, X-Y, X-Z] order
@@ -379,6 +381,7 @@ class Supernovae:
             sun_marker_size=sun_marker_size,
             show=show,
             dpi=dpi,
+            figsize=figsize,
         )
     
     def sample_supernovae_for_epoch(
@@ -411,9 +414,11 @@ class Supernovae:
         Returns:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
         """
-        threshold_d = 20.0
+        from ..utils.defaults import MAX_DISTANCE_KPC
+        
+        threshold_d = MAX_DISTANCE_KPC
         min_d_mask = 0.0
-        max_d_mask = min(threshold_d, (epoch / num_epochs) * 20.0 + 1.0)
+        max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 1.0)
         distance_mask = (
             (self.distances >= min_d_mask)
             & (self.distances <= max_d_mask)

@@ -18,6 +18,8 @@ SAMPLING_FREQ = 4096
 
 TEN_KPC = 3.086e+22
 
+MAX_DISTANCE_KPC = 10.0  # Maximum distance in kpc for sampling and model range
+
 GPS_TIME = 1457654242.0
 
 VALIDATION_SPLIT = 0.1

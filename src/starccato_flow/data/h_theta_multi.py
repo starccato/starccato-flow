@@ -14,7 +14,7 @@ from scipy.fft import fft, ifft
 
 from starccato_flow.plotting.signals import plot_detector_signal_channels
 
-from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME
+from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME, MAX_DISTANCE_KPC
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 
@@ -36,7 +36,7 @@ class hThetaMulti(Dataset):
     
     # Fixed physical bounds for sky parameters: [ra, dec, distance_kpc, psi]
     SKY_MIN = np.array([-np.pi, -np.pi / 2.0, 0.0, 0.0], dtype=np.float32)
-    SKY_MAX = np.array([np.pi, np.pi / 2.0, 20.0, np.pi], dtype=np.float32)
+    SKY_MAX = np.array([np.pi, np.pi / 2.0, MAX_DISTANCE_KPC, np.pi], dtype=np.float32)
     
     def __init__(
         self,

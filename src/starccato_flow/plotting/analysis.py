@@ -99,6 +99,8 @@ def plot_galactic_distribution(
     sun_marker_size: float = 100,
     show: bool = False,
     dpi: int = 150,
+    legend_frameon: bool = False,
+    figsize: tuple = (16, 16),
 ) -> List[plt.Figure]:
     """Plot galactic supernova locations in 3D, X-Y, and X-Z views.
 
@@ -121,6 +123,8 @@ def plot_galactic_distribution(
         sun_marker_size (float): Marker size for the sun marker
         show (bool): Whether to keep figures open and display them
         dpi (int): DPI used when saving output files
+        legend_frameon (bool): Whether to display the legend box background
+        figsize (tuple): Figure size in inches as (width, height). Default (16, 16) produces ~2400x2400 pixels at 150 dpi. For 2000x2000 pixels use ~(13.3, 13.3)
 
     Returns:
         List[plt.Figure]: The created matplotlib figures in [3D, X-Y, X-Z] order
@@ -260,6 +264,7 @@ def plot_galactic_distribution(
             edgecolor="none",
             labelcolor=text_color,
             fontsize=20,
+            frameon=legend_frameon,
         )
 
     output_3d = _prepare_output_path(fname_3d)
@@ -270,7 +275,7 @@ def plot_galactic_distribution(
 
     figures: List[plt.Figure] = []
 
-    fig1 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    fig1 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
     ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax1.scatter(
@@ -348,7 +353,7 @@ def plot_galactic_distribution(
         fig1.savefig(output_3d, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig1)
 
-    fig2 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    fig2 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax2 = fig2.add_subplot(111, facecolor=facecolor)
     ax2.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax2.scatter(
@@ -399,7 +404,7 @@ def plot_galactic_distribution(
         fig2.savefig(output_xy, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig2)
 
-    fig3 = plt.figure(figsize=(16, 16), facecolor=facecolor)
+    fig3 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax3 = fig3.add_subplot(111, facecolor=facecolor)
     ax3.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax3.scatter(
