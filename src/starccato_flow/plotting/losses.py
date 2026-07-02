@@ -64,8 +64,8 @@ def plot_loss(
     axes.tick_params(labelsize=18)
     axes.grid(False)
     
-    # Set y-axis ticks to 0.0025 increments
-    axes.yaxis.set_major_locator(ticker.MultipleLocator(0.0025))
+    # Set y-axis ticks to 0.005 increments
+    axes.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
     
     plt.tight_layout()
     if fname:

@@ -98,7 +98,7 @@ def plot_galactic_distribution(
     scatter_size: float = 0.001,
     sun_marker_size: float = 100,
     show: bool = False,
-    dpi: int = 150,
+    dpi: int = 300,
     legend_frameon: bool = False,
     figsize: tuple = (16, 16),
 ) -> List[plt.Figure]:
@@ -202,6 +202,11 @@ def plot_galactic_distribution(
             axes.yaxis.set_major_formatter(
                 mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
             )
+        else:
+            axes.xaxis.set_major_locator(mticker.MultipleLocator(5))
+            axes.yaxis.set_major_locator(mticker.MultipleLocator(5))
+            axes.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+            axes.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
 
     def _light_year_tick_label(val: float) -> str:
         if np.isclose(val, 0.0):
@@ -216,12 +221,14 @@ def plot_galactic_distribution(
         return f"{base} (kpc)" if not light_year else base
 
     def _apply_xy_axis_line_window(axes: plt.Axes) -> None:
-        if not light_year:
-            return
-        axes.spines["bottom"].set_bounds(-80_000, 80_000)
-        axes.spines["left"].set_bounds(-80_000, 80_000)
-        axes.spines["bottom"].set_linestyle("--")
-        axes.spines["left"].set_linestyle("--")
+        if light_year:
+            axes.spines["bottom"].set_bounds(-80_000, 80_000)
+            axes.spines["left"].set_bounds(-80_000, 80_000)
+            axes.spines["bottom"].set_linestyle("--")
+            axes.spines["left"].set_linestyle("--")
+        else:
+            axes.spines["bottom"].set_bounds(-25, 25)
+            axes.spines["left"].set_bounds(-25, 25)
 
     def _legend_with_supernova_marker(axes: plt.Axes) -> None:
         handles, labels = axes.get_legend_handles_labels()
@@ -348,6 +355,15 @@ def plot_galactic_distribution(
         _tighten_light_year_tick_lines(ax1)
         for tick_label in ax1.get_zticklabels():
             tick_label.set_linespacing(0.75)
+    else:
+        # Set nice round tick values for kpc
+        ax1.xaxis.set_major_locator(mticker.MultipleLocator(10))
+        ax1.yaxis.set_major_locator(mticker.MultipleLocator(10))
+        ax1.set_zlim(-10, 10)
+        ax1.zaxis.set_major_locator(mticker.MultipleLocator(5))
+        ax1.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+        ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+        ax1.zaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
     _legend_with_supernova_marker(ax1)
     if output_3d is not None:
         fig1.savefig(output_3d, dpi=dpi, bbox_inches="tight", transparent=transparent)
@@ -398,6 +414,15 @@ def plot_galactic_distribution(
         ax2.set_xticks(tick_values)
         ax2.set_yticks(tick_values)
         _tighten_light_year_tick_lines(ax2)
+    else:
+        # Set kpc limits to match light-year equivalent (-85000 to 85000 ly = -26.07 to 26.07 kpc)
+        kpc_limit = 26.07
+        kpc_padding = 2.07
+        tick_values = np.arange(-25, 26, 5)
+        ax2.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+        ax2.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+        ax2.set_xticks(tick_values)
+        ax2.set_yticks(tick_values)
     _apply_xy_axis_line_window(ax2)
     _legend_with_supernova_marker(ax2)
     if output_xy is not None:
@@ -440,6 +465,11 @@ def plot_galactic_distribution(
         ax3.yaxis.set_major_formatter(
             mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
         )
+    else:
+        # Set nice round tick values for kpc on Z axis
+        ax3.set_ylim(-10, 10)
+        ax3.yaxis.set_major_locator(mticker.MultipleLocator(5))
+        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
     _legend_with_supernova_marker(ax3)
     if output_xz is not None:
         fig3.savefig(output_xz, dpi=dpi, bbox_inches="tight", transparent=transparent)
@@ -761,7 +791,7 @@ def create_signal_grid_gif(
         
         # Save frame to buffer
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', 
+        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight', 
                    facecolor=fig.get_facecolor())
         buf.seek(0)
         frames.append(Image.open(buf).copy())  # Copy to avoid buffer issues
@@ -877,7 +907,7 @@ def create_snr_variation_gif(
         
         # Save frame to buffer
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight',
+        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight',
                    facecolor=fig.get_facecolor())
         buf.seek(0)
         frames.append(Image.open(buf).copy())

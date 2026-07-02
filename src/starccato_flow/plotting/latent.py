@@ -654,7 +654,7 @@ def create_latent_morph_gif(
         # Save frame to buffer
         plt.ioff()
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', transparent=True)
+        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight', transparent=True)
         buf.seek(0)
         frames.append(Image.open(buf).copy())
         buf.close()
@@ -843,6 +843,6 @@ def plot_latent_space_2d_3d(
     plt.tight_layout()
     
     if fname:
-        plt.savefig(fname, bbox_inches='tight', dpi=150, facecolor=background, edgecolor='none')
+        plt.savefig(fname, bbox_inches='tight', dpi=300, facecolor=background, edgecolor='none')
     
     plt.close()

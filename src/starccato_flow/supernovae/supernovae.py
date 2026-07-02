@@ -335,7 +335,7 @@ class Supernovae:
         scatter_size: float = 0.001,
         sun_marker_size: float = 100,
         show: bool = False,
-        dpi: int = 150,
+        dpi: int = 300,
         figsize: tuple = (16, 16),
     ):
         """Plot galactic supernova locations in 3D and projected views.
@@ -460,7 +460,7 @@ class Supernovae:
                 light_year=False,
                 highlight_indices=sampled_indices,
                 show=False,
-                dpi=150,
+                dpi=300,
                 font_family=font_family,
                 font_name=font_name,
             )
@@ -476,7 +476,7 @@ class Supernovae:
                 light_year=False,
                 highlight_indices=sampled_indices,
                 show=False,
-                dpi=150,
+                dpi=300,
                 font_family=font_family,
                 font_name=font_name,
             )

@@ -20,7 +20,7 @@ from ..plotting.signals import plot_detector_signal_channels, plot_candidate_sig
 from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC 
+from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
 from ..utils.plotting_defaults import PARAMETER_LABELS 
 from ..nn.flow_multi import FlowFCL, FlowCNN
 
@@ -433,7 +433,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, background: str = "white", transparent: bool = False) -> None:
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -449,6 +449,7 @@ class FlowMatchingTrainerMulti:
             fname_signal: Filename for the signal plot
             fname_posterior: Filename for the posterior plot
             fname_posterior_sky: Filename for the posterior sky plot
+            fname_eos_ye: Filename for the EOS/Ye plot
             background: Background color for plots (e.g., "white", "black")
             transparent: Whether to save plots with transparent background
         """
@@ -572,10 +573,41 @@ class FlowMatchingTrainerMulti:
             export_dir = os.path.join(self.outdir, "exported_signals")
             os.makedirs(export_dir, exist_ok=True)
             detector_labels = active_h_theta_multi.detectors
+            
+            # Generate 4 seconds of zero signal at 4096 Hz = 16384 samples
+            zero_duration_samples = int(4 * SAMPLING_FREQ)  # 4 seconds at 4096 Hz
+            signal_length = case[0].shape[1]  # Y_LENGTH
+            
+            # Calculate middle position to embed the signal
+            start_idx = (zero_duration_samples - signal_length) // 2
+            end_idx = start_idx + signal_length
+            
+            # Collect combined signals for plotting
+            combined_signals_for_plot = []
+            
             for i in range(case[0].shape[0]):
-                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain  # Denormalize to physical units
+                # Get clean signal and denormalize to physical units
+                channel_signal = case[0][i].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain
+                
+                # Create a zero array (silence)
                 detector_name = detector_labels[i] if i < len(detector_labels) else f"channel_{i+1}"
-                np.savetxt(os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"), channel_signal)
+                zero_signal = np.zeros(zero_duration_samples, dtype=np.float32)
+                
+                # Embed the signal in the middle of the zeros
+                combined_signal = zero_signal.copy()
+                combined_signal[start_idx:end_idx] = channel_signal
+                
+                combined_signals_for_plot.append(combined_signal)
+                
+                # Export combined signal (signal embedded in 4 seconds of zeros)
+                np.savetxt(
+                    os.path.join(export_dir, f"{filename_suffix}_{detector_name}.txt"),
+                    combined_signal
+                )
+            
+            print(f"✓ Exported signals to {export_dir}/")
+            print(f"  Signal embedded in middle of 4-second zero (silence) window (samples {start_idx}-{end_idx})")
+            print(f"  Signal time window: {start_idx / SAMPLING_FREQ:.3f}s - {end_idx / SAMPLING_FREQ:.3f}s")
 
         if "Ye_c_b" in self.parameters_to_estimate:
             # get true ye and corresponding eos values for the signal (using random_signal_idx if signal_idx is None)
@@ -593,7 +625,10 @@ class FlowMatchingTrainerMulti:
                 true_eos=str(true_eos),
                 dataset_ye=dataset_ye,
                 dataset_eos=dataset_eos,
-                fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png")
+                background=background,
+                font_family=font_family,
+                font_name=font_name,
+                fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png") if fname_eos_ye is None else fname_eos_ye,
             ) 
 
     def train(self):
@@ -1060,7 +1095,7 @@ class FlowMatchingTrainerMulti:
         )
 
     def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
-                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman") -> None:
+                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
         This plot shows empirical vs theoretical coverage of credible intervals for each parameter.
@@ -1074,6 +1109,7 @@ class FlowMatchingTrainerMulti:
             background (str): Background color theme ("white" or "black")
             font_family (str): Font family for plot text
             font_name (str): Font name for plot text
+            transparent (bool): Whether to make the plot background transparent
         """
         # Initialize validation dataset if not already present
         if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:            
@@ -1193,6 +1229,7 @@ class FlowMatchingTrainerMulti:
             background=background,
             font_family=font_family,
             font_name=font_name,
+            transparent=transparent
         )
         
         print(f"✓ Saved p-p coverage plot to {fname}")

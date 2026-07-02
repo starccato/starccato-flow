@@ -386,7 +386,7 @@ class VAEDenoisingTrainer:
         axes[1, 1].grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig(fname, dpi=150, bbox_inches="tight")
+        plt.savefig(fname, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"✓ Saved loss plot to {fname}")
     

@@ -201,6 +201,7 @@ def plot_pp_coverage(
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
     figsize: Tuple[float, float] = (10, 8),
+    transparent: bool = False,
 ) -> plt.Figure:
     """Plot credible interval coverage (p-p plot) for multiple parameters.
     
@@ -293,7 +294,7 @@ def plot_pp_coverage(
     
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=background if background == "black" else "white")
+        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=background if background == "black" else "white", transparent=transparent)
     
     plt.rcdefaults()
     return fig
@@ -353,7 +354,7 @@ def plot_epoch_sky_parameters(
         axes[i].set_visible(False)
     
     plt.tight_layout()
-    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=300)
     plt.close()
 
 

@@ -471,13 +471,13 @@ class hThetaMulti(Dataset):
         lambda_factors = np.concatenate(([1], np.full(half_N - 1, 2), [1]))
 
         if detector == "H1" or detector == "L1":
-            psd = self.AdvLIGOPSD
+            psd = self.AdvLIGOPsd(fourier_freq)
         elif detector == "V1":
-            psd = self.VirgoPSD
+            psd = self.VirgoPsd(fourier_freq)
         else:
             raise ValueError("Invalid detector specified. Please choose 'H1', 'L1', or 'V1'.")
         
-        psd[~np.isfinite(psd)] = 0
+        psd = np.nan_to_num(psd, nan=0.0, posinf=0.0, neginf=0.0)
         psd[psd < 0] = 0
 
         if one_sided:
