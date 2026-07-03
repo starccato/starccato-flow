@@ -1489,7 +1489,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     
     ax_r.legend(
         loc="lower right",
-        bbox_to_anchor=(0.95, -0.08),
+        bbox_to_anchor=(0.98, -0.08),
         frameon=False,
         labelcolor="white",
         fontsize=8.0,

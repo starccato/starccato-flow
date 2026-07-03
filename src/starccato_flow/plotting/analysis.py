@@ -601,6 +601,198 @@ def plot_galactic_distribution(
     return figures
 
 
+def plot_galactic_distribution_with_posterior(
+    galactic_coords: np.ndarray,
+    posterior_ra: np.ndarray,
+    posterior_dec: np.ndarray,
+    posterior_distance: np.ndarray,
+    true_ra: Optional[float] = None,
+    true_dec: Optional[float] = None,
+    true_distance: Optional[float] = None,
+    sun_location: Optional[np.ndarray] = None,
+    fname: Optional[str] = None,
+    background: str = "white",
+    transparent: Optional[bool] = None,
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    scatter_size: float = 0.001,
+    sun_marker_size: float = 100,
+    show: bool = False,
+    dpi: int = 300,
+    figsize: tuple = (12, 12),
+) -> plt.Figure:
+    """Plot galactic supernova distribution in X-Y plane with posterior credible regions overlaid.
+
+    Args:
+        galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
+        posterior_ra (np.ndarray): Posterior RA samples in radians
+        posterior_dec (np.ndarray): Posterior Dec samples in radians
+        posterior_distance (np.ndarray): Posterior distance samples in kpc
+        true_ra (Optional[float]): True RA in radians
+        true_dec (Optional[float]): True Dec in radians
+        true_distance (Optional[float]): True distance in kpc
+        sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
+        fname (Optional[str]): Output path for the plot
+        background (str): Plot theme, either "white" or "black"
+        transparent (Optional[bool]): Override the saved figure transparency
+        font_family (str): Font family to use
+        font_name (str): Specific font name to use
+        scatter_size (float): Marker size for background supernova points
+        sun_marker_size (float): Marker size for the sun marker
+        show (bool): Whether to keep figure open and display it
+        dpi (int): DPI used when saving output files
+        figsize (tuple): Figure size in inches as (width, height)
+
+    Returns:
+        plt.Figure: The created matplotlib figure
+    """
+    from ..supernovae.supernovae import Supernovae
+    from matplotlib.patches import Patch
+    from matplotlib.colors import to_rgba
+
+    galactic_coords = np.asarray(galactic_coords)
+    if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
+        raise ValueError("galactic_coords must have shape (N, 3).")
+
+    if sun_location is None:
+        sun_location = np.array([0.0, 8.178, 0.0208], dtype=float)
+    else:
+        sun_location = np.asarray(sun_location, dtype=float)
+        if sun_location.shape != (3,):
+            raise ValueError("sun_location must have shape (3,).")
+
+    # Set up plot styling
+    rcParams["font.family"] = font_family
+    rcParams["font.size"] = 18
+    if font_family == "sans-serif":
+        rcParams["font.sans-serif"] = [font_name]
+    elif font_family == "serif":
+        rcParams["font.serif"] = [font_name]
+
+    facecolor = background if background in ("white", "black") else "white"
+    text_color = "white" if background == "black" else "black"
+    grid_color = "gray" if background == "black" else "lightgray"
+
+    # Extract X-Y coordinates from background galactic distribution
+    x = galactic_coords[:, 0]
+    y = galactic_coords[:, 1]
+
+    # Transform posterior samples to galactic coordinates
+    sn_temp = Supernovae()  # Temporary instance for coordinate transformation
+    post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
+        posterior_ra, posterior_dec, posterior_distance
+    )
+    
+    # Convert posterior from heliocentric to galactocentric frame by adding sun location
+    post_x += sun_location[0]
+    post_y += sun_location[1]
+    post_z += sun_location[2]
+
+    # Create figure
+    fig = plt.figure(figsize=figsize, facecolor=facecolor)
+    ax = fig.add_subplot(111, facecolor=facecolor)
+
+    # Plot background galactic distribution
+    ax.scatter(x, y, s=scatter_size, alpha=0.8, c="lightblue", label="Supernovae")
+    ax.scatter(
+        0.0,
+        0.0,
+        s=sun_marker_size,
+        c="black",
+        edgecolors="white",
+        linewidths=1.8,
+        marker="o",
+        label="Galactic Center: Sgr A*",
+    )
+    ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+
+    # Create density contours from posterior samples in X-Y plane
+    # Marginalize 3D posterior (X, Y, Z) to get proper 2D joint distribution
+    from scipy.stats import gaussian_kde
+    
+    # Plot all posterior samples as scatter points
+    ax.scatter(
+        post_x, 
+        post_y, 
+        s=1, 
+        alpha=0.3, 
+        c="red",
+        label="Posterior Samples"
+    )
+    
+    posterior_legend_handles = []
+
+    # Plot true location if provided
+    if true_ra is not None and true_dec is not None and true_distance is not None:
+        true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
+            np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
+        )
+        # Convert to galactocentric frame by adding sun location
+        true_x += sun_location[0]
+        true_y += sun_location[1]
+        true_z += sun_location[2]
+        # Plot with large visible marker
+        ax.scatter(
+            true_x,
+            true_y,
+            s=500,
+            c="lime",
+            edgecolors="white",
+            linewidths=2.5,
+            marker="*",
+            label="True Location",
+            zorder=100,
+        )
+
+    # Set axis properties
+    ax.set_xlabel(f"X (kpc)", color=text_color, fontsize=22)
+    ax.set_ylabel(f"Y (kpc)", color=text_color, fontsize=22)
+    ax.tick_params(colors=text_color, labelsize=18)
+    ax.set_aspect("equal")
+    ax.grid(color=grid_color, alpha=0.2)
+
+    # Set limits and ticks
+    xy_radius = 25
+    kpc_limit = xy_radius - 2.07
+    kpc_padding = 2.07
+    tick_values = np.arange(-25, 26, 5)
+    ax.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+    ax.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+    ax.set_xticks(tick_values)
+    ax.set_yticks(tick_values)
+
+    # Legend
+    base_handles = [
+        mlines.Line2D([0], [0], marker="o", color="w", markerfacecolor="lightblue", markersize=10, label="Supernovae"),
+        mlines.Line2D([0], [0], marker="o", color="w", markerfacecolor="black", markersize=12, label="Galactic Center"),
+        mlines.Line2D([0], [0], marker="*", color="w", markerfacecolor="yellow", markersize=15, label="Sun"),
+    ]
+    if true_ra is not None:
+        base_handles.append(
+            mlines.Line2D([0], [0], marker="x", color="w", markerfacecolor="none", markersize=12, markeredgewidth=2, label="True Location")
+        )
+
+    all_handles = base_handles + posterior_legend_handles
+    ax.legend(
+        handles=all_handles,
+        loc="upper right",
+        frameon=False,
+        labelcolor=text_color,
+        fontsize=14,
+    )
+
+    if fname is not None:
+        fig.savefig(fname, dpi=dpi, bbox_inches="tight", transparent=transparent)
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    plt.rcdefaults()
+    return fig
+
+
 def plot_reconstruction_distribution(
     reconstructed_signals: List[np.ndarray],
     noisy_signal: torch.Tensor,

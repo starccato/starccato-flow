@@ -221,15 +221,48 @@ class Supernovae:
         Returns:
             x, y, z: Galactic Cartesian coordinates in kpc
         """
-        # Convert to heliocentric Cartesian
-        x_rel = distance * np.sin(ra) * np.cos(dec)
-        y_rel = -distance * np.cos(ra) * np.cos(dec)
-        z_rel = distance * np.sin(dec)
+        # Convert from spherical to Cartesian in equatorial frame
+        x_eq = distance * np.cos(dec) * np.cos(ra)
+        y_eq = distance * np.cos(dec) * np.sin(ra)
+        z_eq = distance * np.sin(dec)
         
-        # Convert to galactic coordinates (add Earth's position)
-        x = x_rel + self.EARTH_LOCATION[0]
-        y = y_rel + self.EARTH_LOCATION[1]
-        z = z_rel + self.EARTH_LOCATION[2]
+        # Apply inverse rotation to undo rotation_offset
+        if self.rotation_offset != 0.0:
+            cos_rot = np.cos(-self.rotation_offset)
+            sin_rot = np.sin(-self.rotation_offset)
+            x_eq_rot = cos_rot * x_eq - sin_rot * y_eq
+            y_eq_rot = sin_rot * x_eq + cos_rot * y_eq
+            x_eq, y_eq = x_eq_rot, y_eq_rot
+        
+        # Apply inverse of the galactic→equatorial rotation matrix
+        # Standard rotation matrix (from _compute_equatorial_coordinates)
+        T11, T12, T13 = -0.0548755604, -0.8734370902, -0.4838350155
+        T21, T22, T23 = +0.4941094279, -0.4448296300, +0.7469822445
+        T31, T32, T33 = -0.8676661490, -0.1980763734, +0.4559837762
+        
+        # Transpose to get inverse (rotation matrices are orthogonal)
+        T_inv = np.array([
+            [T11, T21, T31],
+            [T12, T22, T32],
+            [T13, T23, T33]
+        ])
+        
+        # Apply inverse rotation
+        coords_eq = np.column_stack([x_eq, y_eq, z_eq])
+        coords_std = coords_eq @ T_inv.T
+        X_std, Y_std, Z_std = coords_std.T
+        
+        # Convert from standard galactic to our coordinate system
+        # Standard: X→GC, Y→l=90°, Z→NGP
+        # Our system: x,y in disk plane, z⊥disk, GC at -y direction
+        x_gal = Y_std
+        y_gal = -X_std
+        z_gal = Z_std
+        
+        # Add Earth's position to get galactocentric coordinates
+        x = x_gal + self.EARTH_LOCATION[0]
+        y = y_gal + self.EARTH_LOCATION[1]
+        z = z_gal + self.EARTH_LOCATION[2]
         
         return x, y, z
     

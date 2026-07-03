@@ -433,7 +433,7 @@ class FlowMatchingTrainerMulti:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False) -> None:
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_posterior_galactic: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -449,6 +449,7 @@ class FlowMatchingTrainerMulti:
             fname_signal: Filename for the signal plot
             fname_posterior: Filename for the posterior plot
             fname_posterior_sky: Filename for the posterior sky plot
+            fname_posterior_galactic: Filename for the posterior galactic plot
             fname_eos_ye: Filename for the EOS/Ye plot
             background: Background color for plots (e.g., "white", "black")
             transparent: Whether to save plots with transparent background
@@ -560,6 +561,18 @@ class FlowMatchingTrainerMulti:
             num_samples=3000,
             n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png") if fname_posterior_sky is None else fname_posterior_sky,
+            sampled_case=case,
+            h_theta_multi_dataset=active_h_theta_multi,
+            posterior_samples_denorm=posterior_samples_denorm,
+            true_param_denorm=true_param_denorm,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=transparent
+        )
+        self.plot_galactic_distribution_with_posterior(
+            num_samples=3000,
+            n_steps=20,
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,
             sampled_case=case,
             h_theta_multi_dataset=active_h_theta_multi,
             posterior_samples_denorm=posterior_samples_denorm,
@@ -1077,6 +1090,90 @@ class FlowMatchingTrainerMulti:
             font_family=font_family,
             font_name=font_name,
             red_blob_mode="density_peak",
+            transparent=transparent,
+        )
+
+    def plot_galactic_distribution_with_posterior(
+        self,
+        num_samples: int = 5000,
+        n_steps: int = 20,
+        fname: str = "plots/galactic_distribution_posterior.png",
+        sampled_case=None,
+        h_theta_multi_dataset=None,
+        posterior_samples_denorm=None,
+        true_param_denorm=None,
+        font_family: str = "Serif",
+        font_name: str = "Times New Roman",
+        transparent: bool = False
+    ):
+        """Plot galactic distribution (X-Y plane) with posterior credible regions overlaid.
+        
+        This combines the background galactic supernova distribution with posterior density
+        contours computed from RA/Dec/distance samples transformed to galactic Cartesian coordinates.
+        
+        Args:
+            num_samples: Number of posterior samples to generate
+            n_steps: Number of ODE solver steps for posterior generation
+            fname: Output filename for the plot
+            sampled_case: Optional pre-computed case (signal + noisy_signal + parameters)
+            h_theta_multi_dataset: Optional pre-computed multi-channel dataset
+            posterior_samples_denorm: Optional pre-computed posterior samples in denormalized parameter space
+            true_param_denorm: Optional pre-computed true parameters in denormalized space
+            font_family: Font family for plots
+            font_name: Font name for plots
+            transparent: Whether to save with transparent background
+        """
+        from ..plotting.analysis import plot_galactic_distribution_with_posterior
+        
+        # Use passed dataset or default to self.h_theta_multi_val
+        if h_theta_multi_dataset is None:
+            h_theta_multi_dataset = self.h_theta_multi_val
+        
+        # Generate posterior samples if not provided
+        if posterior_samples_denorm is None or true_param_denorm is None:
+            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
+                sampled_case, h_theta_multi_dataset, num_samples, n_steps
+            )
+        
+        # Extract RA, Dec, and distance indices
+        ra_idx = self._get_extracted_index("ra")
+        dec_idx = self._get_extracted_index("dec")
+        d_idx = self._get_extracted_index("d")
+        
+        if ra_idx >= 0 and dec_idx >= 0 and d_idx >= 0:
+            # Extract RA, Dec, distance from the denormalized extracted parameters
+            ra_samples = posterior_samples_denorm[:, ra_idx]
+            dec_samples = posterior_samples_denorm[:, dec_idx]
+            d_samples = posterior_samples_denorm[:, d_idx]
+            true_ra = true_param_denorm[ra_idx]
+            true_dec = true_param_denorm[dec_idx]
+            true_d = true_param_denorm[d_idx]
+        else:
+            # Fallback: assume they are at the end
+            ra_samples = posterior_samples_denorm[:, -4]
+            dec_samples = posterior_samples_denorm[:, -3]
+            d_samples = posterior_samples_denorm[:, -2]
+            true_ra = true_param_denorm[-4]
+            true_dec = true_param_denorm[-3]
+            true_d = true_param_denorm[-2]
+        
+        # Get galactic distribution coordinates
+        galactic_coords = self.supernovae.galactic_coords
+        sun_location = self.supernovae.SUN_LOCATION
+        
+        plot_galactic_distribution_with_posterior(
+            galactic_coords=galactic_coords,
+            posterior_ra=ra_samples,
+            posterior_dec=dec_samples,
+            posterior_distance=d_samples,
+            true_ra=true_ra,
+            true_dec=true_dec,
+            true_distance=true_d,
+            sun_location=sun_location,
+            fname=fname,
+            background="black",
+            font_family=font_family,
+            font_name=font_name,
             transparent=transparent,
         )
 
