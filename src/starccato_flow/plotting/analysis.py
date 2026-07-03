@@ -672,6 +672,8 @@ def plot_galactic_distribution_with_posterior(
     facecolor = background if background in ("white", "black") else "white"
     text_color = "white" if background == "black" else "black"
     grid_color = "gray" if background == "black" else "lightgray"
+    transparent = transparent if transparent is not None else (background == "black")
+    plot_facecolor = "none" if transparent else background
 
     # Extract X-Y coordinates from background galactic distribution
     x = galactic_coords[:, 0]
@@ -688,12 +690,12 @@ def plot_galactic_distribution_with_posterior(
     post_y += sun_location[1]
     post_z += sun_location[2]
 
-    # Create figure
-    fig = plt.figure(figsize=figsize, facecolor=facecolor)
+    # Create figure with proper styling (matching plot_galactic_distribution)
+    fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
     ax = fig.add_subplot(111, facecolor=facecolor)
 
-    # Plot background galactic distribution
-    ax.scatter(x, y, s=scatter_size, alpha=0.8, c="lightblue", label="Supernovae")
+    # Plot background galactic distribution (exactly as in plot_galactic_distribution)
+    ax.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
     ax.scatter(
         0.0,
         0.0,
@@ -704,25 +706,62 @@ def plot_galactic_distribution_with_posterior(
         marker="o",
         label="Galactic Center: Sgr A*",
     )
-    ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun", zorder=20)
 
-    # Create density contours from posterior samples in X-Y plane
-    # Marginalize 3D posterior (X, Y, Z) to get proper 2D joint distribution
+    # Add density contours from posterior samples in X-Y plane (ONLY DIFFERENCE: add this layer)
     from scipy.stats import gaussian_kde
+    from matplotlib.colors import to_rgba
     
-    # Plot all posterior samples as scatter points
-    ax.scatter(
-        post_x, 
-        post_y, 
-        s=1, 
-        alpha=0.3, 
-        c="red",
-        label="Posterior Samples"
-    )
-    
-    posterior_legend_handles = []
+    # Build KDE from posterior X-Y coordinates for credible contours
+    xy_data = np.vstack([post_x, post_y])
+    try:
+        kde = gaussian_kde(xy_data)
+        
+        # Create grid for evaluating KDE
+        x_min, x_max = post_x.min(), post_x.max()
+        y_min, y_max = post_y.min(), post_y.max()
+        x_grid = np.linspace(x_min - 2, x_max + 2, 200)
+        y_grid = np.linspace(y_min - 2, y_max + 2, 200)
+        X_mesh, Y_mesh = np.meshgrid(x_grid, y_grid)
+        positions = np.vstack([X_mesh.ravel(), Y_mesh.ravel()])
+        density = kde(positions).reshape(X_mesh.shape)
+        
+        # Compute credible levels from density CDF
+        sorted_density = np.sort(density.ravel())[::-1]
+        cdf = np.cumsum(sorted_density) / np.sum(sorted_density)
+        
+        posterior_probs = [0.68, 0.90, 0.95]
+        contour_levels = []
+        for p in posterior_probs:
+            idx = np.searchsorted(cdf, p, side="left")
+            idx = min(idx, len(sorted_density) - 1)
+            contour_levels.append(float(sorted_density[idx]))
+        
+        contour_levels = np.sort(contour_levels)
+        contour_top = max(contour_levels[-1] * 1.001, np.max(sorted_density) * 1.001)
+        contour_fill_levels = np.concatenate([contour_levels, [contour_top]])
+        
+        # Red fill colors matching celestial map (red with varying alphas: 0.40, 0.62, 0.88)
+        red_fill_colors = [
+            to_rgba("red", alpha=0.40),    # 68%
+            to_rgba("red", alpha=0.62),    # 90%
+            to_rgba("red", alpha=0.88),    # 95%
+        ]
+        
+        # Plot filled contours as overlay (no label - not in legend)
+        ax.contourf(
+            X_mesh,
+            Y_mesh,
+            density,
+            levels=contour_fill_levels,
+            colors=red_fill_colors,
+            antialiased=True,
+        )
+    except Exception as e:
+        # If KDE fails, just skip contours
+        pass
 
-    # Plot true location if provided
+    # Plot true location if provided (matching celestial map marker: deepskyblue "x")
     if true_ra is not None and true_dec is not None and true_distance is not None:
         true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
             np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
@@ -731,54 +770,81 @@ def plot_galactic_distribution_with_posterior(
         true_x += sun_location[0]
         true_y += sun_location[1]
         true_z += sun_location[2]
-        # Plot with large visible marker
+        # Plot with same marker style as celestial map (deepskyblue "x")
         ax.scatter(
             true_x,
             true_y,
-            s=500,
-            c="lime",
-            edgecolors="white",
-            linewidths=2.5,
-            marker="*",
+            s=72,
+            marker="x",
+            c="deepskyblue",
+            linewidths=1.8,
+            zorder=10,
             label="True Location",
-            zorder=100,
         )
 
-    # Set axis properties
-    ax.set_xlabel(f"X (kpc)", color=text_color, fontsize=22)
-    ax.set_ylabel(f"Y (kpc)", color=text_color, fontsize=22)
-    ax.tick_params(colors=text_color, labelsize=18)
-    ax.set_aspect("equal")
-    ax.grid(color=grid_color, alpha=0.2)
-
+    # Style axes exactly like plot_galactic_distribution
+    ax.set_xlabel("X (kpc)", color=text_color, fontsize=22)
+    ax.set_ylabel("Y (kpc)", color=text_color, fontsize=22)
+    
+    # _style_2d_axes equivalent
+    ax.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
+    for spine in ax.spines.values():
+        spine.set_color(text_color)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.xaxis.set_major_locator(mticker.MultipleLocator(5))
+    ax.yaxis.set_major_locator(mticker.MultipleLocator(5))
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+    
     # Set limits and ticks
-    xy_radius = 25
-    kpc_limit = xy_radius - 2.07
+    xy_radius = 33
+    kpc_limit = 26.07
     kpc_padding = 2.07
     tick_values = np.arange(-25, 26, 5)
     ax.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
     ax.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
     ax.set_xticks(tick_values)
     ax.set_yticks(tick_values)
+    
+    # _apply_xy_axis_line_window equivalent
+    ax.spines["bottom"].set_bounds(-25, 25)
+    ax.spines["left"].set_bounds(-25, 25)
+    
+    ax.set_aspect("equal")
+    ax.grid(color=grid_color, alpha=0.2)
+    
+    # Add legend (matching plot_galactic_distribution style)
+    legend_facecolor = "black" if background == "black" else "white"
+    handles, labels = ax.get_legend_handles_labels()
+    adjusted_handles = []
+    for handle, label in zip(handles, labels):
+        if label == "Supernova":
+            adjusted_handles.append(
+                mlines.Line2D(
+                    [],
+                    [],
+                    linestyle="None",
+                    marker="o",
+                    markersize=9,
+                    markerfacecolor="lightblue",
+                    markeredgecolor="none",
+                )
+            )
+        else:
+            adjusted_handles.append(handle)
 
-    # Legend
-    base_handles = [
-        mlines.Line2D([0], [0], marker="o", color="w", markerfacecolor="lightblue", markersize=10, label="Supernovae"),
-        mlines.Line2D([0], [0], marker="o", color="w", markerfacecolor="black", markersize=12, label="Galactic Center"),
-        mlines.Line2D([0], [0], marker="*", color="w", markerfacecolor="yellow", markersize=15, label="Sun"),
-    ]
-    if true_ra is not None:
-        base_handles.append(
-            mlines.Line2D([0], [0], marker="x", color="w", markerfacecolor="none", markersize=12, markeredgewidth=2, label="True Location")
-        )
-
-    all_handles = base_handles + posterior_legend_handles
-    ax.legend(
-        handles=all_handles,
-        loc="upper right",
-        frameon=False,
-        labelcolor=text_color,
+    legend = ax.legend(
+        adjusted_handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=max(1, len(labels)),
+        facecolor=legend_facecolor,
+        edgecolor="none",
+        framealpha=0.0,
         fontsize=14,
+        labelcolor=text_color,
     )
 
     if fname is not None:
