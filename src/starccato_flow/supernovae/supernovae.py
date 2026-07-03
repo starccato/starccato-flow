@@ -2,8 +2,10 @@
 
 from typing import Optional, Tuple
 import os
+import io
 import numpy as np
 import pandas as pd
+from PIL import Image
 
 from ..plotting.analysis import plot_surface_density
 
@@ -487,3 +489,213 @@ class Supernovae:
     def __len__(self) -> int:
         """Return number of locations."""
         return len(self._galactic_coords) if self._galactic_coords is not None else 0
+    
+    def create_epoch_gif(
+        self,
+        epoch_dir: str,
+        output_fname: str,
+        duration: int = 200,
+        loop: int = 0,
+        num_epochs: int = 256
+    ) -> None:
+        """Create an animated GIF from epoch training plots.
+        
+        Args:
+            epoch_dir: Directory containing epoch_XXXX_galactic_xy.png files
+            output_fname: Output path for the animated GIF
+            duration: Duration of each frame in milliseconds (default 200ms)
+            loop: Number of loops (0 = infinite loop)
+            num_epochs: Total number of epochs to process
+            
+        Returns:
+            None
+            
+        Example:
+            >>> supernovae.create_epoch_gif(
+            ...     epoch_dir="outdir/flow_matching/epoch_data",
+            ...     output_fname="supernovae_training_animation.gif",
+            ...     duration=150
+            ... )
+        """
+        frames = []
+        
+        print(f"Creating GIF from epoch frames in {epoch_dir}...")
+        
+        # Load frames in order
+        for epoch in range(num_epochs):
+            epoch_fname = os.path.join(epoch_dir, f"epoch_{epoch + 1:04d}_galactic_xy.png")
+            
+            if not os.path.exists(epoch_fname):
+                print(f"  Warning: {epoch_fname} not found, skipping epoch {epoch + 1}")
+                continue
+            
+            try:
+                frame = Image.open(epoch_fname)
+                frames.append(frame)
+                if (epoch + 1) % 50 == 0:
+                    print(f"  Loaded {epoch + 1}/{num_epochs} frames")
+            except Exception as e:
+                print(f"  Error loading {epoch_fname}: {e}")
+                continue
+        
+        if not frames:
+            raise ValueError(f"No epoch frames found in {epoch_dir}")
+        
+        # Create output directory if needed
+        os.makedirs(os.path.dirname(output_fname) if os.path.dirname(output_fname) else ".", exist_ok=True)
+        
+        # Save as animated GIF
+        frames[0].save(
+            output_fname,
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration,
+            loop=loop,
+            optimize=False
+        )
+        
+        print(f"✓ Created GIF with {len(frames)} frames: {output_fname}")
+        print(f"  Duration per frame: {duration}ms")
+        print(f"  Total duration: ~{len(frames) * duration / 1000:.1f} seconds")
+    
+    def create_training_animation_gif(
+        self,
+        fname: str,
+        n_samples: int = 18000,
+        num_epochs: int = 256,
+        duration: int = 150,
+        loop: int = 0,
+        font_family: str = "sans-serif",
+        font_name: str = "Avenir"
+    ) -> None:
+        """Create an animated GIF of training progress on-the-fly without saving intermediate files.
+        
+        Generates epoch plots in memory and directly creates the GIF. No temporary files are saved.
+        
+        Args:
+            fname: Output path for the animated GIF
+            n_samples: Number of samples to draw per epoch
+            num_epochs: Total number of epochs to generate (default 256)
+            duration: Duration of each frame in milliseconds (default 150ms)
+            loop: Number of loops (0 = infinite loop)
+            font_family: Font family for plots
+            font_name: Specific font name for plots
+            
+        Returns:
+            None
+            
+        Example:
+            >>> supernovae.create_training_animation_gif(
+            ...     output_fname="training_animation.gif",
+            ...     n_samples=18000,
+            ...     num_epochs=256,
+            ...     duration=150
+            ... )
+        """
+        import matplotlib.pyplot as plt
+        from ..utils.defaults import MAX_DISTANCE_KPC
+        
+        frames = []
+        print(f"Generating {num_epochs} epoch frames for GIF...")
+        
+        for epoch in range(num_epochs):
+            try:
+                # Calculate distance shell for this epoch
+                threshold_d = MAX_DISTANCE_KPC
+                min_d_mask = 0.0
+                max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 0.5)
+                distance_mask = (
+                    (self.distances >= min_d_mask)
+                    & (self.distances <= max_d_mask)
+                )
+                candidate_indices = np.where(distance_mask)[0]
+                
+                if candidate_indices.size == 0:
+                    continue
+                
+                # Sample with exponential weighting
+                candidate_distances = self.distances[candidate_indices]
+                shell_width = max(max_d_mask - min_d_mask, 1e-8)
+                normalized_distance = np.clip((candidate_distances - min_d_mask) / shell_width, 0.0, 1.0)
+                epoch_fraction = (epoch + 1) / max(num_epochs, 1)
+                growth = 1.0 + 7.0 * epoch_fraction
+                weights = np.exp(growth * normalized_distance)
+                weight_sum = np.sum(weights)
+                sample_probs = weights / weight_sum if (np.isfinite(weight_sum) and weight_sum > 0.0) else None
+                
+                sampled_indices = np.random.choice(
+                    candidate_indices,
+                    size=n_samples,
+                    replace=candidate_indices.size < n_samples,
+                    p=sample_probs,
+                )
+                
+                # Generate plot in memory
+                from ..plotting.analysis import plot_galactic_distribution
+                fig_list = plot_galactic_distribution(
+                    galactic_coords=self._galactic_coords,
+                    sun_location=self.SUN_LOCATION,
+                    highlight_indices=sampled_indices,
+                    fname_3d=None,
+                    fname_xy=None,
+                    fname_xz=None,
+                    background="black",
+                    transparent=True,
+                    light_year=False,
+                    font_family=font_family,
+                    font_name=font_name,
+                    scatter_size=0.001,
+                    sun_marker_size=100,
+                    show=False,
+                    dpi=100,
+                    figsize=(12, 12),
+                )
+                
+                # Get the X-Y plot (second figure)
+                fig = fig_list[1] if len(fig_list) > 1 else fig_list[0]
+                
+                # Save figure to buffer
+                buf = io.BytesIO()
+                fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', transparent=True)
+                buf.seek(0)
+                frame = Image.open(buf).copy()
+                frames.append(frame)
+                buf.close()
+                
+                # Close all figures
+                for f in fig_list:
+                    plt.close(f)
+                
+                if (epoch + 1) % 50 == 0:
+                    print(f"  Generated {epoch + 1}/{num_epochs} frames")
+                    
+            except Exception as e:
+                print(f"  Error generating epoch {epoch + 1}: {e}")
+                plt.close('all')
+                continue
+        
+        if not frames:
+            raise ValueError("Failed to generate any frames")
+        
+        # Create output directory if needed
+        os.makedirs(os.path.dirname(output_fname) if os.path.dirname(output_fname) else ".", exist_ok=True)
+        
+        # Save as animated GIF
+        print(f"Creating GIF from {len(frames)} frames...")
+        frames[0].save(
+            output_fname,
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration,
+            loop=loop,
+            optimize=False
+        )
+        
+        # Clean up frames from memory
+        for frame in frames:
+            frame.close()
+        
+        print(f"✓ Created training animation GIF: {fname}")
+        print(f"  Total frames: {len(frames)}")
+        print(f"  Duration per frame: {duration}ms")
+        print(f"  Total duration: ~{len(frames) * duration / 1000:.1f} seconds")

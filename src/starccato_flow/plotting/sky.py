@@ -339,8 +339,8 @@ def plot_galactic_supernovae_polar_hemispheres(
     fig_facecolor = None if transparent else "black"
     fig = plt.figure(figsize=(12, 6.8), facecolor=fig_facecolor)
     # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
-    ax_l = fig.add_axes([0.03, 0.03, 0.47, 0.94], facecolor=fig_facecolor)
-    ax_r = fig.add_axes([0.50, 0.03, 0.47, 0.94], facecolor=fig_facecolor)
+    ax_l = fig.add_axes([0.02, 0.03, 0.46, 0.94], facecolor=fig_facecolor)
+    ax_r = fig.add_axes([0.52, 0.03, 0.46, 0.94], facecolor=fig_facecolor)
 
     north_mask = dec_supernovae >= 0
     ra_n = ra_rot_supernovae[north_mask]
@@ -660,8 +660,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
     # Make circles touch at center seam while keeping extra margin on outer edges.
-    ax_l.set_xlim(-1.03, 1.00)
-    ax_r.set_xlim(-1.00, 1.03)
+    ax_l.set_xlim(-1.03, 1.02)
+    ax_r.set_xlim(-1.02, 1.03)
 
     for ax in (ax_l, ax_r):
         ax.set_aspect("equal", adjustable="box")
@@ -800,29 +800,31 @@ def plot_galactic_supernovae_polar_hemispheres(
                 Patch(
                     facecolor=red_fill_colors[0],
                     edgecolor="none",
-                    label="95% credible interval",
+                    label="95%",
                 ),
                 Patch(
                     facecolor=red_fill_colors[1],
                     edgecolor="none",
-                    label="90% credible interval",
+                    label="90%",
                 ),
                 Patch(
                     facecolor=red_fill_colors[2],
                     edgecolor="none",
-                    label="68% credible interval",
+                    label="68%",
                 ),
             ]
-            ax_l.legend(
+            fig.legend(
                 handles=posterior_legend_handles,
-                loc="lower left",
-                bbox_to_anchor=(-0.03, -0.08),
+                loc="center",
+                bbox_to_anchor=(0.5, 0.85),
                 frameon=False,
                 fontsize=8.5,
                 labelcolor="white",
                 handlelength=1.2,
                 handletextpad=0.5,
                 borderaxespad=0.0,
+                title="Credible Intervals",
+                title_fontsize=9,
             )
 
         # Marker at posterior peak.
