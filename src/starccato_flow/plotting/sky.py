@@ -339,8 +339,8 @@ def plot_galactic_supernovae_polar_hemispheres(
     fig_facecolor = None if transparent else "black"
     fig = plt.figure(figsize=(12, 6.8), facecolor=fig_facecolor)
     # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
-    ax_l = fig.add_axes([0.02, 0.03, 0.46, 0.94], facecolor=fig_facecolor)
-    ax_r = fig.add_axes([0.52, 0.03, 0.46, 0.94], facecolor=fig_facecolor)
+    ax_l = fig.add_axes([0.015, 0.03, 0.48, 0.94], facecolor=fig_facecolor)
+    ax_r = fig.add_axes([0.505, 0.03, 0.48, 0.94], facecolor=fig_facecolor)
 
     north_mask = dec_supernovae >= 0
     ra_n = ra_rot_supernovae[north_mask]
@@ -1489,7 +1489,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     
     ax_r.legend(
         loc="lower right",
-        bbox_to_anchor=(1.03, -0.08),
+        bbox_to_anchor=(0.95, -0.08),
         frameon=False,
         labelcolor="white",
         fontsize=8.0,
