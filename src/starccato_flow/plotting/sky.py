@@ -320,23 +320,24 @@ def plot_galactic_supernovae_polar_hemispheres(
     mode_config = {
         "print": {
             "figsize_mm": (841, 594),  # A1 landscape
-            "fontsize_title": 22,
-            "fontsize_label": 22,
-            "fontsize_tick": 16,
-            "fontsize_small": 16,
-            "fontsize_tiny": 16,
-            "fontsize_constellation": 16,
-            "fontsize_constellation_title": 16,
+            "fontsize_title": 28,
+            "fontsize_main": 22,
+            "fontsize_label": 28,
+            "fontsize_tick": 18,
+            "fontsize_small": 18,
+            "fontsize_tiny": 12,
+            "fontsize_constellation": 18,
+            "fontsize_object": 16,
         },
         "thesis": {
             "figsize_mm": (305, 173),
-            "fontsize_title": 10.0,
+            "fontsize_main": 10.0,
             "fontsize_label": 9,
             "fontsize_tick": 8,
             "fontsize_small": 5.0,
             "fontsize_tiny": 5.5,
             "fontsize_constellation": 6.5,
-            "fontsize_constellation_title": 7,
+            "fontsize_object": 6.0,
         }
     }
     
@@ -347,12 +348,13 @@ def plot_galactic_supernovae_polar_hemispheres(
     figsize_mm = config["figsize_mm"]
     figsize = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
     fontsize_title = config["fontsize_title"]
+    fontsize_main = config["fontsize_main"]
     fontsize_label = config["fontsize_label"]
     fontsize_tick = config["fontsize_tick"]
     fontsize_small = config["fontsize_small"]
     fontsize_tiny = config["fontsize_tiny"]
     fontsize_constellation = config["fontsize_constellation"]
-    fontsize_constellation_title = config["fontsize_constellation_title"]
+    fontsize_object = config["fontsize_object"]
     
     set_plot_style(background, font_family, font_name)
     
@@ -472,7 +474,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         1.12,
         "Northern Sky",
         color="white",
-        fontsize=28,
+        fontsize=fontsize_title,
         ha="center",
         va="bottom",
         fontweight="bold",
@@ -502,7 +504,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         1.12,
         "Southern Sky",
         color="white",
-        fontsize=28,
+        fontsize=fontsize_title,
         ha="center",
         va="bottom",
         fontweight="bold",
@@ -871,7 +873,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 handletextpad=0.5,
                 borderaxespad=0.0,
                 title="Credible Intervals",
-                title_fontsize=fontsize_constellation_title,
+                title_fontsize=fontsize_main,
             )
 
         # Marker at posterior peak.
@@ -1307,7 +1309,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             ly + y_offset,
             display_name,
             color=label_color,
-            fontsize=fontsize_tiny,
+            fontsize=fontsize_constellation,
             ha="left",
             va="center",
             zorder=10,
@@ -1467,6 +1469,52 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
 
+    # Plot a random sample of 10,000 supernovae from the galactic distribution (rasterized)
+    if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
+        n_sample = min(10000, len(ra_rot_supernovae))
+        sample_indices = np.random.choice(len(ra_rot_supernovae), size=n_sample, replace=False)
+        
+        sampled_ra = ra_rot_supernovae[sample_indices]
+        sampled_dec = dec_supernovae[sample_indices]
+        
+        # Project to hemispheres
+        north_sample_mask = sampled_dec >= 0
+        south_sample_mask = sampled_dec < 0
+        
+        ra_n_sample = sampled_ra[north_sample_mask]
+        dec_n_sample = sampled_dec[north_sample_mask]
+        r_n_sample = (np.pi / 2 - dec_n_sample) / (np.pi / 2)
+        x_n_sample = r_n_sample * np.sin(ra_n_sample)
+        y_n_sample = r_n_sample * np.cos(ra_n_sample)
+        
+        ra_s_sample = sampled_ra[south_sample_mask]
+        dec_s_sample = sampled_dec[south_sample_mask]
+        r_s_sample = (np.pi / 2 + dec_s_sample) / (np.pi / 2)
+        x_s_sample = -r_s_sample * np.sin(ra_s_sample)
+        y_s_sample = r_s_sample * np.cos(ra_s_sample)
+        
+        # Plot as rasterized scatter (single rasterized layer, not individual points)
+        ax_l.scatter(
+            x_n_sample,
+            y_n_sample,
+            s=2,
+            c="#d1d5db",
+            edgecolors="none",
+            alpha=0.4,
+            zorder=7,
+            rasterized=True,
+        )
+        ax_r.scatter(
+            x_s_sample,
+            y_s_sample,
+            s=2,
+            c="#d1d5db",
+            edgecolors="none",
+            alpha=0.4,
+            zorder=7,
+            rasterized=True,
+        )
+
     # Plot detector markers when example mode is enabled.
     if example and detector_markers:
         for det_name, det_ra, det_dec, det_color in detector_markers:
@@ -1541,7 +1589,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         bbox_to_anchor=(0.98, -0.08),
         frameon=False,
         labelcolor="white",
-        fontsize=fontsize_title,
+        fontsize=fontsize_main,
         borderaxespad=0.0,
     )
 

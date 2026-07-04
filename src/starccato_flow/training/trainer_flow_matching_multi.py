@@ -559,7 +559,7 @@ class FlowMatchingTrainerMulti:
             true_param_denorm=true_param_denorm,
             font_family=font_family,
             font_name=font_name,
-            transparent=transparent
+            transparent=False
         )
         self.plot_galactic_distribution_with_posterior(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,

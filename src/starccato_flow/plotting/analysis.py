@@ -908,7 +908,7 @@ def plot_galactic_distribution_with_posterior_zoom(
     true_distance: Optional[float] = None,
     sun_location: Optional[np.ndarray] = None,
     fname: Optional[str] = None,
-    figsize_mm: tuple = (300, 300),
+    figsize_mm: tuple = (125, 125),
     scatter_size: float = 0.00005,
     sun_marker_size: float = 400,
     background: str = "white",
@@ -1152,7 +1152,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         xy=(arrow_x, arrow_end_y),
         xytext=(arrow_x, arrow_start_y),
         arrowprops=dict(
-            arrowstyle="<->",
+            arrowstyle="->",
             color="white",
             lw=1.5,
             zorder=16
@@ -1165,7 +1165,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         arrow_x + 1.0,
         text_y,
         "10 kpc",
-        fontsize=22,
+        fontsize=16,
         color="white",
         verticalalignment="center",
         zorder=16
