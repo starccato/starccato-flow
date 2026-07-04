@@ -53,7 +53,8 @@ class FlowMatchingTrainerMulti:
         parameters: list = None,
         custom_data: tuple = None,  # (signals_array, params_array) for generated data
         train_data_path: str = None,  # Path to training data files (generated signals)
-        val_data_path: str = None  # Path to validation data files (real CVAE val set)
+        val_data_path: str = None,  # Path to validation data files (real CVAE val set)
+        use_physics_aware_norm: bool = True,  # Use parameter-specific normalization (Gabbard-inspired)
     ):
         """Initialize FlowMatchingTrainerMulti.
         
@@ -70,6 +71,11 @@ class FlowMatchingTrainerMulti:
                 Will load {train_data_path}_signals.npy and {train_data_path}_parameters.npy
             val_data_path: Path prefix for validation data (e.g., 'outdir/cvae_val').
                 Will load {val_data_path}_signals.npy and {val_data_path}_parameters.npy
+            use_physics_aware_norm: If True, use parameter-specific normalization (Gabbard-inspired):
+                - Cyclic parameters (RA, Dec, Psi): represented as (cos, sin) on 2D plane
+                - Distance: log-space [0, 1] to ensure positive values
+                - Intrinsic params: linear [-1, 1]
+                If False, use original linear [-1, 1] normalization for all parameters.
                 
         Note: If both train_data_path and val_data_path are provided, they take precedence
         over custom_data.
@@ -77,6 +83,7 @@ class FlowMatchingTrainerMulti:
         self.y_length = y_length
         self.hidden_dim = hidden_dim
         self.z_dim = z_dim
+        self.use_physics_aware_norm = use_physics_aware_norm
         self.seed = seed
         self.batch_size = batch_size
         self.num_epochs = num_epochs
@@ -297,7 +304,13 @@ class FlowMatchingTrainerMulti:
 
         # setup Flow Matching model
         # Flow parameter dimension = number of parameters to estimate
-        self.flow_param_dim = len(self.parameters_to_estimate)
+        # With physics-aware normalization, cyclic parameters (RA, Dec, Psi) become 2D (cos, sin),
+        # so the effective dimension is higher than the number of estimated parameters
+        if self.use_physics_aware_norm:
+            self.flow_param_dim = self._calculate_physics_aware_param_dim(self.parameters_to_estimate)
+        else:
+            self.flow_param_dim = len(self.parameters_to_estimate)
+        
         self.flow_signal_dim = Y_LENGTH * 3
         self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
@@ -312,6 +325,27 @@ class FlowMatchingTrainerMulti:
     def _denormalize_with_bounds(params_norm: np.ndarray, min_vals: np.ndarray, max_vals: np.ndarray) -> np.ndarray:
         """Denormalize parameters from [-1, 1] using explicit min/max bounds."""
         return (params_norm + 1.0) / 2.0 * (max_vals - min_vals) + min_vals
+    
+    @staticmethod
+    def _calculate_physics_aware_param_dim(parameters_to_estimate: list) -> int:
+        """Calculate effective dimension for physics-aware normalization.
+        
+        Cyclic parameters (ra, dec, psi) become 2D (cos, sin) in physics-aware space,
+        intrinsic and distance remain 1D. So:
+        - Each of [ra, dec, psi]: +1 (was 1 value, now 2 values in normalized space)
+        - Each intrinsic or distance param: +0 (still 1 value)
+        
+        Args:
+            parameters_to_estimate: List of parameter names
+            
+        Returns:
+            Effective dimension in physics-aware normalized space
+        """
+        cyclic_params = {"ra", "dec", "psi"}
+        base_dim = len(parameters_to_estimate)
+        # Each cyclic parameter becomes 2D (cos, sin), adding 1 extra dimension per cyclic param
+        extra_dims = sum(1 for p in parameters_to_estimate if p in cyclic_params)
+        return base_dim + extra_dims
     
     def _denormalize_extracted_params(self, params_norm: np.ndarray, dataset) -> np.ndarray:
         """Denormalize extracted parameters using appropriate bounds.
@@ -517,7 +551,8 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=True,  # Add fresh detector noise, consistent with train()
                 random_polarization=random_psi,
                 seed=1,
-                intrinsic_param_names=self.intrinsic_params
+                intrinsic_param_names=self.intrinsic_params,
+                use_physics_aware_norm=self.use_physics_aware_norm
             )
             case = temp_h_theta_multi_val[0]
             # Use temp_h_theta_multi_val for plotting since it was used to create case
@@ -718,7 +753,8 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=True,
                 random_polarization=True,
                 seed=epoch,  # Vary seed by epoch for different psi values each epoch
-                intrinsic_param_names=self.intrinsic_params
+                intrinsic_param_names=self.intrinsic_params,
+                use_physics_aware_norm=self.use_physics_aware_norm
             )
             self.h_theta_multi_train_loader = DataLoader(
                 self.h_theta_multi_train,
@@ -788,7 +824,8 @@ class FlowMatchingTrainerMulti:
                     detector_noise_on=True,
                     random_polarization=True,
                     seed=epoch + 1000,  # Different seed range for validation set
-                    intrinsic_param_names=self.intrinsic_params
+                    intrinsic_param_names=self.intrinsic_params,
+                    use_physics_aware_norm=self.use_physics_aware_norm
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,
@@ -929,47 +966,79 @@ class FlowMatchingTrainerMulti:
             true_params_norm = params.detach().cpu().numpy().flatten()
             
             # DEBUG: Check raw flow outputs (before denormalization)
-            print(f"\n=== RAW FLOW OUTPUT (Normalized Space [-1, 1]) ===")
-            print(f"Shape: {samples_cpu.shape}")
-            for i, param_name in enumerate(self.parameters_to_estimate):
-                param_samples = samples_cpu[:, i]
-                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}, "
-                      f"mean={param_samples.mean():.4f}, std={param_samples.std():.4f}")
-                n_outside = np.sum((param_samples < -1.0) | (param_samples > 1.0))
-                if n_outside > 0:
-                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
+            if self.use_physics_aware_norm:
+                print(f"\n=== RAW FLOW OUTPUT (Physics-Aware Normalized Space) ===")
+                print(f"Shape: {samples_cpu.shape} (11D: intrinsic params + 2D cyclic + 1D distance)")
+                print(f"Overall range: [{samples_cpu.min():.4f}, {samples_cpu.max():.4f}]")
+                print("Note: (cos, sin) pairs should be in [-1, 1], distance in [0, 1]")
+            else:
+                print(f"\n=== RAW FLOW OUTPUT (Normalized Space [-1, 1]) ===")
+                print(f"Shape: {samples_cpu.shape}")
+                for i, param_name in enumerate(self.parameters_to_estimate):
+                    param_samples = samples_cpu[:, i]
+                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}, "
+                          f"mean={param_samples.mean():.4f}, std={param_samples.std():.4f}")
+                    n_outside = np.sum((param_samples < -1.0) | (param_samples > 1.0))
+                    if n_outside > 0:
+                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
         
         # Denormalize parameters
         if self.toy:
             samples_denorm = samples_cpu
             true_params_denorm = true_params_norm
         else:
-            samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
-            
-            # Extract relevant parameters from true_params if dataset has all 8 parameters
-            num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
-            if num_params_in_dataset == 8:
-                # Dataset has all parameters; extract only the requested ones
-                true_params_extracted = true_params_norm[self.param_extract_indices]
+            if self.use_physics_aware_norm:
+                # Physics-aware denormalization: full 11D → 8D physical
+                # Samples are in physics-aware space (11D for all 8 params)
+                samples_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(samples_cpu)  # (N_samples, 8)
+                true_params_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(
+                    true_params_norm.reshape(1, -1)
+                ).flatten()  # (8,)
+                
+                # Extract only the requested parameters in physical space
+                samples_denorm = samples_full_denorm[:, self.param_extract_indices]  # (N_samples, n_requested)
+                true_params_denorm = true_params_full_denorm[self.param_extract_indices]  # (n_requested,)
+                
+                # DEBUG: Check denormalized samples
+                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) - Physics-Aware ===")
+                for i, param_name in enumerate(self.parameters_to_estimate):
+                    param_idx = self.param_extract_indices[i]
+                    param_samples = samples_full_denorm[:, param_idx]
+                    min_bound = h_theta_multi_dataset.shared_min_theta[param_idx]
+                    max_bound = h_theta_multi_dataset.shared_max_theta[param_idx]
+                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                    if n_outside > 0:
+                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
             else:
-                # Dataset has only requested parameters
-                true_params_extracted = true_params_norm
-            
-            true_params_denorm = self._denormalize_extracted_params(
-                true_params_extracted.reshape(1, -1), h_theta_multi_dataset
-            ).flatten()
-            
-            # DEBUG: Check denormalized samples
-            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
-            for i, param_name in enumerate(self.parameters_to_estimate):
-                param_samples = samples_denorm[:, i]
-                min_bound = h_theta_multi_dataset.shared_min_theta[i]
-                max_bound = h_theta_multi_dataset.shared_max_theta[i]
-                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
-                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
-                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
-                if n_outside > 0:
-                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
+                # Linear denormalization: extract then denormalize
+                samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+                
+                # Extract relevant parameters from true_params if dataset has all 8 parameters
+                num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
+                if num_params_in_dataset == 8:
+                    # Dataset has all parameters; extract only the requested ones
+                    true_params_extracted = true_params_norm[self.param_extract_indices]
+                else:
+                    # Dataset has only requested parameters
+                    true_params_extracted = true_params_norm
+                
+                true_params_denorm = self._denormalize_extracted_params(
+                    true_params_extracted.reshape(1, -1), h_theta_multi_dataset
+                ).flatten()
+                
+                # DEBUG: Check denormalized samples
+                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
+                for i, param_name in enumerate(self.parameters_to_estimate):
+                    param_samples = samples_denorm[:, i]
+                    min_bound = h_theta_multi_dataset.shared_min_theta[i]
+                    max_bound = h_theta_multi_dataset.shared_max_theta[i]
+                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                    if n_outside > 0:
+                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
         
         t1 = time.time()
         print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
@@ -1364,7 +1433,8 @@ class FlowMatchingTrainerMulti:
                 detector_noise_on=True,
                 random_polarization=True,
                 seed=1000,
-                intrinsic_param_names=self.intrinsic_params
+                intrinsic_param_names=self.intrinsic_params,
+                use_physics_aware_norm=self.use_physics_aware_norm
             )
             print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
                 
@@ -1426,16 +1496,29 @@ class FlowMatchingTrainerMulti:
                         )
                     
                     # Denormalize parameters
-                    samples_denorm = self._denormalize_extracted_params(
-                        posterior_samples.cpu().numpy(), 
-                        h_theta_multi_val
-                    )
-                    # Extract only the requested parameters from the full 8-parameter vector
-                    true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
-                    true_params_denorm = self._denormalize_extracted_params(
-                        true_params_extracted,
-                        h_theta_multi_val
-                    )
+                    if self.use_physics_aware_norm:
+                        # Physics-aware denormalization
+                        samples_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                            posterior_samples.cpu().numpy()
+                        )
+                        samples_denorm = samples_full_denorm[:, self.param_extract_indices]
+                        
+                        true_params_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                            true_params.cpu().numpy()
+                        )
+                        true_params_denorm = true_params_full_denorm[:, self.param_extract_indices]
+                    else:
+                        # Linear denormalization
+                        samples_denorm = self._denormalize_extracted_params(
+                            posterior_samples.cpu().numpy(), 
+                            h_theta_multi_val
+                        )
+                        # Extract only the requested parameters from the full 8-parameter vector
+                        true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
+                        true_params_denorm = self._denormalize_extracted_params(
+                            true_params_extracted,
+                            h_theta_multi_val
+                        )
                     
                     posterior_samples_list.append(samples_denorm)
                     true_params_list.append(true_params_denorm.flatten())
@@ -1462,12 +1545,20 @@ class FlowMatchingTrainerMulti:
         """Extract only the parameters we're estimating from the full parameter tensor.
         
         For toy data, returns all parameters. For real data, extracts only requested parameters
-        using the parameter_mapping indices.
+        using the parameter_mapping indices. With physics-aware normalization, returns the full
+        normalized parameters (which are already in the reduced space from __getitem__).
         """
         if self.toy:
             return full_params
         
-        # Extract only the requested parameter indices
+        # With physics-aware normalization, the dataset __getitem__ already returns
+        # the full normalized parameters in physics-aware space. We don't need to extract
+        # since the dataset handles both full 8D and physics-aware normalization internally.
+        # The network is trained on the full normalized space.
+        if self.use_physics_aware_norm:
+            return full_params
+        
+        # With linear normalization, extract only the requested parameter indices
         return full_params[:, self.param_extract_indices]
     
     def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir") -> None:

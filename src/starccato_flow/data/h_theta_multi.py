@@ -55,6 +55,7 @@ class hThetaMulti(Dataset):
         gps_time: float = GPS_TIME,
         seed: int = 99,
         intrinsic_param_names: Optional[List[str]] = None,
+        use_physics_aware_norm: bool = True,  # Use parameter-specific normalization
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
@@ -68,6 +69,7 @@ class hThetaMulti(Dataset):
         self.random_polarization = random_polarization
         self.gps_time = float(gps_time)
         self.seed = seed
+        self.use_physics_aware_norm = use_physics_aware_norm
         self.intrinsic_param_names = intrinsic_param_names if intrinsic_param_names is not None else []
         self._current_epoch = 0
         self.include_sky_params = True
@@ -573,6 +575,122 @@ class hThetaMulti(Dataset):
         param_range = self.shared_max_theta - self.shared_min_theta
         params = (params_norm + 1) / 2 * param_range + self.shared_min_theta
         return params
+
+    def normalize_parameters_physics_aware(self, params):
+        """Normalize parameters with physics-aware geometry (Gabbard-inspired).
+        
+        Handles different parameter types with their natural geometry:
+        - Intrinsic parameters: linear [-1, 1]
+        - RA, Dec, Psi (cyclic): represented as (cos, sin) on abstract 2D plane
+        - Distance (bounded positive): log-space [0, 1]
+        
+        Args:
+            params: shape (n_samples, n_params) where last 4 are [ra, dec, d, psi]
+        
+        Returns:
+            params_norm: shape (n_samples, n_norm_params) where:
+              - n_norm_params = n_intrinsic + 2 + 2 + 1 + 2 = n_intrinsic + 7
+              - +2 for each cyclic parameter (cos, sin)
+              - +1 for distance (log-norm)
+        """
+        theta_dim = params.shape[1] - 4  # Number of intrinsic parameters
+        params_norm_list = []
+        
+        # Intrinsic parameters: linear normalization to [-1, 1]
+        if theta_dim > 0:
+            theta_part = params[:, :theta_dim]
+            theta_range = self.shared_max_theta[:theta_dim] - self.shared_min_theta[:theta_dim]
+            theta_norm = 2 * (theta_part - self.shared_min_theta[:theta_dim]) / theta_range - 1
+            params_norm_list.append(theta_norm)
+        
+        # Sky parameters [ra, dec, d, psi] - extract
+        ra = params[:, -4]
+        dec = params[:, -3]
+        d = params[:, -2]
+        psi = params[:, -1]
+        
+        # RA: represent as (cos(ra), sin(ra)) on 2D plane
+        ra_cos = np.cos(ra)
+        ra_sin = np.sin(ra)
+        params_norm_list.append(np.column_stack([ra_cos, ra_sin]))
+        
+        # Dec: represent as (cos(dec), sin(dec)) on 2D plane
+        dec_cos = np.cos(dec)
+        dec_sin = np.sin(dec)
+        params_norm_list.append(np.column_stack([dec_cos, dec_sin]))
+        
+        # Distance: log-space normalization to [0, 1]
+        # d ∈ [0, 10] → d_norm = log(d + ε) / log(10 + ε)
+        d_eps = 1e-3
+        d_norm = np.log(d + d_eps) / np.log(MAX_DISTANCE_KPC + d_eps)
+        d_norm = np.clip(d_norm, 0.0, 1.0)  # Ensure in [0, 1]
+        params_norm_list.append(d_norm.reshape(-1, 1))
+        
+        # Psi: represent as (cos(psi), sin(psi)) on 2D plane
+        psi_cos = np.cos(psi)
+        psi_sin = np.sin(psi)
+        params_norm_list.append(np.column_stack([psi_cos, psi_sin]))
+        
+        return np.concatenate(params_norm_list, axis=1)
+
+    def denormalize_parameters_physics_aware(self, params_norm):
+        """Reconstruct physical parameters from physics-aware representation.
+        
+        Inverses the physics-aware normalization:
+        - (cos, sin) → angle via arctan2
+        - d_norm → d via exponential mapping
+        
+        Args:
+            params_norm: shape (n_samples, n_norm_params) from normalize_parameters_physics_aware
+        
+        Returns:
+            params: shape (n_samples, n_params) with [theta..., ra, dec, d, psi]
+        """
+        theta_dim = self.shared_min_theta.shape[0] - 4  # Number of intrinsic parameters
+        params_denorm_list = []
+        col_idx = 0
+        
+        # Intrinsic parameters: inverse linear transformation
+        if theta_dim > 0:
+            theta_norm = params_norm[:, col_idx:col_idx+theta_dim]
+            theta_range = self.shared_max_theta[:theta_dim] - self.shared_min_theta[:theta_dim]
+            theta_phys = (theta_norm + 1) / 2 * theta_range + self.shared_min_theta[:theta_dim]
+            params_denorm_list.append(theta_phys)
+            col_idx += theta_dim
+        
+        # RA: (cos, sin) → angle via arctan2
+        ra_cos = params_norm[:, col_idx]
+        ra_sin = params_norm[:, col_idx + 1]
+        ra = np.arctan2(ra_sin, ra_cos)
+        params_denorm_list.append(ra.reshape(-1, 1))
+        col_idx += 2
+        
+        # Dec: (cos, sin) → angle via arctan2, clip to physical bounds [-π/2, π/2]
+        dec_cos = params_norm[:, col_idx]
+        dec_sin = params_norm[:, col_idx + 1]
+        dec = np.arctan2(dec_sin, dec_cos)
+        dec = np.clip(dec, -np.pi/2, np.pi/2)  # Ensure in physical bounds (arctan2 can produce [-π, π])
+        params_denorm_list.append(dec.reshape(-1, 1))
+        col_idx += 2
+        
+        # Distance: log-space → linear via exponential mapping
+        # d_norm ∈ [0, 1] → d = exp(d_norm * log(10 + ε)) - ε
+        # No clipping needed: log-space encoding naturally keeps distance positive and bounded
+        d_eps = 1e-3
+        d_norm_flat = params_norm[:, col_idx].flatten()
+        d = np.exp(d_norm_flat * np.log(MAX_DISTANCE_KPC + d_eps)) - d_eps
+        params_denorm_list.append(d.reshape(-1, 1))
+        params_denorm_list.append(d.reshape(-1, 1))
+        col_idx += 1
+        
+        # Psi: (cos, sin) → angle via arctan2, wrap to [0, π]
+        psi_cos = params_norm[:, col_idx]
+        psi_sin = params_norm[:, col_idx + 1]
+        psi = np.arctan2(psi_sin, psi_cos)
+        psi = np.mod(psi, np.pi)  # Wrap to [0, π]
+        params_denorm_list.append(psi.reshape(-1, 1))
+        
+        return np.concatenate(params_denorm_list, axis=1)
     
     def project_signal(self, h_plus, h_cross, psi, ra, dec, gps):
         """Project a single-channel signal to multiple detectors using antenna patterns.
@@ -720,7 +838,12 @@ class hThetaMulti(Dataset):
         
         noisy_signal = self.normalise_signals(noisy_signal)
         clean_signal = self.normalise_signals(clean_signal)
-        params_normalized = self.normalize_parameters(parameters.reshape(1, -1))[0]
+        
+        # Normalize parameters using the chosen strategy
+        if self.use_physics_aware_norm:
+            params_normalized = self.normalize_parameters_physics_aware(parameters.reshape(1, -1))[0]
+        else:
+            params_normalized = self.normalize_parameters(parameters.reshape(1, -1))[0]
         
         return (
             torch.tensor(clean_signal, dtype=torch.float32, device=DEVICE),

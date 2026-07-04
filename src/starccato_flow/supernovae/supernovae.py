@@ -20,7 +20,7 @@ class Supernovae:
     def __init__(
         self,
         locations_file: Optional[str] = None,
-        rotation_offset: float = np.deg2rad(60.0),
+        rotation_offset: float = np.deg2rad(0.0),
         limit: Optional[int] = None,
     ):
         """Initialize supernova location handler.
