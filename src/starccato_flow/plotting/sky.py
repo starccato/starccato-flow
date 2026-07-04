@@ -371,8 +371,23 @@ def plot_galactic_supernovae_polar_hemispheres(
     plt.rcParams['svg.fonttype'] = 'path'
     
     astropy_rotation_offset_deg = 0.0
-    ra_supernovae = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
-    dec_supernovae = np.asarray(ccsn.dec)
+    
+    # Extract RA and Dec, optionally sampling only the closest supernovae
+    all_ra = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
+    all_dec = np.asarray(ccsn.dec)
+    
+    # If distance data available, sample the 50,000 closest supernovae
+    if hasattr(ccsn, 'distance') and ccsn.distance is not None:
+        distances = np.asarray(ccsn.distance)
+        sorted_indices = np.argsort(distances)
+        n_sample = min(50000, len(sorted_indices))
+        sample_indices = sorted_indices[:n_sample]
+        ra_supernovae = all_ra[sample_indices]
+        dec_supernovae = all_dec[sample_indices]
+    else:
+        # Fall back to all supernovae if no distance data
+        ra_supernovae = all_ra
+        dec_supernovae = all_dec
 
     use_posterior_samples = (
         posterior_ra_samples is not None
@@ -1499,9 +1514,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
 
-    # Plot a random sample of 10,000 supernovae from the galactic distribution (rasterized)
+    # Plot a random sample of 20000 supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
-        n_sample = min(10000, len(ra_rot_supernovae))
+        n_sample = min(20000, len(ra_rot_supernovae))
         sample_indices = np.random.choice(len(ra_rot_supernovae), size=n_sample, replace=False)
         
         sampled_ra = ra_rot_supernovae[sample_indices]
@@ -1548,10 +1563,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Plot background supernovae (10000 random samples, regardless of hemisphere)
     np.random.seed(42)  # For reproducibility
     
-    # Sample 10000 from all supernovae
+    # Sample 20000 from all supernovae
     total_sn = len(ra_rot_supernovae)
-    if total_sn > 10000:
-        sample_indices = np.random.choice(total_sn, size=10000, replace=False)
+    if total_sn > 20000:
+        sample_indices = np.random.choice(total_sn, size=20000, replace=False)
         ra_stars = ra_rot_supernovae[sample_indices]
         dec_stars = dec_supernovae[sample_indices]
     else:
