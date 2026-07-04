@@ -1144,7 +1144,7 @@ class FlowMatchingTrainerMulti:
             true_ra_override=true_ra,
             true_dec_override=true_dec,
             show_constellation_borders=True,
-            show_important_constellation_labels=True,
+            show_all_constellation_labels=False if fname.endswith('.svg') else True,  # Skip labels for SVG output
             dpi=150 if fname.endswith('.svg') else 300,  # Lower DPI for SVG to reduce file size
             background="black",
             font_family=font_family,

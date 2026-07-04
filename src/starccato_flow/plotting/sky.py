@@ -239,6 +239,9 @@ def _constellation_border_segments(
     return seg_n, seg_s
 
 
+
+
+
 @lru_cache(maxsize=8)
 def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[str, tuple[float, float]]:
     """Estimate constellation label centers (RA, Dec deg) from an ICRS sampling grid."""
@@ -277,7 +280,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_ra_override: float | None = None,
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
-    show_important_constellation_labels: bool = True,
+    show_all_constellation_labels: bool = False,
     show: bool = True,
     dpi: int = 300,
     background: str = "black",
@@ -301,8 +304,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             ``ccsn.get_galactic_center_direction()`` for center marker logic.
         true_dec_override: Optional true Dec (radians).
         show_constellation_borders: If True, overlay IAU constellation boundaries.
-        show_important_constellation_labels: If True and constellation borders are enabled,
-            annotate key constellations with labels.
+        show_all_constellation_labels: If True and constellation borders are enabled,
+            annotate all 88 IAU constellations with their 3-letter codes.
         show: If True, call ``plt.show()``.
         dpi: Image save DPI.
         background: Background color theme ("white" or "black").
@@ -681,46 +684,39 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
             if seg_n.size:
                 ax_l.add_collection(
-                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.2, alpha=0.34, zorder=4)
+                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.5, alpha=0.6, zorder=4)
                 )
             if seg_s.size:
                 ax_r.add_collection(
-                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.2, alpha=0.34, zorder=4)
+                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.5, alpha=0.6, zorder=4)
                 )
+            
 
-            if show_important_constellation_labels:
+
+            if show_all_constellation_labels:
                 centers = _constellation_centers_icrs_deg()
-                for short_name, label in IMPORTANT_CONSTELLATIONS.items():
-                    if short_name not in centers:
-                        continue
+                # Show all 88 IAU constellations
+                for short_name in sorted(centers.keys()):
                     ra_c_deg, dec_c_deg = centers[short_name]
                     ra_c_deg = float(_apply_astropy_ra_rotation_deg(ra_c_deg, astropy_rotation_offset_deg))
                     panel, cx, cy = _project_to_hemisphere(np.deg2rad(ra_c_deg), np.deg2rad(dec_c_deg))
+                    
+                    # Skip labels near the poles to avoid crowding
                     if cx * cx + cy * cy > 0.97 * 0.97:
                         continue
+                    
                     lbl_ax = ax_l if panel == "north" else ax_r
-
-                    dx = 0.0
-                    dy = 0.0
-                    if short_name == "Ori":
-                        dx = -0.022
-                        dy = 0.062
-                    elif short_name == "Tau":
-                        dx = 0.085
-                    elif short_name == "CMa":
-                        dy = 0.024
-                    elif short_name == "Cru":
-                        dy = -0.060
-
+                    
+                    # Use smaller fontsize for all constellation labels
                     lbl_ax.text(
-                        cx + dx,
-                        cy + dy,
-                        label,
+                        cx,
+                        cy,
+                        short_name,
                         color="#e2e8f0",
-                        fontsize=fontsize_small,
+                        fontsize=fontsize_tiny,
                         ha="center",
                         va="center",
-                        alpha=0.8,
+                        alpha=0.6,
                         zorder=6,
                     )
         else:
