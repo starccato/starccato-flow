@@ -1143,8 +1143,8 @@ class FlowMatchingTrainerMulti:
             posterior_dec_samples=dec_samples,
             true_ra_override=true_ra,
             true_dec_override=true_dec,
-            show_constellation_borders=not fname.endswith('.svg'),  # Skip borders for SVG to reduce file size
-            show_important_constellation_labels=not fname.endswith('.svg'),  # Skip labels for SVG
+            show_constellation_borders=True,
+            show_important_constellation_labels=True,
             dpi=150 if fname.endswith('.svg') else 300,  # Lower DPI for SVG to reduce file size
             background="black",
             font_family=font_family,
@@ -1152,6 +1152,20 @@ class FlowMatchingTrainerMulti:
             red_blob_mode="density_peak",
             transparent=transparent,
         )
+        
+        # Compress SVG files to .svgz format for ~75% size reduction while keeping all visual elements
+        if fname.endswith('.svg'):
+            import gzip
+            import shutil
+            svgz_fname = fname.replace('.svg', '.svgz')
+            with open(fname, 'rb') as f_in:
+                with gzip.open(svgz_fname, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            import os
+            svg_size = os.path.getsize(fname) / 1024  # KB
+            svgz_size = os.path.getsize(svgz_fname) / 1024  # KB
+            print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svg_size:.0f}%)")
+
 
     def plot_galactic_distribution_with_posterior(
         self,

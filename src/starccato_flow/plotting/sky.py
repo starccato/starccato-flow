@@ -1658,6 +1658,26 @@ def plot_galactic_supernovae_polar_hemispheres(
         save_kwargs["format"] = file_format
     
     plt.savefig(fname, **save_kwargs)
+    
+    # Optimize SVG file size by reducing decimal precision
+    if fname.endswith('.svg'):
+        import re
+        try:
+            with open(fname, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+            
+            # Reduce decimal precision in coordinates (8 decimals → 2 decimals)
+            # This regex finds numbers with many decimal places and rounds them
+            svg_content = re.sub(r'(\d+\.\d{3,})', lambda m: f'{float(m.group(1)):.2f}', svg_content)
+            
+            with open(fname, 'w', encoding='utf-8') as f:
+                f.write(svg_content)
+            
+            import os
+            size_kb = os.path.getsize(fname) / 1024
+            print(f"Optimized SVG: {fname} ({size_kb:.1f} KB)")
+        except Exception as e:
+            print(f"SVG optimization failed: {e}")
 
     plt.show()
 
