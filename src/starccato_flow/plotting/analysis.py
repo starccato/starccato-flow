@@ -698,7 +698,7 @@ def plot_galactic_distribution_with_posterior(
 
     # Set up plot styling
     rcParams["font.family"] = font_family
-    rcParams["font.size"] = 18
+    rcParams["font.size"] = 22
     if font_family == "sans-serif":
         rcParams["font.sans-serif"] = [font_name]
     elif font_family == "serif":
@@ -908,8 +908,8 @@ def plot_galactic_distribution_with_posterior_zoom(
     true_distance: Optional[float] = None,
     sun_location: Optional[np.ndarray] = None,
     fname: Optional[str] = None,
-    figsize: tuple = (4.528, 4.528),
-    scatter_size: float = 0.0001,
+    figsize_mm: tuple = (300, 300),
+    scatter_size: float = 0.00005,
     sun_marker_size: float = 400,
     background: str = "white",
     dpi: int = 300,
@@ -933,7 +933,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         true_distance: True distance (kpc)
         sun_location: Sun location in galactocentric frame (default [0.0, 8.178, 0.0208])
         fname: Output filename
-        figsize: Figure size
+        figsize_mm: Figure size in millimeters (converted to inches)
         scatter_size: Size of background scatter points
         sun_marker_size: Size of sun marker
         background: Background color
@@ -946,6 +946,9 @@ def plot_galactic_distribution_with_posterior_zoom(
     Returns:
         Matplotlib figure
     """
+    # Convert mm to inches
+    mm_to_inch = 1 / 25.4
+    figsize = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
     if sun_location is None:
         sun_location = np.array([0.0, 8.178, 0.0208])
     
@@ -993,17 +996,20 @@ def plot_galactic_distribution_with_posterior_zoom(
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
     ax = fig.add_subplot(111, facecolor=ax_facecolor)
 
-    # Plot background galactic distribution (only stars within zoom region) - rasterized to reduce file size
+    # Plot background galactic distribution (only stars within zoom region) - rasterized for reasonable file size
     ax.scatter(x_filtered, y_filtered, s=scatter_size, alpha=1, c="lightblue", zorder=1, rasterized=True)
-    ax.scatter(
-        0.0,
-        0.0,
-        s=sun_marker_size,
-        c="black",
-        edgecolors="white",
-        linewidths=1.8,
-        marker="o",
+    
+    # Black hole at galactic center: two circles (accretion disk outer + event horizon interior)
+    from matplotlib.patches import Circle
+    bh_disk_outer = Circle(
+        (0.0, 0.0), 0.5, color="white", alpha=0.8, zorder=8
     )
+    ax.add_patch(bh_disk_outer)
+    bh_interior = Circle(
+        (0.0, 0.0), 0.35, color="black", alpha=0.95, zorder=9
+    )
+    ax.add_patch(bh_interior)
+    
     ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", zorder=20)
 
     # Add density contours from posterior samples in X-Y plane
@@ -1071,11 +1077,11 @@ def plot_galactic_distribution_with_posterior_zoom(
         true_x += sun_location[0]
         true_y += sun_location[1]
         true_z += sun_location[2]
-        # Plot with same marker style as celestial map (deepskyblue "x")
+        # Plot with same marker style as celestial map (deepskyblue "x" with size matching sky map)
         ax.scatter(
             true_x,
             true_y,
-            s=120,
+            s=72,
             marker="x",
             c="deepskyblue",
             linewidths=1.8,
@@ -1130,7 +1136,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         fill=False,
         edgecolor="white",
         linestyle="--",
-        linewidth=2.5,
+        linewidth=1.5,
         zorder=15
     )
     ax.add_patch(circle_border)
@@ -1148,7 +1154,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         arrowprops=dict(
             arrowstyle="<->",
             color="white",
-            lw=4.0,
+            lw=1.5,
             zorder=16
         )
     )
@@ -1159,7 +1165,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         arrow_x + 1.0,
         text_y,
         "10 kpc",
-        fontsize=10,
+        fontsize=22,
         color="white",
         verticalalignment="center",
         zorder=16

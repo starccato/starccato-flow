@@ -428,7 +428,8 @@ class Supernovae:
         epoch_dir: Optional[str] = None,
         fname: Optional[str] = None,
         font_family: str = "sans-serif",
-        font_name: str = "Avenir"
+        font_name: str = "Avenir",
+        transparent: Optional[bool] = None
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Sample RA/Dec/d sky parameters for an epoch distance shell.
 
@@ -445,6 +446,7 @@ class Supernovae:
             fname: Optional filename for thesis plots
             font_family: Font family for plots
             font_name: Font name for plots
+            transparent: Whether to make plots transparent
             
         Returns:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
@@ -491,13 +493,13 @@ class Supernovae:
             self.plot_galactic_distribution(
                 fname_xy=fname,
                 background="black",
-                transparent=False,
                 light_year=False,
                 highlight_indices=sampled_indices,
                 show=False,
                 dpi=300,
                 font_family=font_family,
                 font_name=font_name,
+                transparent=transparent
             )
         elif epoch_dir is not None:
             # Construct filename from epoch_dir (training plots)

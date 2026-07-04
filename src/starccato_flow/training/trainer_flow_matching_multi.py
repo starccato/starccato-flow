@@ -1198,7 +1198,7 @@ class FlowMatchingTrainerMulti:
             true_distance=true_d,
             sun_location=sun_location,
             fname=fname,
-            figsize=(4.528, 4.528),
+            figsize_mm=(125, 125),
             background=background,
             font_family=font_family,
             font_name=font_name,
