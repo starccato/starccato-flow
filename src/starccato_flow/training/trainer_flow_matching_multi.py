@@ -42,7 +42,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
-        samples_per_epoch: int = 5000,
+        samples_per_epoch: int = 18000,
         validation_split: float = VALIDATION_SPLIT,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
@@ -909,7 +909,8 @@ class FlowMatchingTrainerMulti:
             detector_noise_on=True,  # Add fresh detector noise, consistent with train()
             random_polarization=True,
             seed=1,
-            intrinsic_param_names=self.intrinsic_params
+            intrinsic_param_names=self.intrinsic_params,
+            use_physics_aware_norm=self.use_physics_aware_norm
         )
 
         temp_h_theta_multi._plot_project_to_detectors_steps(
@@ -1766,7 +1767,8 @@ class FlowMatchingTrainerMulti:
             detector_noise_on=True,
             random_polarization=True,
             seed=1,
-            intrinsic_param_names=self.intrinsic_params
+            intrinsic_param_names=self.intrinsic_params,
+            use_physics_aware_norm=self.use_physics_aware_norm
         )
         
         # Get the multi-channel signals

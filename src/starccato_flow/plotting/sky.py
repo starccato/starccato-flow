@@ -484,7 +484,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Create levels to match the number of colors
     smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
 
-    ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, rasterized=False)
+    ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
     
     for r_lat in lat_radii:
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
@@ -515,7 +515,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         alpha=0.95,
     )
 
-    ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, rasterized=False)
+    ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
     for r_lat in lat_radii:
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
     ax_r.plot(np.cos(theta), np.sin(theta), color="white", lw=1.5)
@@ -865,7 +865,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 levels=post_fill_levels,
                 colors=red_fill_colors,
                 antialiased=True,
-                rasterized=False,
             )
             ax_r.contourf(
                 pxcenters,
@@ -874,7 +873,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 levels=post_fill_levels,
                 colors=red_fill_colors,
                 antialiased=True,
-                rasterized=False,
             )
 
             posterior_legend_handles = [
