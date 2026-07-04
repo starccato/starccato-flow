@@ -159,38 +159,24 @@ class Supernovae:
         if self._galactic_coords is None:
             raise ValueError("No galactic coordinates available. Load or generate locations first.")
         
-        # Heliocentric coordinates (relative to Sun)
-        helio_coords = self._galactic_coords - self.SUN_LOCATION
-        earth_coords = helio_coords - self.EARTH_LOCATION
-        x_gal, y_gal, z_gal = earth_coords.T
-        
-        # In this coordinate system:
-        # - Galactic disk is in the x-y plane (z perpendicular to disk)
-        # - Galactic center is at (0, -8.178, 0.0208) from Sun
-        # Apply proper rotation to equatorial coordinates (J2000)
-        # North Galactic Pole: RA=192.86°, Dec=27.13°
-        # Galactic center direction from Sun: toward negative y-axis
-        
-        # Standard galactic to equatorial rotation matrix
-        # This assumes: galactic x→center, y→l=90°, z→NGP
-        # Our system has disk in x-y, so we need to account for this
-        
         # Use Astropy's Galactocentric frame to transform to equatorial
+        # (0,0,0) in our galactic frame represents the galactic center
         from astropy.coordinates import Galactocentric, ICRS
         import astropy.units as u
         
-        # Create Galactocentric coordinates (x, y, z in kpc)
+        # Transform coordinates directly through Galactocentric (no offset needed)
+        # This ensures (0,0,0) maps to the galactic center on the sky
         gal_centric = Galactocentric(
-            x=x_gal*u.kpc,
-            y=y_gal*u.kpc,
-            z=z_gal*u.kpc
+            x=self._galactic_coords[:, 0]*u.kpc,
+            y=self._galactic_coords[:, 1]*u.kpc,
+            z=self._galactic_coords[:, 2]*u.kpc
         )
         
         # Transform to ICRS (equatorial)
         icrs = gal_centric.transform_to(ICRS())
         ra = icrs.ra.rad
         dec = icrs.dec.rad
-        # Use the distance computed by Astropy (this is line-of-sight geocentric distance)
+        # Use the distance computed by Astropy (this is line-of-sight distance from Earth)
         distance = icrs.distance.kpc
         
         # Apply rotation offset if set (additional rotation around z-axis)
@@ -253,19 +239,13 @@ class Supernovae:
         # Create ICRS coordinates with un-rotated RA/Dec
         icrs = ICRS(ra=ra_unrotated*u.rad, dec=dec_unrotated*u.rad, distance=distance*u.kpc)
         
-        # Transform to Galactocentric (sun-relative coordinates)
+        # Transform to Galactocentric
         gal_centric = icrs.transform_to(Galactocentric())
         
-        # Extract Cartesian coordinates (these are sun-relative)
-        x_helio = gal_centric.x.to(u.kpc).value
-        y_helio = gal_centric.y.to(u.kpc).value
-        z_helio = gal_centric.z.to(u.kpc).value
-        
-        # Convert back to original galactic frame by adding Sun position
-        # (reverse of: helio_coords = galactic_coords - SUN_LOCATION)
-        x_gal = x_helio + self.SUN_LOCATION[0]
-        y_gal = y_helio + self.SUN_LOCATION[1]
-        z_gal = z_helio + self.SUN_LOCATION[2]
+        # Extract Cartesian coordinates directly (no offset needed)
+        x_gal = gal_centric.x.to(u.kpc).value
+        y_gal = gal_centric.y.to(u.kpc).value
+        z_gal = gal_centric.z.to(u.kpc).value
         
         return x_gal, y_gal, z_gal
     
@@ -321,19 +301,13 @@ class Supernovae:
         Returns:
             Tuple of (RA, Dec) in radians for the Galactic Center direction from Earth
         """
-        # Transform (0,0,0) from galactocentric to equatorial using the same transformation
-        # as the rest of the data
+        # The galactic center is at (0,0,0) in our original galactic frame
+        # Transform it directly through Astropy to get its sky position
         from astropy.coordinates import Galactocentric, ICRS
         import astropy.units as u
         
-        # Start at galactic center in original galactic frame: (0,0,0)
-        # Subtract SUN_LOCATION to convert to sun-relative (same as _compute_equatorial_coordinates)
-        x_gal = 0.0 - self.SUN_LOCATION[0]
-        y_gal = 0.0 - self.SUN_LOCATION[1]
-        z_gal = 0.0 - self.SUN_LOCATION[2]
-        
-        # Galactic center is at origin in galactocentric frame
-        gc_gal = Galactocentric(x=x_gal*u.kpc, y=y_gal*u.kpc, z=z_gal*u.kpc)
+        # (0,0,0) in our frame is the galactic center position in galactocentric coordinates
+        gc_gal = Galactocentric(x=0*u.kpc, y=0*u.kpc, z=0*u.kpc)
         gc_icrs = gc_gal.transform_to(ICRS())
         
         ra = gc_icrs.ra.rad
