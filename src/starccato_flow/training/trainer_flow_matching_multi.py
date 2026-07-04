@@ -145,7 +145,7 @@ class FlowMatchingTrainerMulti:
         
         self.supernovae = Supernovae(
             locations_file=supernovae_file,
-            rotation_offset=np.deg2rad(60.0),
+            rotation_offset=np.deg2rad(0.0),
         )
 
         # Load data from files if paths are provided

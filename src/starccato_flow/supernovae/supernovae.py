@@ -177,35 +177,36 @@ class Supernovae:
         # This assumes: galactic x→center, y→l=90°, z→NGP
         # Our system has disk in x-y, so we need to account for this
         
-        # First, convert to standard galactic coordinates
-        # In standard system: X→GC, Y→l=90°, Z→NGP
-        # Our system: x,y in disk plane, z⊥disk, GC at -y direction
-        # So: X_std = -y_gal, Y_std = x_gal, Z_std = z_gal
-        X_std = -y_gal
-        Y_std = x_gal  
-        Z_std = z_gal
+        # Use Astropy's Galactocentric frame to transform to equatorial
+        from astropy.coordinates import Galactocentric, ICRS
+        import astropy.units as u
         
-        # Now apply standard galactic→equatorial rotation matrix
-        T11, T12, T13 = -0.0548755604, -0.8734370902, -0.4838350155
-        T21, T22, T23 = +0.4941094279, -0.4448296300, +0.7469822445
-        T31, T32, T33 = -0.8676661490, -0.1980763734, +0.4559837762
+        # Create Galactocentric coordinates (x, y, z in kpc)
+        gal_centric = Galactocentric(
+            x=x_gal*u.kpc,
+            y=y_gal*u.kpc,
+            z=z_gal*u.kpc
+        )
         
-        x_eq = T11 * X_std + T12 * Y_std + T13 * Z_std
-        y_eq = T21 * X_std + T22 * Y_std + T23 * Z_std
-        z_eq = T31 * X_std + T32 * Y_std + T33 * Z_std
+        # Transform to ICRS (equatorial)
+        icrs = gal_centric.transform_to(ICRS())
+        ra = icrs.ra.rad
+        dec = icrs.dec.rad
         
-        # Apply additional rotation offset around z-axis (simulates Earth rotation or different time)
+        # Apply rotation offset if set (additional rotation around z-axis)
         if self.rotation_offset != 0.0:
             cos_rot = np.cos(self.rotation_offset)
             sin_rot = np.sin(self.rotation_offset)
-            x_eq_rot = cos_rot * x_eq - sin_rot * y_eq
-            y_eq_rot = sin_rot * x_eq + cos_rot * y_eq
-            x_eq, y_eq = x_eq_rot, y_eq_rot
-        
-        # Convert to spherical (RA, Dec)
-        distance = np.sqrt(x_eq**2 + y_eq**2 + z_eq**2)
-        ra = np.arctan2(y_eq, x_eq)  # radians
-        dec = np.arcsin(z_eq / (distance + 1e-10))  # radians
+            x_eq = np.cos(dec) * np.cos(ra)
+            y_eq = np.cos(dec) * np.sin(ra)
+            z_eq = np.sin(dec)
+            
+            x_rot = cos_rot * x_eq - sin_rot * y_eq
+            y_rot = sin_rot * x_eq + cos_rot * y_eq
+            z_rot = z_eq
+            
+            ra = np.arctan2(y_rot, x_rot)
+            dec = np.arcsin(z_rot)
         
         self._equatorial_coords = np.column_stack([ra, dec])
     
@@ -318,39 +319,16 @@ class Supernovae:
         Returns:
             Tuple of (RA, Dec) in radians for the Galactic Center direction from Earth
         """
-        # The galactic center is located at (0, -8.178 kpc, 0.0208 kpc) in our coordinate system
-        # But we want the direction to it, not its absolute position
-        # Direction vector from Earth (at origin) to galactic center
-        gc_x = 0.0 - self.EARTH_LOCATION[0]
-        gc_y = -8.178 - self.EARTH_LOCATION[1]  # Galactic center is at -y direction
-        gc_z = 0.0208 - self.EARTH_LOCATION[2]
+        from astropy.coordinates import SkyCoord
+        import astropy.units as u
         
-        # Convert to standard galactic coordinates for transformation
-        X_std = -gc_y
-        Y_std = gc_x
-        Z_std = gc_z
+        # Galactic center is at galactic longitude 0, latitude 0
+        gc = SkyCoord(l=0*u.deg, b=0*u.deg, frame='galactic')
         
-        # Apply standard galactic→equatorial rotation matrix
-        T11, T12, T13 = -0.0548755604, -0.8734370902, -0.4838350155
-        T21, T22, T23 = +0.4941094279, -0.4448296300, +0.7469822445
-        T31, T32, T33 = -0.8676661490, -0.1980763734, +0.4559837762
-        
-        x_eq = T11 * X_std + T12 * Y_std + T13 * Z_std
-        y_eq = T21 * X_std + T22 * Y_std + T23 * Z_std
-        z_eq = T31 * X_std + T32 * Y_std + T33 * Z_std
-        
-        # Apply rotation offset if set
-        if self.rotation_offset != 0.0:
-            cos_rot = np.cos(self.rotation_offset)
-            sin_rot = np.sin(self.rotation_offset)
-            x_eq_rot = cos_rot * x_eq - sin_rot * y_eq
-            y_eq_rot = sin_rot * x_eq + cos_rot * y_eq
-            x_eq, y_eq = x_eq_rot, y_eq_rot
-        
-        # Convert to spherical coordinates
-        distance = np.sqrt(x_eq**2 + y_eq**2 + z_eq**2)
-        ra = np.arctan2(y_eq, x_eq)
-        dec = np.arcsin(z_eq / distance)
+        # Convert to ICRS (equatorial) coordinates
+        gc_icrs = gc.icrs
+        ra = gc_icrs.ra.rad
+        dec = gc_icrs.dec.rad
         
         return ra, dec
 

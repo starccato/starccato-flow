@@ -460,8 +460,28 @@ def plot_galactic_supernovae_polar_hemispheres(
         to_rgba(blue_bases[2], alpha=0.62),
         to_rgba(blue_bases[3], alpha=0.88),
     ]
+    
+    # Create smooth transitions by interpolating colors in RGBA space
+    n_per_segment = 4  # Create 4 intermediate colors between each pair
+    smooth_colors = []
+    
+    for i in range(len(fill_colors) - 1):
+        color_a = np.array(fill_colors[i])
+        color_b = np.array(fill_colors[i + 1])
+        
+        # Interpolate between current and next color
+        for j in range(n_per_segment):
+            alpha = j / n_per_segment
+            interp_color = color_a * (1 - alpha) + color_b * alpha
+            smooth_colors.append(tuple(interp_color))
+    
+    # Add the last color
+    smooth_colors.append(fill_colors[-1])
+    
+    # Create levels to match the number of colors
+    smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
 
-    ax_l.contourf(xcenters, ycenters, h_n_plot, levels=fill_levels_shared, colors=fill_colors, antialiased=True, rasterized=False)
+    ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, rasterized=False)
     
     for r_lat in lat_radii:
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
@@ -492,7 +512,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         alpha=0.95,
     )
 
-    ax_r.contourf(xcenters, ycenters, h_s_plot, levels=fill_levels_shared, colors=fill_colors, antialiased=True, rasterized=False)
+    ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, rasterized=False)
     for r_lat in lat_radii:
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
     ax_r.plot(np.cos(theta), np.sin(theta), color="white", lw=1.5)
@@ -1528,9 +1548,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_s_all = ra_rot_supernovae[south_mask]
     dec_s_all = dec_supernovae[south_mask]
     
-    # Sample 20000 from northern hemisphere
-    if len(ra_n_all) > 20000:
-        sample_indices_n = np.random.choice(len(ra_n_all), size=20000, replace=False)
+    # Sample 10000 from northern hemisphere
+    if len(ra_n_all) > 10000:
+        sample_indices_n = np.random.choice(len(ra_n_all), size=10000, replace=False)
         ra_stars_n = ra_n_all[sample_indices_n]
         dec_stars_n = dec_n_all[sample_indices_n]
     else:
