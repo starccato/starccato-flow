@@ -545,11 +545,7 @@ class FlowMatchingTrainerMulti:
         )
         
         self.plot_corner_sampled_signal(
-            num_samples=3000,
-            n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
-            sampled_case=case,
-            h_theta_multi_dataset=active_h_theta_multi,
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
             background="black",
@@ -558,11 +554,7 @@ class FlowMatchingTrainerMulti:
             transparent=transparent
         )
         self.plot_sky_localisation_sampled_signal(
-            num_samples=3000,
-            n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png") if fname_posterior_sky is None else fname_posterior_sky,
-            sampled_case=case,
-            h_theta_multi_dataset=active_h_theta_multi,
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
             font_family=font_family,
@@ -570,16 +562,33 @@ class FlowMatchingTrainerMulti:
             transparent=transparent
         )
         self.plot_galactic_distribution_with_posterior(
-            num_samples=3000,
-            n_steps=20,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,
-            sampled_case=case,
-            h_theta_multi_dataset=active_h_theta_multi,
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
             font_family=font_family,
             font_name=font_name,
-            transparent=transparent
+            transparent=transparent,
+            background=background
+        )
+        # Plot zoomed version (10 kpc around sun) - transparent
+        self.plot_galactic_distribution_with_posterior_zoom(
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom.svg"),
+            posterior_samples_denorm=posterior_samples_denorm,
+            true_param_denorm=true_param_denorm,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=transparent,
+            background=background
+        )
+        # Plot zoomed version (10 kpc around sun) - navy background
+        self.plot_galactic_distribution_with_posterior_zoom(
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom_navy.svg"),
+            posterior_samples_denorm=posterior_samples_denorm,
+            true_param_denorm=true_param_denorm,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=False,
+            background="#00001e"
         )
         # export each channel of the signal as a separate .txt file for external analysis
         if export_on:
@@ -925,12 +934,7 @@ class FlowMatchingTrainerMulti:
 
     def plot_corner_sampled_signal(
         self,
-        epoch: int = 0,
-        num_samples: int = 5000,
-        n_steps: int = 20,
         fname: str = "plots/corner_plot_sampled_signal.png",
-        sampled_case=None,
-        h_theta_multi_dataset=None,
         posterior_samples_denorm=None,
         true_param_denorm=None,
         background: str = "white",
@@ -938,42 +942,23 @@ class FlowMatchingTrainerMulti:
         font_name: str = "Times New Roman",
         transparent: bool = False
     ):
-        """Generate a corner plot for one sampled multi-channel validation signal.
+        """Generate a corner plot for posterior samples.
 
-        This samples one validation waveform and one sky location (RA/Dec/d), appends
-        sky parameters (including psi), and plots the posterior over the full parameter vector.
-        
         Args:
-            posterior_samples_denorm: Optional pre-computed posterior samples. If None, generates them from sampled_case.
-            true_param_denorm: Optional pre-computed true parameters. If None, generates them from sampled_case.
+            fname: Output filename for the plot
+            posterior_samples_denorm: Posterior samples in denormalized parameter space
+            true_param_denorm: True parameters in denormalized space
+            background: Background color for plot
+            font_family: Font family for plot text
+            font_name: Font name for plot text
+            transparent: Whether to save with transparent background
         """
-        # Use passed dataset or default to self.h_theta_multi_val
-        if h_theta_multi_dataset is None:
-            h_theta_multi_dataset = self.h_theta_multi_val
-        
-        # Generate posterior samples if not provided
-        if posterior_samples_denorm is None or true_param_denorm is None:
-            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
-                sampled_case, h_theta_multi_dataset, num_samples, n_steps
-            )
-
         # Convert parameter names to LaTeX labels using plotting_defaults
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
         
-        # Calculate axis ranges from extracted parameter bounds
-        # Extract ranges only for the parameters we're actually estimating
-        # Handle both cases: dataset with all 8 parameters, or dataset with only requested parameters
-        num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
-        num_requested_params = len(self.parameters_to_estimate)
-        
-        if num_params_in_dataset == num_requested_params:
-            # Dataset contains only requested parameters (use sequential indices)
-            mins = h_theta_multi_dataset.shared_min_theta
-            maxs = h_theta_multi_dataset.shared_max_theta
-        else:
-            # Dataset contains all parameters (use extraction indices)
-            mins = h_theta_multi_dataset.shared_min_theta[self.param_extract_indices]
-            maxs = h_theta_multi_dataset.shared_max_theta[self.param_extract_indices]
+        # Calculate axis ranges from denormalized posterior samples
+        mins = np.min(posterior_samples_denorm, axis=0)
+        maxs = np.max(posterior_samples_denorm, axis=0)
         
         span = np.maximum(maxs - mins, 1e-8)
         pad = 0.03 * span
@@ -1032,34 +1017,23 @@ class FlowMatchingTrainerMulti:
 
     def plot_sky_localisation_sampled_signal(
         self,
-        epoch: int = 0,
-        num_samples: int = 5000,
-        n_steps: int = 20,
         fname: str = "plots/sky_localisation_sampled_signal.png",
-        sampled_case=None,
-        h_theta_multi_dataset=None,
         posterior_samples_denorm=None,
         true_param_denorm=None,
         font_family: str = "Serif",
         font_name: str = "Times New Roman",
         transparent: bool = False
     ):
-        """Generate a sky-localisation (RA/Dec) posterior plot for one sampled signal.
+        """Generate a sky-localisation (RA/Dec) posterior plot.
         
         Args:
-            posterior_samples_denorm: Optional pre-computed posterior samples. If None, generates them from sampled_case.
-            true_param_denorm: Optional pre-computed true parameters. If None, generates them from sampled_case.
+            fname: Output filename for the plot
+            posterior_samples_denorm: Posterior samples in denormalized parameter space
+            true_param_denorm: True parameters in denormalized space
+            font_family: Font family for plot text
+            font_name: Font name for plot text
+            transparent: Whether to save with transparent background
         """
-        # Use passed dataset or default to self.h_theta_multi_val
-        if h_theta_multi_dataset is None:
-            h_theta_multi_dataset = self.h_theta_multi_val
-        
-        # Generate posterior samples if not provided
-        if posterior_samples_denorm is None or true_param_denorm is None:
-            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
-                sampled_case, h_theta_multi_dataset, num_samples, n_steps
-            )
-        
         # Extract RA and Dec indices from the parameters_to_estimate list
         ra_idx = self._get_extracted_index("ra")
         dec_idx = self._get_extracted_index("dec")
@@ -1086,6 +1060,7 @@ class FlowMatchingTrainerMulti:
             true_dec_override=true_dec,
             show_constellation_borders=True,
             show_important_constellation_labels=True,
+            dpi=300,
             background="black",
             font_family=font_family,
             font_name=font_name,
@@ -1095,16 +1070,13 @@ class FlowMatchingTrainerMulti:
 
     def plot_galactic_distribution_with_posterior(
         self,
-        num_samples: int = 5000,
-        n_steps: int = 20,
         fname: str = "plots/galactic_distribution_posterior.png",
-        sampled_case=None,
-        h_theta_multi_dataset=None,
         posterior_samples_denorm=None,
         true_param_denorm=None,
         font_family: str = "Serif",
         font_name: str = "Times New Roman",
-        transparent: bool = False
+        transparent: bool = False,
+        background: str = "white"
     ):
         """Plot galactic distribution (X-Y plane) with posterior credible regions overlaid.
         
@@ -1112,28 +1084,15 @@ class FlowMatchingTrainerMulti:
         contours computed from RA/Dec/distance samples transformed to galactic Cartesian coordinates.
         
         Args:
-            num_samples: Number of posterior samples to generate
-            n_steps: Number of ODE solver steps for posterior generation
             fname: Output filename for the plot
-            sampled_case: Optional pre-computed case (signal + noisy_signal + parameters)
-            h_theta_multi_dataset: Optional pre-computed multi-channel dataset
-            posterior_samples_denorm: Optional pre-computed posterior samples in denormalized parameter space
-            true_param_denorm: Optional pre-computed true parameters in denormalized space
+            posterior_samples_denorm: Posterior samples in denormalized parameter space
+            true_param_denorm: True parameters in denormalized space
             font_family: Font family for plots
             font_name: Font name for plots
             transparent: Whether to save with transparent background
+            background: Background color for plots
         """
         from ..plotting.analysis import plot_galactic_distribution_with_posterior
-        
-        # Use passed dataset or default to self.h_theta_multi_val
-        if h_theta_multi_dataset is None:
-            h_theta_multi_dataset = self.h_theta_multi_val
-        
-        # Generate posterior samples if not provided
-        if posterior_samples_denorm is None or true_param_denorm is None:
-            posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
-                sampled_case, h_theta_multi_dataset, num_samples, n_steps
-            )
         
         # Extract RA, Dec, and distance indices
         ra_idx = self._get_extracted_index("ra")
@@ -1171,7 +1130,76 @@ class FlowMatchingTrainerMulti:
             true_distance=true_d,
             sun_location=sun_location,
             fname=fname,
-            background="black",
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=transparent,
+        )
+
+    def plot_galactic_distribution_with_posterior_zoom(
+        self,
+        fname: str = "plots/galactic_distribution_posterior_zoom.png",
+        posterior_samples_denorm=None,
+        true_param_denorm=None,
+        font_family: str = "Serif",
+        font_name: str = "Times New Roman",
+        transparent: bool = False,
+        background: str = "white"
+    ):
+        """Plot galactic distribution (X-Y plane) with posterior contours in 10 kpc zoom around sun.
+        
+        This is a zoomed version showing only the region within 10 kpc of the sun, with no legend,
+        ticks, or axis markers.
+        
+        Args:
+            fname: Output filename for the plot
+            posterior_samples_denorm: Posterior samples in denormalized parameter space
+            true_param_denorm: True parameters in denormalized space
+            font_family: Font family for plots
+            font_name: Font name for plots
+            transparent: Whether to save with transparent background
+            background: Background color for plots
+        """
+        from ..plotting.analysis import plot_galactic_distribution_with_posterior_zoom
+        
+        # Extract RA, Dec, and distance indices
+        ra_idx = self._get_extracted_index("ra")
+        dec_idx = self._get_extracted_index("dec")
+        d_idx = self._get_extracted_index("d")
+        
+        if ra_idx >= 0 and dec_idx >= 0 and d_idx >= 0:
+            # Extract RA, Dec, distance from the denormalized extracted parameters
+            ra_samples = posterior_samples_denorm[:, ra_idx]
+            dec_samples = posterior_samples_denorm[:, dec_idx]
+            d_samples = posterior_samples_denorm[:, d_idx]
+            true_ra = true_param_denorm[ra_idx]
+            true_dec = true_param_denorm[dec_idx]
+            true_d = true_param_denorm[d_idx]
+        else:
+            # Fallback: assume they are at the end
+            ra_samples = posterior_samples_denorm[:, -4]
+            dec_samples = posterior_samples_denorm[:, -3]
+            d_samples = posterior_samples_denorm[:, -2]
+            true_ra = true_param_denorm[-4]
+            true_dec = true_param_denorm[-3]
+            true_d = true_param_denorm[-2]
+        
+        # Get galactic distribution coordinates
+        galactic_coords = self.supernovae.galactic_coords
+        sun_location = self.supernovae.SUN_LOCATION
+        
+        plot_galactic_distribution_with_posterior_zoom(
+            galactic_coords=galactic_coords,
+            posterior_ra=ra_samples,
+            posterior_dec=dec_samples,
+            posterior_distance=d_samples,
+            true_ra=true_ra,
+            true_dec=true_dec,
+            true_distance=true_d,
+            sun_location=sun_location,
+            fname=fname,
+            figsize=(4.528, 4.528),
+            background=background,
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,

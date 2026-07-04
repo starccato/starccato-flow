@@ -290,11 +290,15 @@ def plot_pp_coverage(
     
     ax.tick_params(labelsize=12)
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=12, loc='lower right', framealpha=0.95)
+    legend_alpha = 0 if transparent else 0.95
+    ax.legend(fontsize=12, loc='lower right', framealpha=legend_alpha)
     
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", facecolor=background if background == "black" else "white", transparent=transparent)
+        savefig_kwargs = {"dpi": 300, "bbox_inches": "tight", "transparent": transparent}
+        if not transparent:
+            savefig_kwargs["facecolor"] = background
+        plt.savefig(fname, **savefig_kwargs)
     
     plt.rcdefaults()
     return fig
@@ -483,12 +487,43 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         ax.set_facecolor(axes_color)
         fig.patch.set_facecolor(axes_color)
         
+        # Disable rasterization on all artist objects
+        for line in ax.lines:
+            line.set_rasterized(False)
+        for patch in ax.patches:
+            patch.set_rasterized(False)
+        for collection in ax.collections:
+            collection.set_rasterized(False)
+        for image in ax.images:
+            image.set_rasterized(False)
+        
         # Add title with quantiles
         q = np.percentile(samples_cpu.flatten(), [16, 50, 84])
         title = f"{q[1]:.4f}$_{{-{q[1]-q[0]:.4f}}}^{{+{q[2]-q[1]:.4f}}}$"
         ax.set_title(title, fontsize=12, color=text_color)
         
-        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=transparent)
+        # Determine format from filename extension and configure for SVG vector output
+        file_format = None
+        if fname.lower().endswith('.svg'):
+            file_format = 'svg'
+            # Temporarily set rcParams to prevent rasterization in SVG
+            old_rasterized = plt.rcParams.get('image.composite_image', None)
+            plt.rcParams['image.composite_image'] = False
+        
+        save_kwargs = {
+            "dpi": 300,
+            "bbox_inches": 'tight',
+            "transparent": transparent,
+        }
+        if file_format:
+            save_kwargs["format"] = file_format
+        
+        plt.savefig(fname, **save_kwargs)
+        
+        # Restore old rcParams if they were changed
+        if file_format == 'svg' and old_rasterized is not None:
+            plt.rcParams['image.composite_image'] = old_rasterized
+        
         plt.show()
         return
 
@@ -531,6 +566,17 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         # Reduce label padding to save space
         ax.xaxis.labelpad = 2
         ax.yaxis.labelpad = 2
+        
+        # Fix rasterization: disable rasterization for ALL artist objects
+        # This includes collections (contourf), lines, patches, and images
+        for collection in ax.collections:
+            collection.set_rasterized(False)
+        for line in ax.lines:
+            line.set_rasterized(False)
+        for patch in ax.patches:
+            patch.set_rasterized(False)
+        for image in ax.images:
+            image.set_rasterized(False)
 
     # Set figure background
     figure.patch.set_facecolor(axes_color)
@@ -538,7 +584,27 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
     # Reduce spacing between subplots to make plots bigger
     figure.subplots_adjust(hspace=0.05, wspace=0.05)
     
-    plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=transparent)
+    # Determine format from filename extension and configure for SVG vector output
+    file_format = None
+    if fname.lower().endswith('.svg'):
+        file_format = 'svg'
+        # Temporarily set rcParams to prevent rasterization in SVG
+        old_rasterized = plt.rcParams.get('image.composite_image', None)
+        plt.rcParams['image.composite_image'] = False
+    
+    save_kwargs = {
+        "dpi": 300,
+        "bbox_inches": 'tight',
+        "transparent": transparent,
+    }
+    if file_format:
+        save_kwargs["format"] = file_format
+    
+    plt.savefig(fname, **save_kwargs)
+    
+    # Restore old rcParams if they were changed
+    if file_format == 'svg' and old_rasterized is not None:
+        plt.rcParams['image.composite_image'] = old_rasterized
     plt.show()
 
 

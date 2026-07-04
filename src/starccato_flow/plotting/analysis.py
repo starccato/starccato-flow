@@ -26,6 +26,41 @@ from ..utils.plotting_defaults import (
 from . import set_plot_style, get_time_axis
 from .signals import plot_signal_grid, plot_candidate_signal
 
+def _is_dark_color(color_str: str) -> bool:
+    """Determine if a color (hex or named) is dark or light.
+    
+    Returns True if the color is dark (text should be white), False if light (text should be black).
+    """
+    # Handle named colors
+    if color_str.lower() == "black":
+        return True
+    elif color_str.lower() == "white":
+        return False
+    elif color_str.lower() in ("navy", "darkblue", "darkred", "darkgreen"):
+        return True
+    
+    # Handle hex colors - calculate luminance using sRGB formula
+    if color_str.startswith("#"):
+        hex_str = color_str.lstrip("#")
+        if len(hex_str) == 6:
+            try:
+                r, g, b = tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+                # Normalize to 0-1
+                r, g, b = r / 255.0, g / 255.0, b / 255.0
+                # Apply gamma correction
+                r = r / 12.92 if r <= 0.03928 else ((r + 0.055) / 1.055) ** 2.4
+                g = g / 12.92 if g <= 0.03928 else ((g + 0.055) / 1.055) ** 2.4
+                b = b / 12.92 if b <= 0.03928 else ((b + 0.055) / 1.055) ** 2.4
+                # Calculate relative luminance
+                luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                # Consider dark if luminance < 0.5
+                return luminance < 0.5
+            except ValueError:
+                pass
+    
+    # Default to light color (text should be black)
+    return False
+
 def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False):
     """Plot surface density of supernovae in the galactic plane."""
 
@@ -165,11 +200,11 @@ def plot_galactic_distribution(
         hx, hy, hz = highlight_coords.T
     else:
         hx = hy = hz = None
-    text_color = "white" if background == "black" else "black"
-    legend_facecolor = "black" if background == "black" else "white"
+    text_color = "white" if _is_dark_color(background) else "black"
+    legend_facecolor = "black" if _is_dark_color(background) else "white"
     grid_color = "gray"
     if transparent is None:
-        transparent = background == "black"
+        transparent = _is_dark_color(background)
     facecolor = "none" if transparent else background
 
     plt.rcParams["font.family"] = font_family
@@ -669,10 +704,10 @@ def plot_galactic_distribution_with_posterior(
     elif font_family == "serif":
         rcParams["font.serif"] = [font_name]
 
-    facecolor = background if background in ("white", "black") else "white"
-    text_color = "white" if background == "black" else "black"
-    grid_color = "gray" if background == "black" else "lightgray"
-    transparent = transparent if transparent is not None else (background == "black")
+    facecolor = background
+    text_color = "white" if _is_dark_color(background) else "black"
+    grid_color = "gray" if _is_dark_color(background) else "lightgray"
+    transparent = transparent if transparent is not None else _is_dark_color(background)
     plot_facecolor = "none" if transparent else background
 
     # Extract X-Y coordinates from background galactic distribution
@@ -694,8 +729,8 @@ def plot_galactic_distribution_with_posterior(
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
     ax = fig.add_subplot(111, facecolor=facecolor)
 
-    # Plot background galactic distribution (exactly as in plot_galactic_distribution)
-    ax.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    # Plot background galactic distribution (exactly as in plot_galactic_distribution) - rasterized to reduce file size
+    ax.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=True)
     ax.scatter(
         0.0,
         0.0,
@@ -815,7 +850,7 @@ def plot_galactic_distribution_with_posterior(
     ax.grid(color=grid_color, alpha=0.2)
     
     # Add legend (matching plot_galactic_distribution style)
-    legend_facecolor = "black" if background == "black" else "white"
+    legend_facecolor = "black" if _is_dark_color(background) else "white"
     handles, labels = ax.get_legend_handles_labels()
     adjusted_handles = []
     for handle, label in zip(handles, labels):
@@ -848,7 +883,296 @@ def plot_galactic_distribution_with_posterior(
     )
 
     if fname is not None:
-        fig.savefig(fname, dpi=dpi, bbox_inches="tight", transparent=transparent)
+        # Determine format from filename extension
+        fmt = fname.split('.')[-1].lower() if '.' in fname else 'png'
+        # Use lower DPI for vector formats (SVG is vector-based, doesn't need 300 DPI)
+        save_dpi = 100 if fmt == 'svg' else dpi
+        fig.savefig(fname, dpi=save_dpi, bbox_inches="tight", transparent=transparent)
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    plt.rcdefaults()
+    return fig
+
+
+def plot_galactic_distribution_with_posterior_zoom(
+    galactic_coords: np.ndarray,
+    posterior_ra: np.ndarray,
+    posterior_dec: np.ndarray,
+    posterior_distance: np.ndarray,
+    true_ra: Optional[float] = None,
+    true_dec: Optional[float] = None,
+    true_distance: Optional[float] = None,
+    sun_location: Optional[np.ndarray] = None,
+    fname: Optional[str] = None,
+    figsize: tuple = (4.528, 4.528),
+    scatter_size: float = 0.0001,
+    sun_marker_size: float = 400,
+    background: str = "white",
+    dpi: int = 300,
+    show: bool = False,
+    font_family: str = "serif",
+    font_name: str = "Times New Roman",
+    transparent: bool = False,
+) -> plt.Figure:
+    """Plot galactic distribution (X-Y plane) with posterior contours in 10 kpc zoom around sun.
+    
+    This is a zoomed version of plot_galactic_distribution_with_posterior that shows only
+    the region within 10 kpc of the sun, with no legend, ticks, or axis markers.
+    
+    Args:
+        galactic_coords: Background galactic coordinates (N, 3) in kpc
+        posterior_ra: Posterior RA samples (radians)
+        posterior_dec: Posterior Dec samples (radians)
+        posterior_distance: Posterior distance samples (kpc)
+        true_ra: True RA (radians)
+        true_dec: True Dec (radians)
+        true_distance: True distance (kpc)
+        sun_location: Sun location in galactocentric frame (default [0.0, 8.178, 0.0208])
+        fname: Output filename
+        figsize: Figure size
+        scatter_size: Size of background scatter points
+        sun_marker_size: Size of sun marker
+        background: Background color
+        dpi: Resolution for saving
+        show: Whether to display plot
+        font_family: Font family
+        font_name: Font name
+        transparent: Whether to save transparent
+    
+    Returns:
+        Matplotlib figure
+    """
+    if sun_location is None:
+        sun_location = np.array([0.0, 8.178, 0.0208])
+    
+    # Set up plot styling
+    rcParams["font.family"] = font_family
+    rcParams["font.size"] = 18
+    if font_family == "sans-serif":
+        rcParams["font.sans-serif"] = [font_name]
+    elif font_family == "serif":
+        rcParams["font.serif"] = [font_name]
+
+    facecolor = background
+    text_color = "white" if _is_dark_color(background) else "black"
+    grid_color = "gray" if _is_dark_color(background) else "lightgray"
+    transparent = transparent if transparent is not None else _is_dark_color(background)
+    plot_facecolor = "none"  # Always transparent
+    ax_facecolor = "none"  # Always transparent so clip path creates circular boundary
+
+    # Extract X-Y coordinates from background galactic distribution
+    x = galactic_coords[:, 0]
+    y = galactic_coords[:, 1]
+    
+    # Define zoom radius for filtering
+    zoom_radius = 10.0
+    
+    # Filter background stars to only those within zoom_radius of sun location (X-Y plane)
+    distances_from_sun = np.sqrt((x - sun_location[0])**2 + (y - sun_location[1])**2)
+    within_radius = distances_from_sun <= zoom_radius
+    x_filtered = x[within_radius]
+    y_filtered = y[within_radius]
+
+    # Transform posterior samples to galactic coordinates
+    from ..supernovae.supernovae import Supernovae
+    sn_temp = Supernovae()  # Temporary instance for coordinate transformation
+    post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
+        posterior_ra, posterior_dec, posterior_distance
+    )
+    
+    # Convert posterior from heliocentric to galactocentric frame by adding sun location
+    post_x += sun_location[0]
+    post_y += sun_location[1]
+    post_z += sun_location[2]
+
+    # Create figure with proper styling (matching plot_galactic_distribution)
+    fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
+    ax = fig.add_subplot(111, facecolor=ax_facecolor)
+
+    # Plot background galactic distribution (only stars within zoom region) - rasterized to reduce file size
+    ax.scatter(x_filtered, y_filtered, s=scatter_size, alpha=1, c="lightblue", zorder=1, rasterized=True)
+    ax.scatter(
+        0.0,
+        0.0,
+        s=sun_marker_size,
+        c="black",
+        edgecolors="white",
+        linewidths=1.8,
+        marker="o",
+    )
+    ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", zorder=20)
+
+    # Add density contours from posterior samples in X-Y plane
+    from scipy.stats import gaussian_kde
+    from matplotlib.colors import to_rgba
+    
+    # Build KDE from posterior X-Y coordinates for credible contours
+    xy_data = np.vstack([post_x, post_y])
+    try:
+        kde = gaussian_kde(xy_data)
+        
+        # Create grid for evaluating KDE (restricted to zoom region)
+        x_min = sun_location[0] - zoom_radius
+        x_max = sun_location[0] + zoom_radius
+        y_min = sun_location[1] - zoom_radius
+        y_max = sun_location[1] + zoom_radius
+        
+        x_grid = np.linspace(x_min, x_max, 200)
+        y_grid = np.linspace(y_min, y_max, 200)
+        X_mesh, Y_mesh = np.meshgrid(x_grid, y_grid)
+        positions = np.vstack([X_mesh.ravel(), Y_mesh.ravel()])
+        density = kde(positions).reshape(X_mesh.shape)
+        
+        # Compute credible levels from density CDF
+        sorted_density = np.sort(density.ravel())[::-1]
+        cdf = np.cumsum(sorted_density) / np.sum(sorted_density)
+        
+        posterior_probs = [0.68, 0.90, 0.95]
+        contour_levels = []
+        for p in posterior_probs:
+            idx = np.searchsorted(cdf, p, side="left")
+            idx = min(idx, len(sorted_density) - 1)
+            contour_levels.append(float(sorted_density[idx]))
+        
+        contour_levels = np.sort(contour_levels)
+        contour_top = max(contour_levels[-1] * 1.001, np.max(sorted_density) * 1.001)
+        contour_fill_levels = np.concatenate([contour_levels, [contour_top]])
+        
+        # Red fill colors matching celestial map
+        red_fill_colors = [
+            to_rgba("red", alpha=0.40),    # 68%
+            to_rgba("red", alpha=0.62),    # 90%
+            to_rgba("red", alpha=0.88),    # 95%
+        ]
+        
+        # Plot filled contours as overlay (no label - not in legend)
+        ax.contourf(
+            X_mesh,
+            Y_mesh,
+            density,
+            levels=contour_fill_levels,
+            colors=red_fill_colors,
+            antialiased=True,
+        )
+    except Exception as e:
+        # If KDE fails, just skip contours
+        pass
+
+    # Plot true location if provided
+    if true_ra is not None and true_dec is not None and true_distance is not None:
+        true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
+            np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
+        )
+        # Convert to galactocentric frame by adding sun location
+        true_x += sun_location[0]
+        true_y += sun_location[1]
+        true_z += sun_location[2]
+        # Plot with same marker style as celestial map (deepskyblue "x")
+        ax.scatter(
+            true_x,
+            true_y,
+            s=120,
+            marker="x",
+            c="deepskyblue",
+            linewidths=1.8,
+            zorder=10,
+        )
+
+    # Style axes exactly like plot_galactic_distribution but zoomed
+    ax.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
+    for spine in ax.spines.values():
+        spine.set_color(text_color)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    
+    # Set zoom limits around sun (10 kpc radius) with small buffer to prevent border clipping
+    buffer = 0.3  # Small buffer in kpc to prevent clipping at edges
+    ax.set_xlim(sun_location[0] - zoom_radius - buffer, sun_location[0] + zoom_radius + buffer)
+    ax.set_ylim(sun_location[1] - zoom_radius - buffer, sun_location[1] + zoom_radius + buffer)
+    
+    # No clip path - circles will define the boundary
+    
+    # Remove ticks and axis markers
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    
+    # Remove spine bounds
+    ax.spines["bottom"].set_bounds(0, 0)
+    ax.spines["left"].set_bounds(0, 0)
+    
+    ax.set_aspect("equal")
+    
+    # Add filled circle patch with background color underneath everything (zorder=0)
+    # Only add when NOT transparent
+    if not transparent:
+        circle_fill = mpatches.Circle(
+            (sun_location[0], sun_location[1]),
+            zoom_radius,
+            fill=True,
+            facecolor=background,
+            edgecolor="none",
+            zorder=0
+        )
+        ax.add_patch(circle_fill)
+    
+    # Add white dashed border around the circle
+    circle_border = mpatches.Circle(
+        (sun_location[0], sun_location[1]),
+        zoom_radius,
+        fill=False,
+        edgecolor="white",
+        linestyle="--",
+        linewidth=2.5,
+        zorder=15
+    )
+    ax.add_patch(circle_border)
+    
+    # Add arrow and text showing radius from sun to top of circle
+    arrow_start_y = sun_location[1]
+    arrow_end_y = sun_location[1] + zoom_radius
+    arrow_x = sun_location[0]
+    
+    # Draw arrow from sun to top of circle
+    ax.annotate(
+        "",
+        xy=(arrow_x, arrow_end_y),
+        xytext=(arrow_x, arrow_start_y),
+        arrowprops=dict(
+            arrowstyle="<->",
+            color="white",
+            lw=4.0,
+            zorder=16
+        )
+    )
+    
+    # Add text label for radius
+    text_y = sun_location[1] + zoom_radius / 2
+    ax.text(
+        arrow_x + 1.0,
+        text_y,
+        "10 kpc",
+        fontsize=10,
+        color="white",
+        verticalalignment="center",
+        zorder=16
+    )
+    
+    ax.grid(color=grid_color, alpha=0.2)
+
+    if fname is not None:
+        # Determine format from filename extension
+        fmt = fname.split('.')[-1].lower() if '.' in fname else 'png'
+        # Use lower DPI for vector formats (SVG is vector-based, doesn't need 300 DPI)
+        save_dpi = 100 if fmt == 'svg' else dpi
+        fig.savefig(fname, dpi=save_dpi, bbox_inches="tight", transparent=transparent, format=fmt)
 
     if show:
         plt.show()
@@ -884,7 +1208,7 @@ def plot_reconstruction_distribution(
         font_name (str): Specific font name
     """
     set_plot_style(background, font_family, font_name)
-    vline_color = "white" if background == "black" else "black"
+    vline_color = "white" if _is_dark_color(background) else "black"
 
     # Prepare data
     reconstructed_signals = np.array(reconstructed_signals)
@@ -1156,7 +1480,7 @@ def create_snr_variation_gif(
         
         # Add SNR text annotation to the figure
         ax = fig.gca()
-        text_color = "white" if background == "black" else "black"
+        text_color = "white" if _is_dark_color(background) else "black"
         ax.text(0.98, 0.98, f'SNR = {target_snr:.1f}',
                 transform=ax.transAxes,
                 fontsize=16, color=text_color,
@@ -1217,7 +1541,7 @@ def plot_sky_localisation(
         plt.Figure: The matplotlib figure object
     """
     # Set up colors based on background
-    if background == "black":
+    if _is_dark_color(background):
         text_color = "white"
         grid_color = "black"
         grid_alpha = 0.5

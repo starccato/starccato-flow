@@ -89,7 +89,11 @@ def plot_signal_grid(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', transparent=(background=="black"))
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
     plt.show()
     plt.rcdefaults()
@@ -205,7 +209,11 @@ def plot_detector_signal_channels(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=transparent)
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', transparent=transparent)
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=transparent)
 
     plt.show()
     plt.rcdefaults()
@@ -272,7 +280,11 @@ def plot_candidate_signal(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', transparent=(background=="black"))
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
         plt.show()
         plt.rcdefaults()
     
@@ -354,7 +366,11 @@ def plot_reconstruction(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', transparent=False)
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
 
     plt.show()
     plt.rcdefaults()
@@ -400,8 +416,12 @@ def plot_single_signal(
     plt.grid(True)
 
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", 
-                   transparent=(background=="black"))
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', transparent=(background=="black"))
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                       transparent=(background=="black"))
     
     plt.show()
     plt.rcdefaults()
@@ -484,9 +504,10 @@ def plot_signal_distribution(
 
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", 
-                   transparent=(background=="black"))
-
-    plt.show()
-    plt.rcdefaults()
-    return fig
+        if fname.endswith('.svg'):
+            plt.rcParams['svg.fonttype'] = 'none'
+            plt.savefig(fname, format='svg', 
+                       transparent=(background=="black"))
+        else:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", 
+                       transparent=(background=="black"))
