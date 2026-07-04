@@ -788,12 +788,28 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         ra_pn = ra_rot_posterior[post_north]
         dec_pn = dec_posterior[post_north]
+        
+        # Detect and handle RA wrapping at 0/2π boundary
+        # If samples span > π radians, shift to avoid discontinuity
+        if ra_pn.size > 0:
+            ra_range = np.max(ra_pn) - np.min(ra_pn)
+            if ra_range > np.pi:
+                # Likely wrapping issue - shift samples > π to negative range
+                ra_pn = np.where(ra_pn > np.pi, ra_pn - 2*np.pi, ra_pn)
+        
         r_pn = (np.pi / 2 - dec_pn) / (np.pi / 2)
         x_pn = r_pn * np.sin(ra_pn)
         y_pn = r_pn * np.cos(ra_pn)
 
         ra_ps = ra_rot_posterior[post_south]
         dec_ps = dec_posterior[post_south]
+        
+        # Same wrapping fix for south hemisphere
+        if ra_ps.size > 0:
+            ra_range = np.max(ra_ps) - np.min(ra_ps)
+            if ra_range > np.pi:
+                ra_ps = np.where(ra_ps > np.pi, ra_ps - 2*np.pi, ra_ps)
+        
         r_ps = (np.pi / 2 + dec_ps) / (np.pi / 2)
         x_ps = -r_ps * np.sin(ra_ps)
         y_ps = r_ps * np.cos(ra_ps)
