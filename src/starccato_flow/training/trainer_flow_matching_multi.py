@@ -1120,9 +1120,9 @@ class FlowMatchingTrainerMulti:
             print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
             
             # For SVG output, use a reduced sample size to keep file size manageable
-            # SVG files with many points can become very large; 1000 points provides good density visualization
+            # SVG files with many points can become very large; 500-800 points provides good density visualization
             if fname.endswith('.svg'):
-                max_samples = min(1000, len(ra_samples))
+                max_samples = min(800, len(ra_samples))
                 sample_indices = np.linspace(0, len(ra_samples) - 1, max_samples, dtype=int)
                 ra_samples = ra_samples[sample_indices]
                 dec_samples = dec_samples[sample_indices]
@@ -1143,8 +1143,8 @@ class FlowMatchingTrainerMulti:
             posterior_dec_samples=dec_samples,
             true_ra_override=true_ra,
             true_dec_override=true_dec,
-            show_constellation_borders=True,
-            show_important_constellation_labels=True,
+            show_constellation_borders=not fname.endswith('.svg'),  # Skip borders for SVG to reduce file size
+            show_important_constellation_labels=not fname.endswith('.svg'),  # Skip labels for SVG
             dpi=150 if fname.endswith('.svg') else 300,  # Lower DPI for SVG to reduce file size
             background="black",
             font_family=font_family,
