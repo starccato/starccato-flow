@@ -545,11 +545,16 @@ class FlowMatchingTrainerMulti:
         )
         
         # Clip posterior samples to valid parameter ranges
-        posterior_samples_denorm = np.clip(
-            posterior_samples_denorm,
-            self.training_dataset.shared_min_theta,
-            self.training_dataset.shared_max_theta
-        )
+        # Use dataset bounds if available, otherwise skip clipping
+        if (hasattr(self.training_dataset, 'shared_min_theta') and 
+            hasattr(self.training_dataset, 'shared_max_theta') and
+            len(self.training_dataset.shared_min_theta) > 0 and
+            len(self.training_dataset.shared_max_theta) > 0):
+            posterior_samples_denorm = np.clip(
+                posterior_samples_denorm,
+                self.training_dataset.shared_min_theta,
+                self.training_dataset.shared_max_theta
+            )
         
         self.plot_corner_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
@@ -960,30 +965,34 @@ class FlowMatchingTrainerMulti:
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
         """
+        from starccato_flow.utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
+        
         # Convert parameter names to LaTeX labels using plotting_defaults
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
         
-        # Calculate axis ranges from denormalized posterior samples
-        mins = np.min(posterior_samples_denorm, axis=0)
-        maxs = np.max(posterior_samples_denorm, axis=0)
+        # Use fixed parameter ranges from plotting_defaults for consistent corner plots
+        ranges = []
+        for param in self.parameters_to_estimate:
+            if param in PARAMETER_RANGES:
+                ranges.append(PARAMETER_RANGES[param])
+            else:
+                # Fallback to data-driven bounds if parameter not in defaults
+                idx = self.parameters_to_estimate.index(param)
+                mins = np.min(posterior_samples_denorm[:, idx])
+                maxs = np.max(posterior_samples_denorm[:, idx])
+                span = max(maxs - mins, 1e-8)
+                pad = 0.03 * span
+                ranges.append((float(mins - pad), float(maxs + pad)))
         
-        span = np.maximum(maxs - mins, 1e-8)
-        pad = 0.03 * span
-        ranges = [
-            (float(mins[i] - pad[i]), float(maxs[i] + pad[i]))
-            for i in range(len(mins))
-        ]
-        
-        # Debug: print ranges for each parameter
-        print("\nPlot axis ranges (extracted parameter space):")
-        for i, label in enumerate(self.parameters_to_estimate):
-            print(f"  {label:20s}: {ranges[i]}")
-
-        # manually set limits on d if it's in the extracted parameters
+        # Override distance range if needed (already in PARAMETER_RANGES but be explicit)
         if 'd' in self.parameters_to_estimate:
             d_idx = self.parameters_to_estimate.index('d')
             ranges[d_idx] = (0.1, MAX_DISTANCE_KPC)
-            print(f"  Override d range to: {ranges[d_idx]}")
+        
+        # Debug: print ranges for each parameter
+        print("\nPlot axis ranges (from PARAMETER_RANGES):")
+        for i, label in enumerate(self.parameters_to_estimate):
+            print(f"  {label:20s}: {ranges[i]}")
 
         # Debug: validate ranges and samples before plotting
         print("\nDebug: Validating ranges and samples...")
