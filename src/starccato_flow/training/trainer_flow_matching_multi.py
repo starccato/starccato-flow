@@ -926,11 +926,6 @@ class FlowMatchingTrainerMulti:
                 )
             
             samples_cpu = posterior_samples.detach().cpu().numpy()
-            
-            # Clip samples to valid normalized range [-1, 1] to prevent denormalization errors
-            # This is necessary because the unconstrained velocity field can drift outside bounds during ODE integration
-            samples_cpu = np.clip(samples_cpu, -1.0, 1.0)
-            
             true_params_norm = params.detach().cpu().numpy().flatten()
             
             # DEBUG: Check raw flow outputs (before denormalization)
@@ -1004,6 +999,14 @@ class FlowMatchingTrainerMulti:
         """
         from starccato_flow.utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
         
+        # Clip posterior samples to valid ranges for corner plot visualization only
+        # This prevents histogram errors from out-of-bounds samples without affecting sky plots
+        posterior_samples_clipped = posterior_samples_denorm.copy()
+        for i, param in enumerate(self.parameters_to_estimate):
+            if param in PARAMETER_RANGES:
+                min_val, max_val = PARAMETER_RANGES[param]
+                posterior_samples_clipped[:, i] = np.clip(posterior_samples_clipped[:, i], min_val, max_val)
+        
         # Convert parameter names to LaTeX labels using plotting_defaults
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
         
@@ -1016,8 +1019,8 @@ class FlowMatchingTrainerMulti:
             else:
                 # Fallback: use data-driven bounds from the actual samples
                 i = self.parameters_to_estimate.index(param)
-                sample_min = np.nanmin(posterior_samples_denorm[:, i])
-                sample_max = np.nanmax(posterior_samples_denorm[:, i])
+                sample_min = np.nanmin(posterior_samples_clipped[:, i])
+                sample_max = np.nanmax(posterior_samples_clipped[:, i])
                 span = max(sample_max - sample_min, 1e-8)
                 pad = 0.03 * span
                 ranges.append((float(sample_min - pad), float(sample_max + pad)))
@@ -1069,7 +1072,7 @@ class FlowMatchingTrainerMulti:
             print("This may cause corner plot to fail. Consider expanding ranges or checking sample bounds.")
         
         plot_corner(
-            samples_cpu=posterior_samples_denorm,
+            samples_cpu=posterior_samples_clipped,
             true_param=true_param_denorm,
             fname=fname,
             labels=latex_labels,
