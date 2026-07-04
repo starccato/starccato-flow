@@ -1666,9 +1666,10 @@ def plot_galactic_supernovae_polar_hemispheres(
             with open(fname, 'r', encoding='utf-8') as f:
                 svg_content = f.read()
             
-            # Reduce decimal precision in coordinates (8 decimals → 2 decimals)
+            # Reduce decimal precision in coordinates (8 decimals → 4 decimals)
             # This regex finds numbers with many decimal places and rounds them
-            svg_content = re.sub(r'(\d+\.\d{3,})', lambda m: f'{float(m.group(1)):.2f}', svg_content)
+            # 4 decimals is enough for visual quality while reducing file size
+            svg_content = re.sub(r'(\d+\.\d{5,})', lambda m: f'{float(m.group(1)):.4f}', svg_content)
             
             with open(fname, 'w', encoding='utf-8') as f:
                 f.write(svg_content)
