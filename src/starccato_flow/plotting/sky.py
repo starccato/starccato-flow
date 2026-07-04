@@ -1515,6 +1515,69 @@ def plot_galactic_supernovae_polar_hemispheres(
             rasterized=True,
         )
 
+    # Plot background stars (10000 from northern, 2500 from southern hemisphere)
+    np.random.seed(42)  # For reproducibility
+    
+    # Split supernovae into north and south hemispheres
+    north_mask = dec_supernovae >= 0
+    south_mask = dec_supernovae < 0
+    
+    ra_n_all = ra_rot_supernovae[north_mask]
+    dec_n_all = dec_supernovae[north_mask]
+    
+    ra_s_all = ra_rot_supernovae[south_mask]
+    dec_s_all = dec_supernovae[south_mask]
+    
+    # Sample 20000 from northern hemisphere
+    if len(ra_n_all) > 20000:
+        sample_indices_n = np.random.choice(len(ra_n_all), size=20000, replace=False)
+        ra_stars_n = ra_n_all[sample_indices_n]
+        dec_stars_n = dec_n_all[sample_indices_n]
+    else:
+        ra_stars_n = ra_n_all
+        dec_stars_n = dec_n_all
+    
+    if len(ra_stars_n) > 0:
+        r_stars_n = (np.pi / 2 - dec_stars_n) / (np.pi / 2)
+        x_stars_n = r_stars_n * np.sin(ra_stars_n)
+        y_stars_n = r_stars_n * np.cos(ra_stars_n)
+        
+        ax_l.scatter(
+            x_stars_n,
+            y_stars_n,
+            s=0.5,
+            c="white",
+            edgecolors="none",
+            alpha=0.3,
+            zorder=6,
+            rasterized=True,
+        )
+    
+    # Sample 2500 from southern hemisphere
+    if len(ra_s_all) > 2500:
+        sample_indices_s = np.random.choice(len(ra_s_all), size=2500, replace=False)
+        ra_stars_s = ra_s_all[sample_indices_s]
+        dec_stars_s = dec_s_all[sample_indices_s]
+    else:
+        ra_stars_s = ra_s_all
+        dec_stars_s = dec_s_all
+    
+    if len(ra_stars_s) > 0:
+        r_stars_s = (np.pi / 2 + dec_stars_s) / (np.pi / 2)
+        x_stars_s = -r_stars_s * np.sin(ra_stars_s)
+        y_stars_s = r_stars_s * np.cos(ra_stars_s)
+        
+        ax_r.scatter(
+            x_stars_s,
+            y_stars_s,
+            s=0.5,
+            c="white",
+            edgecolors="none",
+            alpha=0.3,
+            zorder=6,
+            rasterized=True,
+        )
+
     # Plot detector markers when example mode is enabled.
     if example and detector_markers:
         for det_name, det_ra, det_dec, det_color in detector_markers:
