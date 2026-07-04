@@ -34,6 +34,6 @@ PARAMETER_RANGES = {
     # Sky parameters
     'ra': (-np.pi, np.pi),  # Radians
     'dec': (-np.pi/2, np.pi/2),  # Radians
-    'd': (0, 10000),  # kiloparsecs
+    'd': (0, 10),  # kiloparsecs (matches MAX_DISTANCE_KPC)
     'psi': (0, np.pi),  # Radians
 }
