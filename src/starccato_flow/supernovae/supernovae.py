@@ -62,9 +62,8 @@ class Supernovae:
             np.random.shuffle(self._galactic_coords)
             self._galactic_coords = self._galactic_coords[:limit]
         
-        # Compute derived quantities
+        # Compute derived quantities (distances are computed within _compute_equatorial_coordinates)
         self._compute_equatorial_coordinates()
-        self._compute_distances()
         
         print(f"✓ Loaded {len(self._galactic_coords)} supernova locations from {filepath}")
 
@@ -133,9 +132,8 @@ class Supernovae:
         # Store galactic coordinates
         self._galactic_coords = np.column_stack([x, y, z])
         
-        # Compute derived quantities
+        # Compute derived quantities (distances are computed within _compute_equatorial_coordinates)
         self._compute_equatorial_coordinates()
-        self._compute_distances()
             
     def sample_locations(self, num_supernovae: int, min_kiloparsec: float = 0.0, max_kiloparsec: float = 16800.0) -> np.ndarray:
         """Sample supernova locations from region between min_kiloparsec and max_kiloparsec from Earth."""
@@ -192,6 +190,8 @@ class Supernovae:
         icrs = gal_centric.transform_to(ICRS())
         ra = icrs.ra.rad
         dec = icrs.dec.rad
+        # Use the distance computed by Astropy (this is line-of-sight geocentric distance)
+        distance = icrs.distance.kpc
         
         # Apply rotation offset if set (additional rotation around z-axis)
         if self.rotation_offset != 0.0:
@@ -209,63 +209,65 @@ class Supernovae:
             dec = np.arcsin(z_rot)
         
         self._equatorial_coords = np.column_stack([ra, dec])
+        # Store the Astropy-computed distances for proper roundtripping
+        self._distances = distance
     
     
     def equatorial_to_galactic(self, ra: np.ndarray, dec: np.ndarray, distance: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Convert equatorial (RA, Dec, distance) to galactic Cartesian.
         
         Args:
-            ra: Right Ascension in radians
-            dec: Declination in radians
+            ra: Right Ascension in radians (includes any rotation_offset)
+            dec: Declination in radians (includes any rotation_offset)
             distance: Distance in kpc
             
         Returns:
-            x, y, z: Galactic Cartesian coordinates in kpc
+            x, y, z: Galactic Cartesian coordinates in kpc (in original galactic frame)
         """
-        # Convert from spherical to Cartesian in equatorial frame
-        x_eq = distance * np.cos(dec) * np.cos(ra)
-        y_eq = distance * np.cos(dec) * np.sin(ra)
-        z_eq = distance * np.sin(dec)
+        from astropy.coordinates import ICRS, Galactocentric
+        import astropy.units as u
         
-        # Apply inverse rotation to undo rotation_offset
+        # The input RA/Dec have rotation_offset applied, so we need to undo it first
+        ra_unrotated = ra.copy() if isinstance(ra, np.ndarray) else np.array(ra)
+        dec_unrotated = dec.copy() if isinstance(dec, np.ndarray) else np.array(dec)
+        
         if self.rotation_offset != 0.0:
+            # Undo the rotation by applying negative rotation
             cos_rot = np.cos(-self.rotation_offset)
             sin_rot = np.sin(-self.rotation_offset)
-            x_eq_rot = cos_rot * x_eq - sin_rot * y_eq
-            y_eq_rot = sin_rot * x_eq + cos_rot * y_eq
-            x_eq, y_eq = x_eq_rot, y_eq_rot
+            
+            # Convert to Cartesian on unit sphere
+            x_eq = np.cos(dec_unrotated) * np.cos(ra_unrotated)
+            y_eq = np.cos(dec_unrotated) * np.sin(ra_unrotated)
+            z_eq = np.sin(dec_unrotated)
+            
+            # Apply z-axis rotation
+            x_rot = cos_rot * x_eq - sin_rot * y_eq
+            y_rot = sin_rot * x_eq + cos_rot * y_eq
+            z_rot = z_eq
+            
+            # Convert back to spherical
+            ra_unrotated = np.arctan2(y_rot, x_rot)
+            dec_unrotated = np.arcsin(z_rot)
         
-        # Apply inverse of the galactic→equatorial rotation matrix
-        # Standard rotation matrix (from _compute_equatorial_coordinates)
-        T11, T12, T13 = -0.0548755604, -0.8734370902, -0.4838350155
-        T21, T22, T23 = +0.4941094279, -0.4448296300, +0.7469822445
-        T31, T32, T33 = -0.8676661490, -0.1980763734, +0.4559837762
+        # Create ICRS coordinates with un-rotated RA/Dec
+        icrs = ICRS(ra=ra_unrotated*u.rad, dec=dec_unrotated*u.rad, distance=distance*u.kpc)
         
-        # Transpose to get inverse (rotation matrices are orthogonal)
-        T_inv = np.array([
-            [T11, T21, T31],
-            [T12, T22, T32],
-            [T13, T23, T33]
-        ])
+        # Transform to Galactocentric (sun-relative coordinates)
+        gal_centric = icrs.transform_to(Galactocentric())
         
-        # Apply inverse rotation
-        coords_eq = np.column_stack([x_eq, y_eq, z_eq])
-        coords_std = coords_eq @ T_inv.T
-        X_std, Y_std, Z_std = coords_std.T
+        # Extract Cartesian coordinates (these are sun-relative)
+        x_helio = gal_centric.x.to(u.kpc).value
+        y_helio = gal_centric.y.to(u.kpc).value
+        z_helio = gal_centric.z.to(u.kpc).value
         
-        # Convert from standard galactic to our coordinate system
-        # Standard: X→GC, Y→l=90°, Z→NGP
-        # Our system: x,y in disk plane, z⊥disk, GC at -y direction
-        x_gal = Y_std
-        y_gal = -X_std
-        z_gal = Z_std
+        # Convert back to original galactic frame by adding Sun position
+        # (reverse of: helio_coords = galactic_coords - SUN_LOCATION)
+        x_gal = x_helio + self.SUN_LOCATION[0]
+        y_gal = y_helio + self.SUN_LOCATION[1]
+        z_gal = z_helio + self.SUN_LOCATION[2]
         
-        # Add Earth's position to get galactocentric coordinates
-        x = x_gal + self.EARTH_LOCATION[0]
-        y = y_gal + self.EARTH_LOCATION[1]
-        z = z_gal + self.EARTH_LOCATION[2]
-        
-        return x, y, z
+        return x_gal, y_gal, z_gal
     
     @property
     def galactic_coords(self) -> Optional[np.ndarray]:
@@ -319,16 +321,38 @@ class Supernovae:
         Returns:
             Tuple of (RA, Dec) in radians for the Galactic Center direction from Earth
         """
-        from astropy.coordinates import SkyCoord
+        # Transform (0,0,0) from galactocentric to equatorial using the same transformation
+        # as the rest of the data
+        from astropy.coordinates import Galactocentric, ICRS
         import astropy.units as u
         
-        # Galactic center is at galactic longitude 0, latitude 0
-        gc = SkyCoord(l=0*u.deg, b=0*u.deg, frame='galactic')
+        # Start at galactic center in original galactic frame: (0,0,0)
+        # Subtract SUN_LOCATION to convert to sun-relative (same as _compute_equatorial_coordinates)
+        x_gal = 0.0 - self.SUN_LOCATION[0]
+        y_gal = 0.0 - self.SUN_LOCATION[1]
+        z_gal = 0.0 - self.SUN_LOCATION[2]
         
-        # Convert to ICRS (equatorial) coordinates
-        gc_icrs = gc.icrs
+        # Galactic center is at origin in galactocentric frame
+        gc_gal = Galactocentric(x=x_gal*u.kpc, y=y_gal*u.kpc, z=z_gal*u.kpc)
+        gc_icrs = gc_gal.transform_to(ICRS())
+        
         ra = gc_icrs.ra.rad
         dec = gc_icrs.dec.rad
+        
+        # Apply rotation offset if set (same offset as applied to supernovae)
+        if self.rotation_offset != 0.0:
+            cos_rot = np.cos(self.rotation_offset)
+            sin_rot = np.sin(self.rotation_offset)
+            x_eq = np.cos(dec) * np.cos(ra)
+            y_eq = np.cos(dec) * np.sin(ra)
+            z_eq = np.sin(dec)
+            
+            x_rot = cos_rot * x_eq - sin_rot * y_eq
+            y_rot = sin_rot * x_eq + cos_rot * y_eq
+            z_rot = z_eq
+            
+            ra = np.arctan2(y_rot, x_rot)
+            dec = np.arcsin(z_rot)
         
         return ra, dec
 
