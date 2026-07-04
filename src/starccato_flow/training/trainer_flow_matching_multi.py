@@ -42,7 +42,7 @@ class FlowMatchingTrainerMulti:
         seed: int = 99,
         batch_size: int = BATCH_SIZE,
         num_epochs: int = 256,
-        samples_per_epoch: int = 18000,
+        samples_per_epoch: int = 5000,
         validation_split: float = VALIDATION_SPLIT,
         lr_flow: float = 5e-4,
         checkpoint_interval: int = 16,
@@ -565,6 +565,15 @@ class FlowMatchingTrainerMulti:
             font_name=font_name,
             transparent=transparent
         )
+        # Debug: print true parameters being plotted
+        print(f"\nTrue parameters to plot:")
+        for i, param in enumerate(self.parameters_to_estimate):
+            print(f"  {param}: {true_param_denorm[i]:.6f}")
+            if param == 'ra':
+                print(f"    RA in degrees: {np.rad2deg(true_param_denorm[i]):.2f}°")
+            elif param == 'dec':
+                print(f"    Dec in degrees: {np.rad2deg(true_param_denorm[i]):.2f}°")
+        
         self.plot_sky_localisation_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png") if fname_posterior_sky is None else fname_posterior_sky,
             posterior_samples_denorm=posterior_samples_denorm,
@@ -918,6 +927,17 @@ class FlowMatchingTrainerMulti:
             
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
+            
+            # DEBUG: Check raw flow outputs (before denormalization)
+            print(f"\n=== RAW FLOW OUTPUT (Normalized Space [-1, 1]) ===")
+            print(f"Shape: {samples_cpu.shape}")
+            for i, param_name in enumerate(self.parameters_to_estimate):
+                param_samples = samples_cpu[:, i]
+                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}, "
+                      f"mean={param_samples.mean():.4f}, std={param_samples.std():.4f}")
+                n_outside = np.sum((param_samples < -1.0) | (param_samples > 1.0))
+                if n_outside > 0:
+                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
         
         # Denormalize parameters
         if self.toy:
@@ -938,6 +958,18 @@ class FlowMatchingTrainerMulti:
             true_params_denorm = self._denormalize_extracted_params(
                 true_params_extracted.reshape(1, -1), h_theta_multi_dataset
             ).flatten()
+            
+            # DEBUG: Check denormalized samples
+            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
+            for i, param_name in enumerate(self.parameters_to_estimate):
+                param_samples = samples_denorm[:, i]
+                min_bound = h_theta_multi_dataset.shared_min_theta[i]
+                max_bound = h_theta_multi_dataset.shared_max_theta[i]
+                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                if n_outside > 0:
+                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
         
         t1 = time.time()
         print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
@@ -1070,18 +1102,27 @@ class FlowMatchingTrainerMulti:
         ra_idx = self._get_extracted_index("ra")
         dec_idx = self._get_extracted_index("dec")
         
+        print(f"\nSky Localisation Plot Debug:")
+        print(f"  ra_idx: {ra_idx}, dec_idx: {dec_idx}")
+        print(f"  true_param_denorm shape: {true_param_denorm.shape}")
+        print(f"  parameters_to_estimate: {self.parameters_to_estimate}")
+        
         if ra_idx >= 0 and dec_idx >= 0:
             # Extract RA and Dec from the denormalized extracted parameters
             ra_samples = posterior_samples_denorm[:, ra_idx]
             dec_samples = posterior_samples_denorm[:, dec_idx]
             true_ra = true_param_denorm[ra_idx]
             true_dec = true_param_denorm[dec_idx]
+            print(f"  true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
+            print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
         else:
             # Fallback: assume they are at the end (shouldn't happen with proper setup)
             ra_samples = posterior_samples_denorm[:, -4]
             dec_samples = posterior_samples_denorm[:, -3]
             true_ra = true_param_denorm[-4]
             true_dec = true_param_denorm[-3]
+            print(f"  FALLBACK: true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
+            print(f"  FALLBACK: true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
 
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
