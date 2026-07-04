@@ -965,32 +965,33 @@ class FlowMatchingTrainerMulti:
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
         """
-        from starccato_flow.utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
+        from starccato_flow.utils.plotting_defaults import PARAMETER_LABELS
         
         # Convert parameter names to LaTeX labels using plotting_defaults
         latex_labels = [PARAMETER_LABELS.get(param, param) for param in self.parameters_to_estimate]
         
-        # Use fixed parameter ranges from plotting_defaults for consistent corner plots
+        # Use actual training dataset bounds for consistent corner plots
+        # This ensures samples don't fall outside the range and cause histogram errors
         ranges = []
-        for param in self.parameters_to_estimate:
-            if param in PARAMETER_RANGES:
-                ranges.append(PARAMETER_RANGES[param])
+        for i, param in enumerate(self.parameters_to_estimate):
+            # Get bounds from training dataset
+            if (hasattr(self.training_dataset, 'shared_min_theta') and 
+                hasattr(self.training_dataset, 'shared_max_theta') and
+                len(self.training_dataset.shared_min_theta) > i and
+                len(self.training_dataset.shared_max_theta) > i):
+                min_val = float(self.training_dataset.shared_min_theta[i])
+                max_val = float(self.training_dataset.shared_max_theta[i])
+                ranges.append((min_val, max_val))
             else:
-                # Fallback to data-driven bounds if parameter not in defaults
-                idx = self.parameters_to_estimate.index(param)
-                mins = np.min(posterior_samples_denorm[:, idx])
-                maxs = np.max(posterior_samples_denorm[:, idx])
-                span = max(maxs - mins, 1e-8)
+                # Fallback: use data-driven bounds from the actual samples
+                sample_min = np.nanmin(posterior_samples_denorm[:, i])
+                sample_max = np.nanmax(posterior_samples_denorm[:, i])
+                span = max(sample_max - sample_min, 1e-8)
                 pad = 0.03 * span
-                ranges.append((float(mins - pad), float(maxs + pad)))
-        
-        # Override distance range if needed (already in PARAMETER_RANGES but be explicit)
-        if 'd' in self.parameters_to_estimate:
-            d_idx = self.parameters_to_estimate.index('d')
-            ranges[d_idx] = (0.1, MAX_DISTANCE_KPC)
+                ranges.append((float(sample_min - pad), float(sample_max + pad)))
         
         # Debug: print ranges for each parameter
-        print("\nPlot axis ranges (from PARAMETER_RANGES):")
+        print("\nPlot axis ranges (from training dataset bounds):")
         for i, label in enumerate(self.parameters_to_estimate):
             print(f"  {label:20s}: {ranges[i]}")
 
@@ -1007,8 +1008,9 @@ class FlowMatchingTrainerMulti:
         print(f"  NaN values in samples: {nan_count}")
         print(f"  Inf values in samples: {inf_count}")
         
-        # Validate ranges
+        # Validate ranges and check if samples fall within them
         print(f"  Validating ranges:")
+        samples_in_range = True
         for i, (r_min, r_max) in enumerate(ranges):
             if r_min >= r_max:
                 print(f"    ERROR: Range {i} ({r_min}, {r_max}) is invalid (min >= max)!")
@@ -1019,7 +1021,21 @@ class FlowMatchingTrainerMulti:
                 sample_min = np.nanmin(posterior_samples_denorm[:, i])
                 sample_max = np.nanmax(posterior_samples_denorm[:, i])
                 print(f"      Sample range: [{sample_min:.4f}, {sample_max:.4f}]")
-
+                
+                # Check if any samples fall within the specified range
+                in_range = np.sum((posterior_samples_denorm[:, i] >= r_min) & 
+                                 (posterior_samples_denorm[:, i] <= r_max))
+                pct_in_range = 100.0 * in_range / len(posterior_samples_denorm)
+                print(f"      Samples in range: {in_range}/{len(posterior_samples_denorm)} ({pct_in_range:.1f}%)")
+                
+                if pct_in_range < 1:
+                    print(f"      WARNING: <1% of samples fall in this range!")
+                    samples_in_range = False
+        
+        if not samples_in_range:
+            print("\nWARNING: Some parameters have <1% of samples in the specified range.")
+            print("This may cause corner plot to fail. Consider expanding ranges or checking sample bounds.")
+        
         plot_corner(
             samples_cpu=posterior_samples_denorm,
             true_param=true_param_denorm,
