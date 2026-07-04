@@ -544,6 +544,13 @@ class FlowMatchingTrainerMulti:
             case, active_h_theta_multi, num_samples=3000, n_steps=20
         )
         
+        # Clip posterior samples to valid parameter ranges
+        posterior_samples_denorm = np.clip(
+            posterior_samples_denorm,
+            self.training_dataset.shared_min_theta,
+            self.training_dataset.shared_max_theta
+        )
+        
         self.plot_corner_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
             posterior_samples_denorm=posterior_samples_denorm,

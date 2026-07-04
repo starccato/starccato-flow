@@ -236,6 +236,13 @@ class Supernovae:
             ra_unrotated = np.arctan2(y_rot, x_rot)
             dec_unrotated = np.arcsin(z_rot)
         
+        # Enforce physical bounds
+        # Declination must be within ±π/2
+        dec_unrotated = np.clip(dec_unrotated, -np.pi/2, np.pi/2)
+        # Distance must be positive (physical constraint)
+        distance = np.atleast_1d(distance)
+        distance = np.clip(distance, 0.01, None)  # Minimum 10 pc, no maximum
+        
         # Create ICRS coordinates with un-rotated RA/Dec
         icrs = ICRS(ra=ra_unrotated*u.rad, dec=dec_unrotated*u.rad, distance=distance*u.kpc)
         
