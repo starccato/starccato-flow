@@ -926,6 +926,11 @@ class FlowMatchingTrainerMulti:
                 )
             
             samples_cpu = posterior_samples.detach().cpu().numpy()
+            
+            # Clip samples to valid normalized range [-1, 1] to prevent denormalization errors
+            # This is necessary because the unconstrained velocity field can drift outside bounds during ODE integration
+            # samples_cpu = np.clip(samples_cpu, -1.0, 1.0)
+            
             true_params_norm = params.detach().cpu().numpy().flatten()
             
             # DEBUG: Check raw flow outputs (before denormalization)
