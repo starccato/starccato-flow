@@ -15,6 +15,23 @@ from ..utils.plotting_defaults import (
 )
 
 
+def _map_detector_labels(labels: Sequence[str]) -> Tuple[str, ...]:
+    """Map detector short codes to full names for display.
+    
+    Args:
+        labels: Sequence of detector labels (e.g., ["H1", "L1", "V1"])
+        
+    Returns:
+        Tuple of full detector names for display
+    """
+    detector_map = {
+        "H1": "LIGO Hanford",
+        "L1": "LIGO Livingston",
+        "V1": "Virgo",
+    }
+    return tuple(detector_map.get(label, label) for label in labels)
+
+
 def plot_signal_grid(
     signals: np.ndarray,
     noisy_signals: np.ndarray,
@@ -166,6 +183,9 @@ def plot_detector_signal_channels(
     y_min = -max_absolute_value * y_expand
     y_max = max_absolute_value * y_expand
 
+    # Map detector labels to full names for display
+    display_labels = _map_detector_labels(detector_labels)
+
     for i, ax in enumerate(axes):
         y_clean = channel_signals[i].flatten()
         
@@ -185,7 +205,7 @@ def plot_detector_signal_channels(
 
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
         ax.grid(False)
-        ax.set_title(detector_labels[i])
+        ax.set_title(display_labels[i])
         ax.tick_params(axis='x', colors=vline_color)
         ax.tick_params(axis='y', colors=vline_color)
 

@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.collections import LineCollection
+from matplotlib.markers import MarkerStyle
 from matplotlib.patches import Circle, Patch
+from matplotlib.path import Path
 
 from ..utils.plotting_defaults import GENERATED_SIGNAL_COLOUR, SIGNAL_COLOUR
 
@@ -24,7 +26,7 @@ from ..utils.plotting_defaults import (
 
 try:
     import astropy.units as u
-    from astropy.coordinates import SkyCoord
+    from astropy.coordinates import SkyCoord, Galactic, ICRS
 
     _ASTROPY_AVAILABLE = True
 except ImportError:
@@ -37,6 +39,7 @@ IMPORTANT_CONSTELLATIONS = {
     "CMa": "Canis Major",
     "Cru": "Southern Cross",
 }
+
 
 
 def _apply_astropy_ra_rotation_deg(
@@ -272,6 +275,8 @@ def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[s
     return centers
 
 
+
+
 def plot_galactic_supernovae_polar_hemispheres(
     ccsn,
     fname: str = "plots/galactic_supernovae_polar_hemispheres.png",
@@ -290,6 +295,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     example: bool = False,
     transparent: bool = False,
     mode: str = "print",
+    n_background_supernovae: int = 10000,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -316,6 +322,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         example: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
             and highlight the first supernova as the true location.
         mode: Plot mode - "print" for A1 poster (33.07x23.39") or "thesis" for smaller size (12x6.8")
+        n_background_supernovae: Number of closest supernovae to use for background distribution.
+            If not enough supernovae are available, uses all. Default 50000.
     """
     # Configure sizes based on mode
     # Figsize in mm (converted to inches for matplotlib)
@@ -326,7 +334,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             "fontsize_title": 28,
             "fontsize_main": 22,
             "fontsize_label": 28,
-            "fontsize_tick": 18,
+            "fontsize_tick": 12,
             "fontsize_small": 18,
             "fontsize_tiny": 12,
             "fontsize_constellation": 18,
@@ -376,11 +384,11 @@ def plot_galactic_supernovae_polar_hemispheres(
     all_ra = np.mod(np.asarray(ccsn.ra), 2 * np.pi)
     all_dec = np.asarray(ccsn.dec)
     
-    # If distance data available, sample the 50,000 closest supernovae
+    # If distance data available, sample the N closest supernovae
     if hasattr(ccsn, 'distance') and ccsn.distance is not None:
         distances = np.asarray(ccsn.distance)
         sorted_indices = np.argsort(distances)
-        n_sample = min(50000, len(sorted_indices))
+        n_sample = min(n_background_supernovae, len(sorted_indices))
         sample_indices = sorted_indices[:n_sample]
         ra_supernovae = all_ra[sample_indices]
         dec_supernovae = all_dec[sample_indices]
@@ -769,9 +777,9 @@ def plot_galactic_supernovae_polar_hemispheres(
         
         # Prepare detector markers (RA in degrees, Dec in degrees, converted to radians)
         detector_markers = [
-            ("LIGO Hanford", np.deg2rad(240.0), np.deg2rad(46.5), "#e74c3c"),
-            ("LIGO Livingston", np.deg2rad(268.0), np.deg2rad(30.5), "#e74c3c"),
-            ("Virgo", np.deg2rad(10.0), np.deg2rad(43.6), "#9b59b6"),
+            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), "white"),
+            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), "white"),
+            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), "white"),
         ]
 
     # Use the true galactic center for black hole visualization.
@@ -1295,26 +1303,27 @@ def plot_galactic_supernovae_polar_hemispheres(
                 zorder=8,
             )
 
-            if "Acrux" in south_proj and south_proj["Acrux"][0] == pa_panel:
-                _, acx, acy = south_proj["Acrux"]
-                midx = 0.5 * (pax + pbx)
-                midy = 0.5 * (pay + pby)
-                ptr_ax.plot(
-                    [midx, acx],
-                    [midy, acy],
-                    color="#fbbf24",
-                    alpha=0.75,
-                    lw=0.95,
-                    ls="--",
-                    zorder=7,
-                )
+            # not sure why a dashed line is important?
+            # if "Acrux" in south_proj and south_proj["Acrux"][0] == pa_panel:
+            #     _, acx, acy = south_proj["Acrux"]
+            #     midx = 0.5 * (pax + pbx)
+            #     midy = 0.5 * (pay + pby)
+                # ptr_ax.plot(
+                #     [midx, acx],
+                #     [midy, acy],
+                #     color="#fbbf24",
+                #     alpha=0.75,
+                #     lw=0.95,
+                #     ls="--",
+                #     zorder=7,
+                # )
 
     marker_styles = {
-        "Acrux": ("#bbf7d0", 20),
-        "Mimosa": ("#bbf7d0", 18),
-        "Gacrux": ("#bbf7d0", 18),
-        "Imai": ("#bbf7d0", 16),
-        "Epsilon Crucis": ("#bbf7d0", 14),
+        "Acrux": ("#c4b5fd", 20),
+        "Mimosa": ("#c4b5fd", 18),
+        "Gacrux": ("#c4b5fd", 18),
+        "Imai": ("#c4b5fd", 16),
+        "Epsilon Crucis": ("#c4b5fd", 14),
         "Alpha Centauri": ("#fde68a", 20),
         "Beta Centauri": ("#fde68a", 20),
         "Achernar": ("#a5f3fc", 24),
@@ -1338,7 +1347,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         "Pleiades": "Matariki",
         "Acrux": "The Pointers",
     }
-    for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#bbf7d0"), ("Antares", "#fca5a5")):
+    for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5")):
         if label_name not in south_proj:
             continue
         panel, lx, ly = south_proj[label_name]
@@ -1360,132 +1369,200 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=10,
         )
 
+    # Add Southern Cross label
+    if "Gacrux" in south_proj:
+        panel, gx, gy = south_proj["Gacrux"]
+        scx_label_ax = ax_l if panel == "north" else ax_r
+        scx_label_ax.text(
+            gx - 0.03,
+            gy - 0.03,
+            "Southern Cross",
+            color="#c4b5fd",
+            fontsize=fontsize_constellation,
+            ha="right",
+            va="top",
+            zorder=10,
+        )
+
     # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
+    # Brightest star from each of the 88 IAU constellations.
     extra_visible_star_names = [
-        "Sirius",
-        "Canopus",
-        "Rigil Kentaurus",
-        "Hadar",
-        "Achernar",
-        "Acrux",
-        "Mimosa",
-        "Gacrux",
-        "Altair",
-        "Aldebaran",
-        "Antares",
-        "Spica",
-        "Regulus",
-        "Deneb",
-        "Polaris",
-        "Alphard",
-        "Alkaid",
-        "Dubhe",
-        "Merak",
-        "Phecda",
-        "Megrez",
-        "Alioth",
-        "Mizar",
-        "Kochab",
-        "Pherkad",
-        "Mirfak",
-        "Algol",
-        "Hamal",
-        "Almach",
-        "Schedar",
-        "Caph",
-        "Ruchbah",
-        "Segin",
-        "Alpheratz",
-        "Mirach",
-        "Markab",
-        "Scheat",
-        "Enif",
-        "Ankaa",
-        "Menkar",
-        "Diphda",
-        "Fomalhaut",
-        "Deneb Algedi",
-        "Sadalmelik",
-        "Sadalsuud",
-        "Skat",
-        "Nashira",
-        "Albali",
-        "Alnair",
-        "Peacock",
-        "Atria",
-        "Avior",
-        "Miaplacidus",
-        "Alsephina",
-        "Suhail",
-        "Wezen",
-        "Adhara",
-        "Mirzam",
-        "Bellatrix",
-        "Saiph",
-        "Rigel",
-        "Mintaka",
-        "Alnilam",
-        "Alnitak",
-        "Meissa",
-        "Procyon",
-        "Gomeisa",
-        "Castor",
-        "Pollux",
-        "Alhena",
-        "Elnath",
-        "Capella",
-        "Menkalinan",
-        "Alnath",
-        "Rasalhague",
-        "Cebalrai",
-        "Sabik",
-        "Kaus Australis",
-        "Nunki",
-        "Ascella",
-        "Alnasl",
-        "Arkab Prior",
-        "Arkab Posterior",
-        "Vega",
-        "Sheliak",
-        "Sulafat",
-        "Rasalgethi",
-        "Kornephoros",
-        "Izar",
-        "Nekkar",
-        "Seginus",
-        "Arcturus",
-        "Muphrid",
-        "Porrima",
-        "Zubenelgenubi",
-        "Zubeneschamali",
-        "Denebola",
-        "Algieba",
-        "Ras Elased Australis",
-        "Rasalas",
-        "Algenubi",
-        "Chertan",
-        "Alphard",
-        "Cor Caroli",
-        "Menkent",
-        "Alphirk",
-        "Errai",
-        "Alderamin",
-        "Alfirk",
-        "Sadr",
-        "Albireo",
-        "Gienah",
-        "Aljanah",
-        "Rukh",
-        "Tarazed",
-        "Alshain",
-        "Deneb Kaitos",
-        "Mira",
-        "Rigel Kentaurus",
-        "Canopus",
-        "Spica",
-        "Vega",
-        "Deneb",
-        "Altair",
+        # Andromeda (3 main stars)
+        "Alpheratz",        "Mirach",           "Almach",
+        # Antlia (2 main stars)
+        "Alpha Antliae",    "Epsilon Antliae",
+        # Apus (2 main stars)
+        "Alpha Apodis",     "Beta Apodis",
+        # Aquarius (3 main stars)
+        "Sadalmelik",       "Sadachbia",        "Sadalsuud",
+        # Aquila (4 main stars)
+        "Altair",           "Alshain",          "Tarazed",           "Beta Aquilae",
+        # Ara (3 main stars)
+        "Alpha Arae",       "Beta Arae",        "Gamma Arae",
+        # Aries (3 main stars)
+        "Hamal",            "Sheratan",         "Mesarthim",
+        # Auriga (4 main stars)
+        "Capella",          "Theta Aurigae",    "Iota Aurigae",      "Beta Aurigae",
+        # Boötes (5 main stars)
+        "Arcturus",         "Muphrid",          "Izar",              "Pulcherrima",      "Seginus",
+        # Caelum (2 main stars)
+        "Alpha Caeli",      "Gamma Caeli",
+        # Camelopardalis (2 main stars)
+        "Beta Camelopardalis",  "Alpha Camelopardalis",
+        # Cancer (3 main stars)
+        "Altarf",           "Acubens",          "Tzelakot",
+        # Canes Venatici (3 main stars)
+        "Cor Caroli",       "Chara",            "Beta Canum Venaticorum",
+        # Canis Major (4 main stars)
+        "Sirius",           "Canopus",          "Adara",             "Wezen",
+        # Canis Minor (2 main stars)
+        "Procyon",          "Gomeisa",
+        # Capella (2 main stars)
+        "Deneb Algedi",     "Maaz",
+        # Carina (3 main stars)
+        "Canopus",          "Avior",            "Miaplacidus",
+        # Cassiopeia (5 main stars - the W pattern)
+        "Schedar",          "Caph",             "Gamma Cassiopeiae", "Ruchbah",          "Segin",
+        # Centaurus (3 main stars)
+        "Rigil Kentaurus",  "Hadar",            "Muhlifain",
+        # Cepheus (3 main stars)
+        "Alderamin",        "Alfirk",           "Errai",
+        # Cetus (3 main stars)
+        "Menkar",           "Diphda",           "Beta Ceti",
+        # Chamaeleon (2 main stars)
+        "Alpha Chamaeleontis",  "Gamma Chamaeleontis",
+        # Circinus (2 main stars)
+        "Alpha Circini",    "Beta Circini",
+        # Columba (2 main stars)
+        "Phact",            "Wazn",
+        # Coma Berenices (2 main stars)
+        "Diadem",           "Beta Comae Berenices",
+        # Corona Australis (3 main stars)
+        "Alpha Coronae Australis",  "Beta Coronae Australis",  "Gamma Coronae Australis",
+        # Corona Borealis (4 main stars - the arc)
+        "Alphecca",         "Nusakan",          "Theta Coronae Borealis",  "Gamma Coronae Borealis",
+        # Corvus (4 main stars - the diamond)
+        "Gienah",           "Brachium",         "Kraz",              "Algorab",
+        # Crater (3 main stars)
+        "Delta Crateris",   "Alkes",            "Labrum",
+        # Crux (4 main stars - Southern Cross)
+        "Acrux",            "Gacrux",           "Iota Crucis",       "Delta Crucis",
+        # Cygnus (5 main stars - Northern Cross)
+        "Deneb",            "Sadr",             "Delta Cygni",       "Albireo",          "Epsilon Cygni",
+        # Delphinus (4 main stars)
+        "Sualocin",         "Rotanev",          "Gamma Delphini",    "Delta Delphini",
+        # Dorado (2 main stars)
+        "Alpha Doradus",    "Beta Doradus",
+        # Draco (3 main stars)
+        "Eltanin",          "Rastaban",         "Altais",
+        # Equuleus (2 main stars)
+        "Kitalpha",         "Gamma Equulei",
+        # Eridanus (4 main stars)
+        "Achernar",         "Cursa",            "Zanim",             "Azha",
+        # Fornax (2 main stars)
+        "Fornacis",         "Alpha Fornacis",
+        # Gemini (5 main stars - Castor & Pollux twins)
+        "Castor",           "Pollux",           "Alhena",            "Wasat",            "Kappa Geminorum",
+        # Grus (3 main stars)
+        "Alnair",           "Beta Gruis",       "Gamma Gruis",
+        # Hercules (4 main stars)
+        "Rasalgethi",       "Kornephoros",      "Sarin",             "Tau Herculis",
+        # Horologium (2 main stars)
+        "Alpha Horologi",   "Beta Horologi",
+        # Hydra (4 main stars - largest constellation)
+        "Alphard",          "Gamma Hydrae",     "Pi Hydrae",         "Epsilon Hydrae",
+        # Hydrus (3 main stars)
+        "Alpha Hydri",      "Beta Hydri",       "Gamma Hydri",
+        # Indus (2 main stars)
+        "Alpha Indi",       "Beta Indi",
+        # Lacerta (2 main stars)
+        "Alpha Lacertae",   "Beta Lacertae",
+        # Leo (5 main stars - the sickle)
+        "Regulus",          "Denebola",         "Algieba",           "Zosma",            "Chertan",
+        # Leo Minor (2 main stars)
+        "Praecipua",        "Beta Leonis Minoris",
+        # Lepus (3 main stars)
+        "Arneb",            "Nihal",            "Gamma Leporis",
+        # Libra (4 main stars)
+        "Zubeneschamali",   "Zubenelgenubi",    "Brachium",          "Zuben Elakrab",
+        # Lupus (3 main stars)
+        "Alpha Lupi",       "Beta Lupi",        "Gamma Lupi",
+        # Lynx (2 main stars)
+        "Alsciaukat",       "Alpha Lynxis",
+        # Lyra (5 main stars)
+        "Vega",             "Epsilon Lyrae",    "Zeta Lyrae",        "Delta Lyrae",      "Gamma Lyrae",
+        # Mensa (2 main stars)
+        "Alpha Mensae",     "Beta Mensae",
+        # Microscopium (2 main stars)
+        "Epsilon Microscopii",  "Alpha Microscopii",
+        # Monoceros (3 main stars)
+        "Alpha Monocerotis",    "Beta Monocerotis",  "Gamma Monocerotis",
+        # Musca (3 main stars)
+        "Alpha Muscae",     "Beta Muscae",      "Gamma Muscae",
+        # Norma (3 main stars)
+        "Gamma Normae",     "Epsilon Normae",   "Alpha Normae",
+        # Octans (2 main stars)
+        "Polaris Australis",    "Beta Octantis",
+        # Ophiuchus (5 main stars)
+        "Rasalhague",       "Sabik",            "Cebalrai",          "Yedprior",         "Yed Posterior",
+        # Orion (6 main stars - one of the most recognizable)
+        "Rigel",            "Betelgeuse",       "Bellatrix",         "Saiph",            "Alnitak",       "Alnilam",
+        # Pavo (3 main stars)
+        "Peacock",          "Delta Pavonis",    "Gamma Pavonis",
+        # Pegasus (4 main stars - part of the Great Square)
+        "Enif",             "Scheat",           "Algenib",           "Markab",
+        # Perseus (4 main stars)
+        "Mirfak",           "Algenib",          "Atik",              "Epsilon Persei",
+        # Phoenix (3 main stars)
+        "Ankaa",            "Chert",            "Psi Phoenicis",
+        # Pictor (2 main stars)
+        "Alpha Pictoris",   "Beta Pictoris",
+        # Pisces (3 main stars)
+        "Alrescha",         "Fum al Samakah",   "Omega Piscium",
+        # Piscis Austrinus (2 main stars)
+        "Fomalhaut",        "Delta Piscis Austrini",
+        # Puppis (3 main stars)
+        "Naos",             "Pi Puppis",        "Zeta Puppis",
+        # Pyxis (2 main stars)
+        "Alpha Pyxidis",    "Beta Pyxidis",
+        # Reticulum (2 main stars)
+        "Alpha Reticuli",   "Beta Reticuli",
+        # Sagitta (3 main stars - small but distinct)
+        "Sham",             "Almach",           "Delta Sagittae",
+        # Sagittarius (4 main stars - the teapot asterism)
+        "Kaus Australis",   "Kaus Media",       "Kaus Borealis",     "Ascella",
+        # Scorpius (4 main stars - scorpion tail curve)
+        "Antares",          "Shaula",           "Lesath",            "Acrab",
+        # Sculptor (2 main stars)
+        "Alpha Sculptoris", "Beta Sculptoris",
+        # Scutum (2 main stars)
+        "Alpha Scuti",      "Delta Scuti",
+        # Serpens (3 main stars)
+        "Unukalhai",        "Eta Serpentis",    "Gamma Serpentis",
+        # Sextans (2 main stars)
+        "Alpha Sextantis",  "Beta Sextantis",
+        # Taurus (5 main stars - Pleiades visible)
+        "Aldebaran",        "Nath",             "Alcyone",           "Electra",          "Maia",
+        # Telescopium (2 main stars)
+        "Alpha Telescopii", "Zeta Telescopii",
+        # Triangulum (3 main stars)
+        "Mothallah",        "Dulcamara",        "Caph",
+        # Triangulum Australe (3 main stars)
+        "Atria",            "Beta Trianguli Australis",  "Gamma Trianguli Australis",
+        # Tucana (3 main stars)
+        "Alpha Tucanae",    "Beta Tucanae",     "Gamma Tucanae",
+        # Ursa Major (7 main stars - Big Dipper)
+        "Dubhe",            "Merak",            "Phecda",            "Megrez",           "Alioth",       "Mizar",        "Alkaid",
+        # Ursa Minor (5 main stars - Little Bear, Polaris)
+        "Polaris",          "Kochab",           "Pherkad",           "Yildun",           "Epsilon Ursae Minoris",
+        # Vela (3 main stars)
+        "Gamma Velorum",    "Lambda Velorum",   "Delta Velorum",
+        # Virgo (4 main stars)
+        "Spica",            "Zavijava",         "Porrima",           "Vindemiatrix",
+        # Volans (2 main stars)
+        "Alpha Volantis",   "Beta Volantis",
+        # Vulpecula (2 main stars)
+        "Anser",            "Alpha Vulpeculae",
     ]
     excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
     seen_extra_stars: set[str] = set()
@@ -1514,7 +1591,45 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
 
-    # Plot a random sample of 20000 supernovae from the galactic distribution (rasterized)
+    # # Plot famous galactic CCSN remnants with special styling
+    # galactic_ccsn_remnants = [
+    #     ("Crab Nebula", "#ff6b6b", "o", 12),        # Red circle, larger
+    #     ("Cassiopeia A", "#ffa94d", "o", 12),        # Orange circle, larger
+    # ]
+    # 
+    # for remnant_name, color, marker, size in galactic_ccsn_remnants:
+    #     resolved = _resolve_named_star_icrs_deg(remnant_name, rotation_offset_deg=astropy_rotation_offset_deg)
+    #     if resolved is None:
+    #         continue
+    #     rem_ra_deg, rem_dec_deg = resolved
+    #     panel, rx, ry = _project_to_hemisphere(
+    #         np.deg2rad(rem_ra_deg),
+    #         np.deg2rad(rem_dec_deg),
+    #     )
+    #     rem_ax = ax_l if panel == "north" else ax_r
+    #     rem_ax.scatter(
+    #         [rx],
+    #         [ry],
+    #         s=size,
+    #         c=color,
+    #         edgecolors="white",
+    #         linewidths=1.5,
+    #         alpha=0.95,
+    #         zorder=9,
+    #         marker="o",
+    #     )
+    #     # Add subtle label
+    #     rem_ax.text(
+    #         rx + 0.08,
+    #         ry + 0.05,
+    #         remnant_name,
+    #         color=color,
+    #         fontsize=fontsize_constellation,
+    #         alpha=0.7,
+    #         zorder=9,
+    #     )
+
+    # Plot a random sample of n supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
         n_sample = min(20000, len(ra_rot_supernovae))
         sample_indices = np.random.choice(len(ra_rot_supernovae), size=n_sample, replace=False)
@@ -1590,14 +1705,26 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Plot detector markers when example mode is enabled.
     if example and detector_markers:
+        # Define L-shaped marker (simple L shape: vertical line with horizontal base)
+        l_marker_verts = np.array([
+            [-0.3, -0.5],   # Bottom left
+            [0.3, -0.5],    # Bottom right (horizontal base)
+            [0.3, -0.3],    # Step inward on right
+            [-0.1, -0.3],   # Step left
+            [-0.1, 0.5],    # Vertical line up
+            [-0.3, 0.5],    # Top left
+            [-0.3, -0.5],   # Close
+        ])
+        l_marker = MarkerStyle(Path(l_marker_verts))
+        
         for det_name, det_ra, det_dec, det_color in detector_markers:
             det_panel, det_x, det_y = _project_to_hemisphere(det_ra, det_dec)
             det_ax = ax_l if det_panel == "north" else ax_r
             det_ax.scatter(
                 [det_x],
                 [det_y],
-                s=80,
-                marker="s",
+                s=200,
+                marker=l_marker,
                 c=det_color,
                 edgecolors="white",
                 linewidths=1.2,
@@ -1611,8 +1738,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                 det_x + label_offset_x,
                 det_y + label_offset_y,
                 det_name,
-                color=det_color,
-                fontsize=fontsize_tiny,
+                color="white",
+                fontsize=fontsize_constellation,
                 ha="left",
                 va="center",
                 alpha=0.95,
@@ -1648,10 +1775,10 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.plot(
             [],
             [],
-            marker="s",
+            marker=l_marker,
             linestyle="None",
             markersize=7,
-            markerfacecolor="#e74c3c",
+            markerfacecolor="white",
             markeredgecolor="white",
             markeredgewidth=1.0,
             label="Gravitational Wave Detectors",
