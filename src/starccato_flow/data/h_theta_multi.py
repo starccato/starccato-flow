@@ -619,11 +619,10 @@ class hThetaMulti(Dataset):
         dec_sin = np.sin(dec)
         params_norm_list.append(np.column_stack([dec_cos, dec_sin]))
         
-        # Distance: log-space normalization to [0, 1]
-        # d ∈ [0, 10] → d_norm = log(d + ε) / log(10 + ε)
-        d_eps = 1e-3
-        d_norm = np.log(d + d_eps) / np.log(MAX_DISTANCE_KPC + d_eps)
-        d_norm = np.clip(d_norm, 0.0, 1.0)  # Ensure in [0, 1]
+        # Distance: linear normalization to [-1, 1]
+        # d ∈ [0, 10] → d_norm = 2 * d / 10 - 1
+        d_norm = 2 * d / MAX_DISTANCE_KPC - 1
+        d_norm = np.clip(d_norm, -1.0, 1.0)  # Ensure in [-1, 1]
         params_norm_list.append(d_norm.reshape(-1, 1))
         
         # Psi: represent as (cos(psi), sin(psi)) on 2D plane
@@ -673,13 +672,10 @@ class hThetaMulti(Dataset):
         params_denorm_list.append(dec.reshape(-1, 1))
         col_idx += 2
         
-        # Distance: log-space → linear via exponential mapping
-        # d_norm ∈ [0, 1] → d = exp(d_norm * log(10 + ε)) - ε
-        # No clipping needed: log-space encoding naturally keeps distance positive and bounded
-        d_eps = 1e-3
+        # Distance: linear → linear via simple scaling
+        # d_norm ∈ [-1, 1] → d = (d_norm + 1) / 2 * 10
         d_norm_flat = params_norm[:, col_idx].flatten()
-        d = np.exp(d_norm_flat * np.log(MAX_DISTANCE_KPC + d_eps)) - d_eps
-        params_denorm_list.append(d.reshape(-1, 1))
+        d = (d_norm_flat + 1) / 2 * MAX_DISTANCE_KPC
         params_denorm_list.append(d.reshape(-1, 1))
         col_idx += 1
         
