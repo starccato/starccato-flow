@@ -1244,6 +1244,7 @@ class FlowMatchingTrainerMulti:
             background="black",
             font_family=font_family,
             font_name=font_name,
+            example=True,
             red_blob_mode="density_peak" if has_posterior else None,
             transparent=transparent,
             n_background_supernovae=2_000_000 if not has_posterior else 20_000,

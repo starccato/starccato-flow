@@ -985,7 +985,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     else:
         betel_panel, betel_x, betel_y = None, np.nan, np.nan
 
-    if not use_posterior_samples:
+    if not use_posterior_samples and red_blob_mode is not None:
         blob_sigma = 0.12
         blob_radius = 3.0 * blob_sigma
         dist2_gc = (xxc - gc_x) ** 2 + (yyc - gc_y) ** 2
@@ -1688,13 +1688,40 @@ def plot_galactic_supernovae_polar_hemispheres(
         ra_stars = ra_rot_supernovae
         dec_stars = dec_supernovae
     
-    # Project to appropriate hemispheres
-    for ra, dec in zip(ra_stars, dec_stars):
-        hemisphere, x, y = _project_to_hemisphere(ra, dec)
-        ax = ax_l if hemisphere == "north" else ax_r
-        ax.scatter(
-            [x],
-            [y],
+    # Project to appropriate hemispheres (vectorized)
+    north_mask = dec_stars >= 0
+    south_mask = dec_stars < 0
+    
+    # North hemisphere
+    if np.any(north_mask):
+        ra_n = ra_stars[north_mask]
+        dec_n = dec_stars[north_mask]
+        r_n = (np.pi / 2 - dec_n) / (np.pi / 2)
+        x_n = r_n * np.sin(ra_n)
+        y_n = r_n * np.cos(ra_n)
+        
+        ax_l.scatter(
+            x_n,
+            y_n,
+            s=0.5,
+            c="lightgray",
+            edgecolors="none",
+            alpha=0.25,
+            zorder=6,
+            rasterized=True,
+        )
+    
+    # South hemisphere
+    if np.any(south_mask):
+        ra_s = ra_stars[south_mask]
+        dec_s = dec_stars[south_mask]
+        r_s = (np.pi / 2 + dec_s) / (np.pi / 2)
+        x_s = -r_s * np.sin(ra_s)
+        y_s = r_s * np.cos(ra_s)
+        
+        ax_r.scatter(
+            x_s,
+            y_s,
             s=0.5,
             c="lightgray",
             edgecolors="none",
@@ -1705,21 +1732,37 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Plot detector markers when example mode is enabled.
     if example and detector_markers:
-        # Define L-shaped marker (simple L shape: vertical line with horizontal base)
+        # Define L-shaped marker (vertical arm on left, horizontal base at bottom)
         l_marker_verts = np.array([
-            [-0.3, -0.5],   # Bottom left
-            [0.3, -0.5],    # Bottom right (horizontal base)
-            [0.3, -0.3],    # Step inward on right
-            [-0.1, -0.3],   # Step left
-            [-0.1, 0.5],    # Vertical line up
-            [-0.3, 0.5],    # Top left
-            [-0.3, -0.5],   # Close
+            [-0.15, -0.35],  # Bottom left
+            [0.35, -0.35],   # Bottom right (horizontal base, longer)
+            [0.35, -0.2],    # Inner right
+            [-0.05, -0.2],   # Inner, step left
+            [-0.05, 0.35],   # Top of vertical arm (tall)
+            [-0.2, 0.35],    # Top left
+            [-0.2, -0.2],    # Inner left
+            [-0.15, -0.2],   # Inner bottom left
+            [-0.15, -0.35],  # Close
         ])
-        l_marker = MarkerStyle(Path(l_marker_verts))
+        
+        def rotate_marker_verts(verts, angle_rad):
+            """Rotate marker vertices by given angle in radians."""
+            cos_a = np.cos(angle_rad)
+            sin_a = np.sin(angle_rad)
+            rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+            return verts @ rot_matrix.T
         
         for det_name, det_ra, det_dec, det_color in detector_markers:
             det_panel, det_x, det_y = _project_to_hemisphere(det_ra, det_dec)
             det_ax = ax_l if det_panel == "north" else ax_r
+            
+            # Rotate marker to point radially outward from pole
+            # Compute the angle in plot coordinates using atan2
+            # Add π/2 to align the vertical arm of the L to point outward radially
+            plot_angle = np.arctan2(det_x, det_y) + np.pi / 2
+            rotated_verts = rotate_marker_verts(l_marker_verts, plot_angle)
+            l_marker = MarkerStyle(Path(rotated_verts))
+            
             det_ax.scatter(
                 [det_x],
                 [det_y],
@@ -1772,16 +1815,30 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
     
     if example and detector_markers:
+        # Create base L marker for legend
+        l_marker_verts_legend = np.array([
+            [-0.15, -0.35],  # Bottom left
+            [0.35, -0.35],   # Bottom right (horizontal base, longer)
+            [0.35, -0.2],    # Inner right
+            [-0.05, -0.2],   # Inner, step left
+            [-0.05, 0.35],   # Top of vertical arm (tall)
+            [-0.2, 0.35],    # Top left
+            [-0.2, -0.2],    # Inner left
+            [-0.15, -0.2],   # Inner bottom left
+            [-0.15, -0.35],  # Close
+        ])
+        l_marker_legend = MarkerStyle(Path(l_marker_verts_legend))
+        
         ax_r.plot(
             [],
             [],
-            marker=l_marker,
+            marker=l_marker_legend,
             linestyle="None",
-            markersize=7,
+            markersize=10,
             markerfacecolor="white",
             markeredgecolor="white",
             markeredgewidth=1.0,
-            label="Gravitational Wave Detectors",
+            label="Detectors",
         )
     
     ax_r.legend(
