@@ -673,7 +673,7 @@ class hThetaMulti(Dataset):
         col_idx += 2
         
         # Distance: linear → linear via simple scaling
-        # d_norm ∈ [-1, 1] → d = (d_norm + 1) / 2 * 10
+        # d_norm ∈ [-1, 1] → d = (d_norm + 1) / 2 * MAX_DISTANCE_KPC
         d_norm_flat = params_norm[:, col_idx].flatten()
         d = (d_norm_flat + 1) / 2 * MAX_DISTANCE_KPC
         params_denorm_list.append(d.reshape(-1, 1))
@@ -683,7 +683,7 @@ class hThetaMulti(Dataset):
         psi_cos = params_norm[:, col_idx]
         psi_sin = params_norm[:, col_idx + 1]
         psi = np.arctan2(psi_sin, psi_cos)
-        psi = np.mod(psi, np.pi)  # Wrap to [0, π]
+        psi = np.where(psi < 0, psi + np.pi, psi)  # Correctly wrap [-π, π] to [0, π]
         params_denorm_list.append(psi.reshape(-1, 1))
         
         return np.concatenate(params_denorm_list, axis=1)

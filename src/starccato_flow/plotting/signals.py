@@ -3,6 +3,7 @@
 from typing import Optional, Tuple, Sequence
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import matplotlib.gridspec as gridspec
 import numpy as np
 import pandas as pd
 import matplotlib.patches as mpatches
@@ -116,7 +117,6 @@ def plot_signal_grid(
     plt.rcdefaults()
     return fig, axes
 
-
 def plot_detector_signal_channels(
     signals: np.ndarray,
     noisy_signals: Optional[np.ndarray] = None,
@@ -128,6 +128,11 @@ def plot_detector_signal_channels(
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
     transparent: bool = False,
+    figsize_mm: Tuple[float, float] = (165, 190),
+    fontsize_tick: int = 12,
+    fontsize_text: int = 18,
+    line_weight: float = 1.4,
+    left_margin: float = 0.05,
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
@@ -173,13 +178,24 @@ def plot_detector_signal_channels(
     else:
         channel_noisy = None
 
-    fig, axes = plt.subplots(3, 1, figsize=(15, 8), sharex=True)
+    # Convert mm to inches (1 inch = 25.4 mm)
+    figsize_inches = (figsize_mm[0] / 25.4, figsize_mm[1] / 25.4)
+    
+    fig = plt.figure(figsize=figsize_inches)
+    gs = gridspec.GridSpec(3, 1, figure=fig, height_ratios=[1, 1, 1], 
+                          hspace=0.4, left=0.15, right=0.95, top=0.88, bottom=0.12)
+    axes = [fig.add_subplot(gs[i]) for i in range(3)]
+    # Share x-axis among all subplots
+    axes[1].sharex(axes[0])
+    axes[2].sharex(axes[0])
     d = get_time_axis()
     x_min, x_max = -0.01, 0.05
     tick_step = 0.01
     xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
-    y_expand = 1.5
-    max_absolute_value = np.max(np.abs(channel_signals))
+    y_expand = 1.25
+    # Use noisy signal for y-limits if available, otherwise use clean signal
+    signal_for_ylim = channel_noisy if channel_noisy is not None else channel_signals
+    max_absolute_value = np.max(np.abs(signal_for_ylim))
     y_min = -max_absolute_value * y_expand
     y_max = max_absolute_value * y_expand
 
@@ -192,10 +208,10 @@ def plot_detector_signal_channels(
         # Plot noisy signal first (if provided) with lower opacity
         if channel_noisy is not None:
             y_noisy = channel_noisy[i].flatten()
-            ax.plot(d, y_noisy, color=signal_colour, linewidth=1.5, alpha=0.5, label="Signal + Noise")
+            ax.plot(d, y_noisy, color=signal_colour, linewidth=line_weight, alpha=0.5, label="Signal + Noise")
         
         # Plot clean signal on top with full opacity
-        ax.plot(d, y_clean, color=signal_colour, linewidth=2, alpha=1.0, label="Signal")
+        ax.plot(d, y_clean, color=signal_colour, linewidth=line_weight, alpha=1.0, label="Signal")
         
         ax.set_ylim(y_min, y_max)
         ax.set_xlim(x_min, x_max)
@@ -203,31 +219,34 @@ def plot_detector_signal_channels(
         ax.set_xmargin(0)
         ax.autoscale(enable=False, axis='x')
 
-        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5, linewidth=line_weight)
         ax.grid(False)
-        ax.set_title(display_labels[i])
-        ax.tick_params(axis='x', colors=vline_color)
-        ax.tick_params(axis='y', colors=vline_color)
+        ax.set_title(display_labels[i], fontsize=fontsize_text)
+        ax.tick_params(axis='x', colors=vline_color, labelsize=fontsize_tick)
+        ax.tick_params(axis='y', colors=vline_color, labelsize=fontsize_tick)
 
         for spine in ax.spines.values():
             spine.set_color(vline_color)
+            spine.set_linewidth(line_weight)
 
         if i < 2:
             ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
-        
-        # Add legend only to first subplot if we have both signals
-        if i == 0 and channel_noisy is not None:
-            ax.legend(loc='upper right', facecolor="none", edgecolor=vline_color,
-                     labelcolor=vline_color, fontsize=10, framealpha=0.0)
 
     axes[-1].set_xticks(xticks)
     axes[-1].tick_params(axis='x', which='both', labelbottom=True, bottom=True, colors=vline_color)
     axes[-1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+    
+    # Set axis labels with proper size and color
+    axes[-1].set_xlabel('time (s)', fontsize=fontsize_text, color=vline_color)
+    axes[1].set_ylabel('h', fontsize=fontsize_text, color=vline_color)
 
-    fig.supxlabel('time (s)', fontsize=20)
-    fig.supylabel('h', fontsize=20)
+    # Add legend outside/on top if we have both signals
+    # if channel_noisy is not None:
+    #     handles, labels = axes[0].get_legend_handles_labels()
+    #     fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.98),
+    #               facecolor="none", edgecolor=vline_color, labelcolor=vline_color, 
+    #               fontsize=12, framealpha=0.0, ncol=2)
 
-    plt.tight_layout()
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
@@ -237,7 +256,7 @@ def plot_detector_signal_channels(
 
     plt.show()
     plt.rcdefaults()
-    return fig, axes
+    return fig, np.array(axes)
 
 
 def plot_candidate_signal(

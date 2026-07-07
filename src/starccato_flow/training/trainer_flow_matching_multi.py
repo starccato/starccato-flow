@@ -572,7 +572,11 @@ class FlowMatchingTrainerMulti:
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png") if fname_signal is None else fname_signal,
             font_family=font_family,
             font_name=font_name,
-            transparent=transparent
+            transparent=transparent,
+            figsize_mm=(165, 190),
+            fontsize_tick=12,
+            fontsize_text=18,
+            line_weight=1.4
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
@@ -615,7 +619,7 @@ class FlowMatchingTrainerMulti:
             true_param_denorm=true_param_denorm,
             font_family=font_family,
             font_name=font_name,
-            transparent=False
+            transparent=True
         )
         self.plot_galactic_distribution_with_posterior(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,
