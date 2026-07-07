@@ -295,7 +295,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     example: bool = False,
     transparent: bool = False,
     mode: str = "print",
-    n_background_supernovae: int = 10000,
+    n_background_supernovae: int = 20000,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -1678,10 +1678,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Plot background supernovae (10000 random samples, regardless of hemisphere)
     np.random.seed(42)  # For reproducibility
     
-    # Sample 20000 from all supernovae
+    # Sample n_background_supernovae from all supernovae
     total_sn = len(ra_rot_supernovae)
-    if total_sn > 20000:
-        sample_indices = np.random.choice(total_sn, size=20000, replace=False)
+    if n_background_supernovae is not None and total_sn > n_background_supernovae:
+        sample_indices = np.random.choice(total_sn, size=n_background_supernovae, replace=False)
         ra_stars = ra_rot_supernovae[sample_indices]
         dec_stars = dec_supernovae[sample_indices]
     else:

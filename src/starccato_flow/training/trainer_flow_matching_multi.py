@@ -621,6 +621,12 @@ class FlowMatchingTrainerMulti:
             font_name=font_name,
             transparent=True
         )
+        self.plot_sky_localisation_sampled_signal(
+            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
+            font_family=font_family,
+            font_name=font_name,
+            transparent=True
+        )
         self.plot_galactic_distribution_with_posterior(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,
             posterior_samples_denorm=posterior_samples_denorm,
@@ -1165,50 +1171,65 @@ class FlowMatchingTrainerMulti:
         font_name: str = "Times New Roman",
         transparent: bool = False
     ):
-        """Generate a sky-localisation (RA/Dec) posterior plot.
+        """Generate a sky-localisation (RA/Dec) posterior plot or background skymap.
         
         Args:
             fname: Output filename for the plot
-            posterior_samples_denorm: Posterior samples in denormalized parameter space
-            true_param_denorm: True parameters in denormalized space
+            posterior_samples_denorm: Posterior samples in denormalized parameter space (optional)
+            true_param_denorm: True parameters in denormalized space (optional)
             font_family: Font family for plot text
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
-        """
-        # Extract RA and Dec indices from the parameters_to_estimate list
-        ra_idx = self._get_extracted_index("ra")
-        dec_idx = self._get_extracted_index("dec")
-        
-        print(f"\nSky Localisation Plot Debug:")
-        print(f"  ra_idx: {ra_idx}, dec_idx: {dec_idx}")
-        print(f"  true_param_denorm shape: {true_param_denorm.shape}")
-        print(f"  parameters_to_estimate: {self.parameters_to_estimate}")
-        
-        if ra_idx >= 0 and dec_idx >= 0:
-            # Extract RA and Dec from the denormalized extracted parameters
-            ra_samples = posterior_samples_denorm[:, ra_idx]
-            dec_samples = posterior_samples_denorm[:, dec_idx]
-            true_ra = true_param_denorm[ra_idx]
-            true_dec = true_param_denorm[dec_idx]
-            print(f"  true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
-            print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
             
-            # For SVG output, use a reduced sample size to keep file size manageable
-            # SVG files with many points can become very large; 500-800 points provides good density visualization
-            if fname.endswith('.svg'):
-                max_samples = min(800, len(ra_samples))
-                sample_indices = np.linspace(0, len(ra_samples) - 1, max_samples, dtype=int)
-                ra_samples = ra_samples[sample_indices]
-                dec_samples = dec_samples[sample_indices]
-                print(f"  SVG output: Using {len(ra_samples)} samples (downsampled from {posterior_samples_denorm.shape[0]})")
+        If both posterior_samples_denorm and true_param_denorm are None, plots just the 
+        background supernova skymap without posterior overlays or true location.
+        """
+        # Check if we have posterior samples and true parameters
+        has_posterior = posterior_samples_denorm is not None and true_param_denorm is not None
+        
+        if has_posterior:
+            # Extract RA and Dec indices from the parameters_to_estimate list
+            ra_idx = self._get_extracted_index("ra")
+            dec_idx = self._get_extracted_index("dec")
+            
+            print(f"\nSky Localisation Plot Debug:")
+            print(f"  ra_idx: {ra_idx}, dec_idx: {dec_idx}")
+            print(f"  true_param_denorm shape: {true_param_denorm.shape}")
+            print(f"  parameters_to_estimate: {self.parameters_to_estimate}")
+            
+            if ra_idx >= 0 and dec_idx >= 0:
+                # Extract RA and Dec from the denormalized extracted parameters
+                ra_samples = posterior_samples_denorm[:, ra_idx]
+                dec_samples = posterior_samples_denorm[:, dec_idx]
+                true_ra = true_param_denorm[ra_idx]
+                true_dec = true_param_denorm[dec_idx]
+                print(f"  true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
+                print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
+                
+                # For SVG output, use a reduced sample size to keep file size manageable
+                # SVG files with many points can become very large; 500-800 points provides good density visualization
+                if fname.endswith('.svg'):
+                    max_samples = min(800, len(ra_samples))
+                    sample_indices = np.linspace(0, len(ra_samples) - 1, max_samples, dtype=int)
+                    ra_samples = ra_samples[sample_indices]
+                    dec_samples = dec_samples[sample_indices]
+                    print(f"  SVG output: Using {len(ra_samples)} samples (downsampled from {posterior_samples_denorm.shape[0]})")
+            else:
+                # Fallback: assume they are at the end (shouldn't happen with proper setup)
+                ra_samples = posterior_samples_denorm[:, -4]
+                dec_samples = posterior_samples_denorm[:, -3]
+                true_ra = true_param_denorm[-4]
+                true_dec = true_param_denorm[-3]
+                print(f"  FALLBACK: true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
+                print(f"  FALLBACK: true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
         else:
-            # Fallback: assume they are at the end (shouldn't happen with proper setup)
-            ra_samples = posterior_samples_denorm[:, -4]
-            dec_samples = posterior_samples_denorm[:, -3]
-            true_ra = true_param_denorm[-4]
-            true_dec = true_param_denorm[-3]
-            print(f"  FALLBACK: true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
-            print(f"  FALLBACK: true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
+            # No posterior - just plot background skymap (no posterior overlays or true location)
+            print(f"\nSky Localisation Plot (background skymap only):")
+            print(f"  No posterior samples provided - plotting 2 million background supernovae")
+            ra_samples = None
+            dec_samples = None
+            true_ra = None
+            true_dec = None
 
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
@@ -1223,8 +1244,9 @@ class FlowMatchingTrainerMulti:
             background="black",
             font_family=font_family,
             font_name=font_name,
-            red_blob_mode="density_peak",
+            red_blob_mode="density_peak" if has_posterior else None,
             transparent=transparent,
+            n_background_supernovae=2_000_000 if not has_posterior else 20_000,
         )
         
         # Compress SVG files to .svgz format for ~75% size reduction while keeping all visual elements
@@ -1238,7 +1260,7 @@ class FlowMatchingTrainerMulti:
             import os
             svg_size = os.path.getsize(fname) / 1024  # KB
             svgz_size = os.path.getsize(svgz_fname) / 1024  # KB
-            print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svg_size:.0f}%)")
+            print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svgz_size/svg_size:.0f}%)")
 
 
     def plot_galactic_distribution_with_posterior(
