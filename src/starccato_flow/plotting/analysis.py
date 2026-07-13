@@ -136,6 +136,11 @@ def plot_galactic_distribution(
     dpi: int = 300,
     legend_frameon: bool = False,
     figsize: tuple = (16, 16),
+    rasterize_scatter: bool = True,
+    line_weight: float = 1.4,
+    fontsize_tick: int = 18,
+    fontsize_text: int = 22,
+    left_margin: float = 0.15,
 ) -> List[plt.Figure]:
     """Plot galactic supernova locations in 3D, X-Y, and X-Z views.
 
@@ -188,6 +193,13 @@ def plot_galactic_distribution(
     sun_location = sun_location * coord_scale
     if highlight_coords is not None:
         highlight_coords = highlight_coords * coord_scale
+        rotation_angle = np.deg2rad(-90.0)
+        rotation_matrix = np.array([
+            [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+            [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        highlight_coords = highlight_coords @ rotation_matrix.T
 
     x, y, z = galactic_coords.T
     # xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
@@ -222,12 +234,13 @@ def plot_galactic_distribution(
         return output_path
 
     def _style_2d_axes(axes: plt.Axes) -> None:
-        axes.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
+        axes.tick_params(colors=text_color, labelsize=fontsize_tick, direction="inout", length=12, width=line_weight)
         for spine in axes.spines.values():
             spine.set_color(text_color)
+            spine.set_linewidth(line_weight)
         axes.spines["top"].set_visible(False)
         axes.spines["right"].set_visible(False)
-        # axes.set_aspect("equal")
+        axes.set_aspect("equal", adjustable="box")
         if light_year:
             axes.xaxis.set_major_locator(mticker.MultipleLocator(20_000))
             axes.yaxis.set_major_locator(mticker.MultipleLocator(20_000))
@@ -299,8 +312,8 @@ def plot_galactic_distribution(
         axes.legend(
             adjusted_handles,
             labels,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 1.02),
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.1),
             ncol=max(1, len(labels)),
             facecolor=legend_facecolor,
             edgecolor="none",
@@ -319,7 +332,7 @@ def plot_galactic_distribution(
 
     fig1 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
-    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
     ax1.scatter(
         0.0,
         0.0,
@@ -365,8 +378,11 @@ def plot_galactic_distribution(
     ax1.zaxis.pane.set_facecolor("none")
     ax1.zaxis.pane.set_alpha(0)
     ax1.xaxis.pane.set_edgecolor(text_color)
+    ax1.xaxis.pane.set_linewidth(line_weight)
     ax1.yaxis.pane.set_edgecolor(text_color)
+    ax1.yaxis.pane.set_linewidth(line_weight)
     ax1.zaxis.pane.set_edgecolor(text_color)
+    ax1.zaxis.pane.set_linewidth(line_weight)
     ax1.grid(color=grid_color, alpha=0.2)
     ax1.zaxis._axinfo["grid"]["color"] = (0, 0, 0, 0)
     ax1.set_xlim(-xy_radius, xy_radius)
@@ -406,7 +422,7 @@ def plot_galactic_distribution(
 
     fig2 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax2 = fig2.add_subplot(111, facecolor=facecolor)
-    ax2.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    ax2.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
     ax2.scatter(
         0.0,
         0.0,
@@ -460,13 +476,14 @@ def plot_galactic_distribution(
         ax2.set_yticks(tick_values)
     _apply_xy_axis_line_window(ax2)
     _legend_with_supernova_marker(ax2)
+    fig2.subplots_adjust(left=left_margin, right=1 - left_margin, top=1 - left_margin, bottom=left_margin)
     if output_xy is not None:
         fig2.savefig(output_xy, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig2)
 
     fig3 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax3 = fig3.add_subplot(111, facecolor=facecolor)
-    ax3.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
+    ax3.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
     ax3.scatter(
         0.0,
         0.0,
@@ -506,6 +523,7 @@ def plot_galactic_distribution(
         ax3.yaxis.set_major_locator(mticker.MultipleLocator(5))
         ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
     _legend_with_supernova_marker(ax3)
+    fig3.subplots_adjust(left=left_margin, right=1 - left_margin, top=1 - left_margin, bottom=left_margin)
     if output_xz is not None:
         fig3.savefig(output_xz, dpi=dpi, bbox_inches="tight", transparent=transparent)
     figures.append(fig3)
