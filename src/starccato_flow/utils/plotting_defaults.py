@@ -32,7 +32,7 @@ PARAMETER_RANGES = {
     'A(km)': (0, 10000),
     'Ye_c_b': (0, 0.3),
     # Sky parameters
-    'ra': (-np.pi, np.pi),  # Radians
+    'ra': (0.0, 2.0 * np.pi),  # Radians, standard RA convention
     'dec': (-np.pi/2, np.pi/2),  # Radians
     'd': (0, 10),  # kiloparsecs (matches MAX_DISTANCE_KPC)
     'psi': (0, np.pi),  # Radians

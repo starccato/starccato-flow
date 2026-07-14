@@ -35,8 +35,9 @@ class hThetaMulti(Dataset):
     PARAMETER_RANGES = PARAMETER_RANGES
     
     # Fixed physical bounds for sky parameters: [ra, dec, distance_kpc, psi]
-    SKY_MIN = np.array([-np.pi, -np.pi / 2.0, 0.0, 0.0], dtype=np.float32)
-    SKY_MAX = np.array([np.pi, np.pi / 2.0, MAX_DISTANCE_KPC, np.pi], dtype=np.float32)
+    # Use the standard RA convention [0, 2π) for training and plotting.
+    SKY_MIN = np.array([0.0, -np.pi / 2.0, 0.0, 0.0], dtype=np.float32)
+    SKY_MAX = np.array([2.0 * np.pi, np.pi / 2.0, MAX_DISTANCE_KPC, np.pi], dtype=np.float32)
     
     def __init__(
         self,

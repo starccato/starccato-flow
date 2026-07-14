@@ -1198,11 +1198,17 @@ class FlowMatchingTrainerMulti:
             print(f"  parameters_to_estimate: {self.parameters_to_estimate}")
             
             if ra_idx >= 0 and dec_idx >= 0:
-                # Extract RA and Dec from the denormalized extracted parameters
+                # Extract RA and Dec from the denormalized extracted parameters.
+                # The model now uses the standard RA convention [0, 2π), so shift to the
+                # plotting convention used by the sky plot before rendering.
                 ra_samples = posterior_samples_denorm[:, ra_idx]
                 dec_samples = posterior_samples_denorm[:, dec_idx]
                 true_ra = true_param_denorm[ra_idx]
                 true_dec = true_param_denorm[dec_idx]
+                if true_ra is not None:
+                    true_ra = (true_ra + np.pi) % (2.0 * np.pi) - np.pi
+                if ra_samples is not None:
+                    ra_samples = (ra_samples + np.pi) % (2.0 * np.pi) - np.pi
                 print(f"  true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
                 print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
                 
@@ -1220,6 +1226,10 @@ class FlowMatchingTrainerMulti:
                 dec_samples = posterior_samples_denorm[:, -3]
                 true_ra = true_param_denorm[-4]
                 true_dec = true_param_denorm[-3]
+                if true_ra is not None:
+                    true_ra = (true_ra + np.pi) % (2.0 * np.pi) - np.pi
+                if ra_samples is not None:
+                    ra_samples = (ra_samples + np.pi) % (2.0 * np.pi) - np.pi
                 print(f"  FALLBACK: true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
                 print(f"  FALLBACK: true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
         else:
