@@ -57,6 +57,7 @@ class hThetaMulti(Dataset):
         seed: int = 99,
         intrinsic_param_names: Optional[List[str]] = None,
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization
+        use_measured_psd: bool = True,  # Use measured sensitivity curves for noise generation
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
@@ -76,13 +77,17 @@ class hThetaMulti(Dataset):
         self.include_sky_params = True
         
         # Toggle between analytical and measured PSD for noise generation
-        self.use_measured_psd = False
+        self.use_measured_psd = use_measured_psd
         
-        # Cache for measured sensitivity curves (loaded on first use)
+        # Cache for measured sensitivity curves and their interpolators.
         self._ligo_freq_curve = None
         self._ligo_psd_curve = None
         self._virgo_freq_curve = None
         self._virgo_psd_curve = None
+        self._ligo_interp = None
+        self._virgo_interp = None
+        self._ligo_psd_values = None
+        self._virgo_psd_values = None
         
         # Preload sensitivity curves for use in rnoise
         self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
@@ -159,20 +164,14 @@ class hThetaMulti(Dataset):
         self.num_detectors = len(detectors)
         bilby_detector = importlib.import_module("bilby.gw.detector")
         self.ifos = [bilby_detector.get_empty_interferometer(det_name) for det_name in detectors]
-        
-        # # Set up PSD for noise generation.
-        # is_even = (Y_LENGTH % 2 == 0)
-        # half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-        # delta_f = 1 / (Y_LENGTH / SAMPLING_FREQ)
-        # fourier_freq = np.arange(half_N + 1) * delta_f
 
-        # # Use analytical or measured PSD based on flag
-        # if self.use_measured_psd:
-        #     self.AdvLIGOPSD = self.AdvLIGOPsd_measured(fourier_freq)
-        #     self.VirgoPSD = self.VirgoPsd_measured(fourier_freq)
-        # else:
-        #     self.AdvLIGOPSD = self.AdvLIGOPsd(fourier_freq)
-        #     self.VirgoPSD = self.VirgoPsd(fourier_freq)
+        # Use analytical or measured PSD based on flag
+        if self.use_measured_psd:
+            self.AdvLIGOPSD = self.AdvLIGOPsd_measured
+            self.VirgoPSD = self.VirgoPsd_measured
+        else:
+            self.AdvLIGOPSD = self.AdvLIGOPsd
+            self.VirgoPSD = self.VirgoPsd
 
         self.FreqArray()
         
@@ -250,8 +249,8 @@ class hThetaMulti(Dataset):
         return noise
     
     def ColoredNoise(self, detector: str):
-        # SD of Fourier frequencies
-        psd = self.AdvLIGOPsd if detector in ["H1", "L1"] else self.VirgoPsd
+        psd = self.AdvLIGOPSD if detector in ["H1", "L1"] else self.VirgoPSD
+
         sigma_f = np.sqrt(psd(self.f) / pow(self.k + 1, 2))
         # Sample of normal random variable
         a = np.random.normal(loc = 0, scale = sigma_f, size =self.N // 2 + 1)
@@ -330,29 +329,34 @@ class hThetaMulti(Dataset):
         return frequencies, psd
     
     @staticmethod
-    def _interpolate_psd(freq_query: np.ndarray, freq_curve: np.ndarray, psd_curve: np.ndarray) -> np.ndarray:
+    def _interpolate_psd(
+        freq_query: np.ndarray,
+        freq_curve: np.ndarray,
+        psd_curve: np.ndarray,
+        interp_func=None,
+    ) -> np.ndarray:
         """Interpolate PSD at query frequencies using log-log interpolation.
         
         Args:
             freq_query: Frequencies at which to get PSD values
             freq_curve: Frequency points from sensitivity curve
             psd_curve: PSD values from sensitivity curve
+            interp_func: Optional prebuilt interpolator for repeated use
             
         Returns:
             PSD values at query frequencies
         """
         # Use log-log interpolation for smooth behavior across frequency range
-        log_freq_curve = np.log10(np.clip(freq_curve, 1e-10, None))
-        log_psd_curve = np.log10(np.clip(psd_curve, 1e-50, None))
-        
-        # Create interpolator
-        interp_func = interp1d(
-            log_freq_curve, 
-            log_psd_curve, 
-            kind='cubic', 
-            fill_value='extrapolate',
-            bounds_error=False
-        )
+        if interp_func is None:
+            log_freq_curve = np.log10(np.clip(freq_curve, 1e-10, None))
+            log_psd_curve = np.log10(np.clip(psd_curve, 1e-50, None))
+            interp_func = interp1d(
+                log_freq_curve,
+                log_psd_curve,
+                kind='cubic',
+                fill_value='extrapolate',
+                bounds_error=False,
+            )
         
         # Interpolate and convert back from log space
         log_freq_query = np.log10(np.clip(freq_query, 1e-10, None))
@@ -380,12 +384,25 @@ class hThetaMulti(Dataset):
             
         Returns:
             PSD values at frequencies f
-        """        
-        # Load and cache on first call
+        """
         if self._ligo_freq_curve is None or self._ligo_psd_curve is None:
             self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
-        
-        return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve)
+
+        if self._ligo_interp is None:
+            self._ligo_interp = interp1d(
+                np.log10(np.clip(self._ligo_freq_curve, 1e-10, None)),
+                np.log10(np.clip(self._ligo_psd_curve, 1e-50, None)),
+                kind='cubic',
+                fill_value='extrapolate',
+                bounds_error=False,
+            )
+
+        if np.array_equal(f, self.f):
+            if self._ligo_psd_values is None:
+                self._ligo_psd_values = self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve, self._ligo_interp)
+            return self._ligo_psd_values
+
+        return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve, self._ligo_interp)
     
     def VirgoPsd_measured(self, f: np.ndarray) -> np.ndarray:
         """Get Virgo PSD from measured sensitivity curve.
@@ -396,11 +413,24 @@ class hThetaMulti(Dataset):
         Returns:
             PSD values at frequencies f
         """
-        # Load and cache on first call
         if self._virgo_freq_curve is None or self._virgo_psd_curve is None:
             self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
-        
-        return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve)
+
+        if self._virgo_interp is None:
+            self._virgo_interp = interp1d(
+                np.log10(np.clip(self._virgo_freq_curve, 1e-10, None)),
+                np.log10(np.clip(self._virgo_psd_curve, 1e-50, None)),
+                kind='cubic',
+                fill_value='extrapolate',
+                bounds_error=False,
+            )
+
+        if np.array_equal(f, self.f):
+            if self._virgo_psd_values is None:
+                self._virgo_psd_values = self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve, self._virgo_interp)
+            return self._virgo_psd_values
+
+        return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve, self._virgo_interp)
     
     def detector_noise(self, seed_offset=0, detector=None):
         """Add detector noise to the signal.
