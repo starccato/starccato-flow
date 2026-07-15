@@ -1466,7 +1466,7 @@ class FlowMatchingTrainerMulti:
                 epoch=self.num_epochs,
                 n_samples=num_signals,
                 num_epochs=self.num_epochs,
-                exponential=False,  # Uniform sampling for p-p plot calibration
+                exponential=True,  # Uniform sampling for p-p plot calibration
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
@@ -1619,23 +1619,8 @@ class FlowMatchingTrainerMulti:
     @property
     def save_fname(self):
         return f"{self.outdir}/flow_sky_weights.pt"
-
-    def save_data(self):
-        """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""
-        torch.save(self.flow.state_dict(), self.save_fname)
-        print(f"Saved Flow model to {self.save_fname}")
-        
-        # Save losses to npz file (consistent with CVAE trainer)
-        losses_path = f"{self.outdir}/flow_losses_test.npz"
-        np.savez(
-            losses_path,
-            avg_mse_losses=np.array(self.avg_mse_losses),
-            avg_mse_losses_val=np.array(self.avg_mse_losses_val)
-        )
-        print(f"Saved losses to {losses_path}")
     
     def save_models(self):
-        """Save flow model (deprecated: use save_data() instead for combined model+losses saving)."""
         torch.save(self.flow.state_dict(), self.save_fname)
         print(f"Saved Flow model to {self.save_fname}")
     
