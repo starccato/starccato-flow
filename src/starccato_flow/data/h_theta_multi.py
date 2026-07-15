@@ -695,6 +695,7 @@ class hThetaMulti(Dataset):
         ra_cos = params_norm[:, col_idx]
         ra_sin = params_norm[:, col_idx + 1]
         ra = np.arctan2(ra_sin, ra_cos)
+        ra = np.mod(ra, 2.0 * np.pi)  # Convert arctan2's (-π, π] range to the class's [0, 2π) convention
         params_denorm_list.append(ra.reshape(-1, 1))
         col_idx += 2
         
@@ -722,7 +723,7 @@ class hThetaMulti(Dataset):
         psi_cos = params_norm[:, col_idx]
         psi_sin = params_norm[:, col_idx + 1]
         psi = np.arctan2(psi_sin, psi_cos)
-        psi = np.where(psi < 0, psi + np.pi, psi)  # Correctly wrap [-π, π] to [0, π]
+        psi = np.abs(psi)  # Correctly folds (-π, π] into [0, π] by reflecting across the x-axis
         params_denorm_list.append(psi.reshape(-1, 1))
         
         return np.concatenate(params_denorm_list, axis=1)

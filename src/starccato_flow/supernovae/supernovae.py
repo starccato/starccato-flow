@@ -358,11 +358,11 @@ class Supernovae:
 
     def plot_galactic_distribution(
         self,
-        fname_3d: Optional[str] = "plots/galactic_supernovae_3d.png",
-        fname_xy: Optional[str] = "plots/galactic_supernovae_xy.png",
-        fname_xz: Optional[str] = "plots/galactic_supernovae_xz.png",
-        fname_xy_closeup: Optional[str] = "plots/galactic_supernovae_xy_closeup.png",
-        fname_yx_zx: Optional[str] = "plots/galactic_supernovae_yx_zx.png",
+        fname_3d: Optional[str] = None,
+        fname_xy: Optional[str] = None,
+        fname_xz: Optional[str] = None,
+        fname_xy_closeup: Optional[str] = None,
+        fname_yx_zx: Optional[str] = None,
         background: str = "black",
         transparent: Optional[bool] = None,
         light_year: bool = False,
