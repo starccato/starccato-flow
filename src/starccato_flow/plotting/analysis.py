@@ -191,15 +191,15 @@ def plot_galactic_distribution(
     coord_scale = kpc_to_ly if light_year else 1.0
     galactic_coords = galactic_coords * coord_scale
     sun_location = sun_location * coord_scale
-    if highlight_coords is not None:
-        highlight_coords = highlight_coords * coord_scale
-        rotation_angle = np.deg2rad(-90.0)
-        rotation_matrix = np.array([
-            [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
-            [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
-            [0.0, 0.0, 1.0],
-        ])
-        highlight_coords = highlight_coords @ rotation_matrix.T
+    # if highlight_coords is not None:
+    #     highlight_coords = highlight_coords * coord_scale
+    #     rotation_angle = np.deg2rad(-90.0)
+    #     rotation_matrix = np.array([
+    #         [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+    #         [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+    #         [0.0, 0.0, 1.0],
+    #     ])
+    #     highlight_coords = highlight_coords @ rotation_matrix.T
 
     x, y, z = galactic_coords.T
     # xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
@@ -737,11 +737,23 @@ def plot_galactic_distribution_with_posterior(
     post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
         posterior_ra, posterior_dec, posterior_distance
     )
+
+    # Apply the same 90° rotation used for highlighted points in the galactic plots
+    # so the posterior overlay uses the same visual orientation as the background.
+    # rotation_angle = np.deg2rad(-90.0)
+    # rotation_matrix = np.array([
+    #     [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+    #     [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+    #     [0.0, 0.0, 1.0],
+    # ])
+    # posterior_coords = np.column_stack([post_x, post_y, post_z])
+    # posterior_coords = posterior_coords @ rotation_matrix.T
+    # post_x, post_y, post_z = posterior_coords.T
     
-    # Convert posterior from heliocentric to galactocentric frame by adding sun location
-    post_x += sun_location[0]
-    post_y += sun_location[1]
-    post_z += sun_location[2]
+    # # Convert posterior from heliocentric to galactocentric frame by adding sun location
+    # post_x += sun_location[0]
+    # post_y += sun_location[1]
+    # post_z += sun_location[2]
 
     # Create figure with proper styling (matching plot_galactic_distribution)
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
@@ -819,10 +831,15 @@ def plot_galactic_distribution_with_posterior(
         true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
             np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
         )
-        # Convert to galactocentric frame by adding sun location
-        true_x += sun_location[0]
-        true_y += sun_location[1]
-        true_z += sun_location[2]
+
+        # rotation_matrix = np.array([
+        # [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+        # [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+        # [0.0, 0.0, 1.0],
+        # ])
+        # true_coords = np.column_stack([true_x, true_y, true_z])
+        # true_coords = true_coords @ rotation_matrix.T
+        # true_x, true_y, true_z = true_coords.T
         # Plot with same marker style as celestial map (deepskyblue "x")
         ax.scatter(
             true_x,
@@ -1005,10 +1022,17 @@ def plot_galactic_distribution_with_posterior_zoom(
         posterior_ra, posterior_dec, posterior_distance
     )
     
-    # Convert posterior from heliocentric to galactocentric frame by adding sun location
-    post_x += sun_location[0]
-    post_y += sun_location[1]
-    post_z += sun_location[2]
+    # Apply the same 90° rotation used for highlighted points in the galactic plots
+    # so the posterior overlay uses the same visual orientation as the background.
+    # rotation_angle = np.deg2rad(-90.0)
+    # rotation_matrix = np.array([
+    #     [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+    #     [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+    #     [0.0, 0.0, 1.0],
+    # ])
+    # posterior_coords = np.column_stack([post_x, post_y, post_z])
+    # posterior_coords = posterior_coords @ rotation_matrix.T
+    # post_x, post_y, post_z = posterior_coords.T
 
     # Create figure with proper styling (matching plot_galactic_distribution)
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
@@ -1091,10 +1115,11 @@ def plot_galactic_distribution_with_posterior_zoom(
         true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
             np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
         )
-        # Convert to galactocentric frame by adding sun location
-        true_x += sun_location[0]
-        true_y += sun_location[1]
-        true_z += sun_location[2]
+        
+        # true_coords = np.column_stack([true_x, true_y, true_z])
+        # true_coords = true_coords @ rotation_matrix.T
+        # true_x, true_y, true_z = true_coords.T
+
         # Plot with same marker style as celestial map (deepskyblue "x" with size matching sky map)
         ax.scatter(
             true_x,

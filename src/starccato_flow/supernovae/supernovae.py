@@ -164,12 +164,24 @@ class Supernovae:
         from astropy.coordinates import Galactocentric, ICRS
         import astropy.units as u
         
+        # Our custom frame places the Sun on the +y axis, but Astropy's
+        # Galactocentric frame places the Sun on the -x axis. Rotate by +90°
+        # (x' = -y, y' = x) to align our coordinates with Astropy's convention
+        # before constructing the Galactocentric object.
+        x_custom = self._galactic_coords[:, 0]
+        y_custom = self._galactic_coords[:, 1]
+        z_custom = self._galactic_coords[:, 2]
+        
+        x_astropy = -y_custom
+        y_astropy = x_custom
+        z_astropy = z_custom
+        
         # Transform coordinates directly through Galactocentric (no offset needed)
         # This ensures (0,0,0) maps to the galactic center on the sky
         gal_centric = Galactocentric(
-            x=self._galactic_coords[:, 0]*u.kpc,
-            y=self._galactic_coords[:, 1]*u.kpc,
-            z=self._galactic_coords[:, 2]*u.kpc
+            x=x_astropy*u.kpc,
+            y=y_astropy*u.kpc,
+            z=z_astropy*u.kpc
         )
         
         # Transform to ICRS (equatorial)
@@ -198,7 +210,6 @@ class Supernovae:
         # Store the Astropy-computed distances for proper roundtripping
         self._distances = distance
     
-    
     def equatorial_to_galactic(self, ra: np.ndarray, dec: np.ndarray, distance: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Convert equatorial (RA, Dec, distance) to galactic Cartesian.
         
@@ -208,7 +219,8 @@ class Supernovae:
             distance: Distance in kpc
             
         Returns:
-            x, y, z: Galactic Cartesian coordinates in kpc (in original galactic frame)
+            x, y, z: Galactic Cartesian coordinates in kpc (in original galactic frame,
+                    i.e. our custom Sun-on-+y-axis convention, matching self._galactic_coords)
         """
         from astropy.coordinates import ICRS, Galactocentric
         import astropy.units as u
@@ -250,9 +262,16 @@ class Supernovae:
         gal_centric = icrs.transform_to(Galactocentric())
         
         # Extract Cartesian coordinates directly (no offset needed)
-        x_gal = gal_centric.x.to(u.kpc).value
-        y_gal = gal_centric.y.to(u.kpc).value
-        z_gal = gal_centric.z.to(u.kpc).value
+        # These are in Astropy's convention (Sun on -x axis)
+        x_astropy = gal_centric.x.to(u.kpc).value
+        y_astropy = gal_centric.y.to(u.kpc).value
+        z_astropy = gal_centric.z.to(u.kpc).value
+        
+        # Rotate by -90° (x' = y, y' = -x) to convert from Astropy's convention
+        # back into our custom frame (Sun on +y axis), matching self._galactic_coords.
+        x_gal = y_astropy
+        y_gal = -x_astropy
+        z_gal = z_astropy
         
         return x_gal, y_gal, z_gal
     
