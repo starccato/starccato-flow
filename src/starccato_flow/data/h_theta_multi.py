@@ -18,6 +18,8 @@ from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FRE
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
 
+DIST_EPS_KPC = 0.01
+
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.
     
@@ -77,17 +79,13 @@ class hThetaMulti(Dataset):
         self.include_sky_params = True
         
         # Toggle between analytical and measured PSD for noise generation
-        self.use_measured_psd = use_measured_psd
+        self.use_measured_psd = True
         
-        # Cache for measured sensitivity curves and their interpolators.
+        # Cache for measured sensitivity curves (loaded on first use)
         self._ligo_freq_curve = None
         self._ligo_psd_curve = None
         self._virgo_freq_curve = None
         self._virgo_psd_curve = None
-        self._ligo_interp = None
-        self._virgo_interp = None
-        self._ligo_psd_values = None
-        self._virgo_psd_values = None
         
         # Preload sensitivity curves for use in rnoise
         self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
@@ -329,34 +327,29 @@ class hThetaMulti(Dataset):
         return frequencies, psd
     
     @staticmethod
-    def _interpolate_psd(
-        freq_query: np.ndarray,
-        freq_curve: np.ndarray,
-        psd_curve: np.ndarray,
-        interp_func=None,
-    ) -> np.ndarray:
+    def _interpolate_psd(freq_query: np.ndarray, freq_curve: np.ndarray, psd_curve: np.ndarray) -> np.ndarray:
         """Interpolate PSD at query frequencies using log-log interpolation.
         
         Args:
             freq_query: Frequencies at which to get PSD values
             freq_curve: Frequency points from sensitivity curve
             psd_curve: PSD values from sensitivity curve
-            interp_func: Optional prebuilt interpolator for repeated use
             
         Returns:
             PSD values at query frequencies
         """
         # Use log-log interpolation for smooth behavior across frequency range
-        if interp_func is None:
-            log_freq_curve = np.log10(np.clip(freq_curve, 1e-10, None))
-            log_psd_curve = np.log10(np.clip(psd_curve, 1e-50, None))
-            interp_func = interp1d(
-                log_freq_curve,
-                log_psd_curve,
-                kind='cubic',
-                fill_value='extrapolate',
-                bounds_error=False,
-            )
+        log_freq_curve = np.log10(np.clip(freq_curve, 1e-10, None))
+        log_psd_curve = np.log10(np.clip(psd_curve, 1e-50, None))
+        
+        # Create interpolator
+        interp_func = interp1d(
+            log_freq_curve, 
+            log_psd_curve, 
+            kind='cubic', 
+            fill_value='extrapolate',
+            bounds_error=False
+        )
         
         # Interpolate and convert back from log space
         log_freq_query = np.log10(np.clip(freq_query, 1e-10, None))
@@ -384,25 +377,12 @@ class hThetaMulti(Dataset):
             
         Returns:
             PSD values at frequencies f
-        """
+        """        
+        # Load and cache on first call
         if self._ligo_freq_curve is None or self._ligo_psd_curve is None:
             self._ligo_freq_curve, self._ligo_psd_curve = self._load_sensitivity_curve(ALIGO_ASD_FILE)
-
-        if self._ligo_interp is None:
-            self._ligo_interp = interp1d(
-                np.log10(np.clip(self._ligo_freq_curve, 1e-10, None)),
-                np.log10(np.clip(self._ligo_psd_curve, 1e-50, None)),
-                kind='cubic',
-                fill_value='extrapolate',
-                bounds_error=False,
-            )
-
-        if np.array_equal(f, self.f):
-            if self._ligo_psd_values is None:
-                self._ligo_psd_values = self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve, self._ligo_interp)
-            return self._ligo_psd_values
-
-        return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve, self._ligo_interp)
+        
+        return self._interpolate_psd(f, self._ligo_freq_curve, self._ligo_psd_curve)
     
     def VirgoPsd_measured(self, f: np.ndarray) -> np.ndarray:
         """Get Virgo PSD from measured sensitivity curve.
@@ -413,24 +393,11 @@ class hThetaMulti(Dataset):
         Returns:
             PSD values at frequencies f
         """
+        # Load and cache on first call
         if self._virgo_freq_curve is None or self._virgo_psd_curve is None:
             self._virgo_freq_curve, self._virgo_psd_curve = self._load_sensitivity_curve(AVIRGO_ASD_FILE)
-
-        if self._virgo_interp is None:
-            self._virgo_interp = interp1d(
-                np.log10(np.clip(self._virgo_freq_curve, 1e-10, None)),
-                np.log10(np.clip(self._virgo_psd_curve, 1e-50, None)),
-                kind='cubic',
-                fill_value='extrapolate',
-                bounds_error=False,
-            )
-
-        if np.array_equal(f, self.f):
-            if self._virgo_psd_values is None:
-                self._virgo_psd_values = self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve, self._virgo_interp)
-            return self._virgo_psd_values
-
-        return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve, self._virgo_interp)
+        
+        return self._interpolate_psd(f, self._virgo_freq_curve, self._virgo_psd_curve)
     
     def detector_noise(self, seed_offset=0, detector=None):
         """Add detector noise to the signal.
@@ -594,17 +561,48 @@ class hThetaMulti(Dataset):
         return signal * self.shared_max_strain
     
     def normalize_parameters(self, params):
-        """Normalize parameters to [-1, 1] range."""
+        """Normalize parameters to [-1, 1] range.
+        
+        Distance uses a log-space transform (matches physics-aware normalization)
+        to avoid unbounded linear extrapolation producing negative distances.
+        All other parameters use simple linear normalization.
+        """
         params_norm = params.copy()
         param_range = self.shared_max_theta - self.shared_min_theta
         params_norm = 2 * (params - self.shared_min_theta) / param_range - 1
+        
+        # Distance is the third-to-last column: [..., ra, dec, d, psi]
+        d_idx = params.shape[1] - 2
+        d = params[:, d_idx]
+        
+        log_d = np.log(d + DIST_EPS_KPC)
+        log_d_min = np.log(DIST_EPS_KPC)
+        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)
+        d_norm = 2 * (log_d - log_d_min) / (log_d_max - log_d_min) - 1
+        
+        params_norm[:, d_idx] = d_norm
         return params_norm
     
     def denormalize_parameters(self, params_norm):
-        """Denormalize parameters from [-1, 1] back to original ranges."""
+        """Denormalize parameters from [-1, 1] back to original ranges.
+        
+        Distance uses the inverse log-space transform (matches physics-aware
+        denormalization). All other parameters use simple linear denormalization.
+        """
         params = params_norm.copy()
         param_range = self.shared_max_theta - self.shared_min_theta
         params = (params_norm + 1) / 2 * param_range + self.shared_min_theta
+        
+        # Distance is the third-to-last column: [..., ra, dec, d, psi]
+        d_idx = params_norm.shape[1] - 2
+        d_norm_flat = params_norm[:, d_idx]
+        
+        log_d_min = np.log(DIST_EPS_KPC)
+        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)
+        log_d = (d_norm_flat + 1) / 2 * (log_d_max - log_d_min) + log_d_min
+        d = np.exp(log_d) - DIST_EPS_KPC
+        
+        params[:, d_idx] = d
         return params
 
     def normalize_parameters_physics_aware(self, params):
@@ -652,8 +650,13 @@ class hThetaMulti(Dataset):
         
         # Distance: linear normalization to [-1, 1]
         # d ∈ [0, 10] → d_norm = 2 * d / 10 - 1
-        d_norm = 2 * d / MAX_DISTANCE_KPC - 1
-        d_norm = np.clip(d_norm, -1.0, 1.0)  # Ensure in [-1, 1]
+        # d_norm = 2 * d / MAX_DISTANCE_KPC - 1
+        # d_norm = np.clip(d_norm, -1.0, 1.0)  # Ensure in [-1, 1]
+        DIST_EPS_KPC = 0.01  # 10 pc floor, matches Supernovae's existing distance clip
+        log_d = np.log(d + DIST_EPS_KPC)
+        log_d_min = np.log(DIST_EPS_KPC)                    # log(eps), corresponds to d=0
+        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)  # corresponds to d=10
+        d_norm = 2 * (log_d - log_d_min) / (log_d_max - log_d_min) - 1
         params_norm_list.append(d_norm.reshape(-1, 1))
         
         # Psi: represent as (cos(psi), sin(psi)) on 2D plane
@@ -706,7 +709,12 @@ class hThetaMulti(Dataset):
         # Distance: linear → linear via simple scaling
         # d_norm ∈ [-1, 1] → d = (d_norm + 1) / 2 * MAX_DISTANCE_KPC
         d_norm_flat = params_norm[:, col_idx].flatten()
-        d = (d_norm_flat + 1) / 2 * MAX_DISTANCE_KPC
+        # d = (d_norm_flat + 1) / 2 * MAX_DISTANCE_KPC
+        DIST_EPS_KPC = 0.01  # 10 pc floor, matches Supernovae's existing distance clip
+        log_d_min = np.log(DIST_EPS_KPC)                    # log(eps), corresponds to d=0
+        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)  # corresponds to d=10
+        log_d = (d_norm_flat + 1) / 2 * (log_d_max - log_d_min) + log_d_min
+        d = np.exp(log_d) - DIST_EPS_KPC
         params_denorm_list.append(d.reshape(-1, 1))
         col_idx += 1
         

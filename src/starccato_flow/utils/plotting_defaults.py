@@ -30,7 +30,7 @@ PARAMETER_RANGES = {
     'beta1_IC_b': (0, 0.25),
     'omega_0(rad|s)': (0, 16),
     'A(km)': (0, 10000),
-    'Ye_c_b': (0, 0.3),
+    'Ye_c_b': (0.24, 0.29),
     # Sky parameters
     'ra': (0.0, 2.0 * np.pi),  # Radians, standard RA convention
     'dec': (-np.pi/2, np.pi/2),  # Radians

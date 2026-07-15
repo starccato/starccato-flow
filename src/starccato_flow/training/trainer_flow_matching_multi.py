@@ -386,8 +386,21 @@ class FlowMatchingTrainerMulti:
         max_vals = np.array(max_vals, dtype=np.float32)
         
         # Denormalize using those bounds
-        return self._denormalize_with_bounds(params_norm, min_vals, max_vals)
-    
+        result = self._denormalize_with_bounds(params_norm, min_vals, max_vals)
+
+        # Distance is normalized in log-space (see hThetaMulti.normalize_parameters),
+        # so override the linear-bounds result for the distance column specifically.
+        d_extract_idx = self._get_extracted_index("d")
+        if d_extract_idx >= 0:
+            d_norm_flat = params_norm[:, d_extract_idx]
+            dist_eps = getattr(dataset, "DIST_EPS_KPC", 0.01)
+            log_d_min = np.log(dist_eps)
+            log_d_max = np.log(MAX_DISTANCE_KPC + dist_eps)
+            log_d = (d_norm_flat + 1) / 2 * (log_d_max - log_d_min) + log_d_min
+            result[:, d_extract_idx] = np.exp(log_d) - dist_eps
+
+        return result
+
     def _get_extracted_index(self, param_name: str) -> int:
         """Get the index of a parameter in the extracted parameter space.
         
@@ -1605,7 +1618,7 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_sky_weights_test.pt"
+        return f"{self.outdir}/flow_sky_weights.pt"
 
     def save_data(self):
         """Save flow model and training losses to disk (NPZ format for consistency with CVAE trainer)."""
