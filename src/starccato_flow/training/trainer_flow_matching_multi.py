@@ -598,15 +598,15 @@ class FlowMatchingTrainerMulti:
         
         # Clip posterior samples to valid parameter ranges
         # Use dataset bounds if available, otherwise skip clipping
-        if (hasattr(self.training_dataset, 'shared_min_theta') and 
-            hasattr(self.training_dataset, 'shared_max_theta') and
-            len(self.training_dataset.shared_min_theta) > 0 and
-            len(self.training_dataset.shared_max_theta) > 0):
-            posterior_samples_denorm = np.clip(
-                posterior_samples_denorm,
-                self.training_dataset.shared_min_theta,
-                self.training_dataset.shared_max_theta
-            )
+        # if (hasattr(self.training_dataset, 'shared_min_theta') and 
+        #     hasattr(self.training_dataset, 'shared_max_theta') and
+        #     len(self.training_dataset.shared_min_theta) > 0 and
+        #     len(self.training_dataset.shared_max_theta) > 0):
+        #     posterior_samples_denorm = np.clip(
+        #         posterior_samples_denorm,
+        #         self.training_dataset.shared_min_theta,
+        #         self.training_dataset.shared_max_theta
+        #     )
         
         self.plot_corner_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
@@ -1618,7 +1618,7 @@ class FlowMatchingTrainerMulti:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_sky_weights.pt"
+        return f"{self.outdir}/flow_intrinsic_sky_weights.pt"
     
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
@@ -1631,7 +1631,7 @@ class FlowMatchingTrainerMulti:
             fname: Output CSV filename. If None, saves to outdir/flow_matching/losses.csv
         """
         if fname is None:
-            fname = os.path.join(self.outdir, "flow_matching", "losses.csv")
+            fname = os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
         
         os.makedirs(os.path.dirname(fname), exist_ok=True)
         
@@ -1642,22 +1642,22 @@ class FlowMatchingTrainerMulti:
             'val_loss': self.avg_mse_losses_val
         }
         
-        # Add gradient norms if available (pad with NaN if fewer entries)
-        if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
-            # Average gradient norms per epoch (there are many batches per epoch)
-            samples_per_epoch = self.samples_per_epoch
-            batch_size = self.batch_size
-            batches_per_epoch = max(1, samples_per_epoch // batch_size)
+        # # Add gradient norms if available (pad with NaN if fewer entries)
+        # if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
+        #     # Average gradient norms per epoch (there are many batches per epoch)
+        #     samples_per_epoch = self.samples_per_epoch
+        #     batch_size = self.batch_size
+        #     batches_per_epoch = max(1, samples_per_epoch // batch_size)
             
-            epoch_avg_grads = []
-            for epoch_idx in range(len(self.avg_mse_losses)):
-                start_idx = epoch_idx * batches_per_epoch
-                end_idx = min((epoch_idx + 1) * batches_per_epoch, len(self.flow_gradient_norms))
-                if start_idx < len(self.flow_gradient_norms):
-                    epoch_avg_grads.append(np.mean(self.flow_gradient_norms[start_idx:end_idx]))
-                else:
-                    epoch_avg_grads.append(np.nan)
-            data['avg_gradient_norm'] = epoch_avg_grads
+        #     epoch_avg_grads = []
+        #     for epoch_idx in range(len(self.avg_mse_losses)):
+        #         start_idx = epoch_idx * batches_per_epoch
+        #         end_idx = min((epoch_idx + 1) * batches_per_epoch, len(self.flow_gradient_norms))
+        #         if start_idx < len(self.flow_gradient_norms):
+        #             epoch_avg_grads.append(np.mean(self.flow_gradient_norms[start_idx:end_idx]))
+        #         else:
+        #             epoch_avg_grads.append(np.nan)
+        #     data['avg_gradient_norm'] = epoch_avg_grads
         
         df = pd.DataFrame(data)
         df.to_csv(fname, index=False)
@@ -1668,7 +1668,7 @@ class FlowMatchingTrainerMulti:
         """Load training and validation losses from a CSV file.
         
         Args:
-            fname: Input CSV filename. If None, loads from outdir/flow_matching/losses.csv
+            fname: Input CSV filename. If None, loads from outdir/flow_matching/intrinsic_sky_losses.csv
             
         Returns:
             Dictionary with keys 'train_loss' and 'val_loss' containing the loss arrays

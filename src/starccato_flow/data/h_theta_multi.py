@@ -16,9 +16,8 @@ from starccato_flow.plotting.signals import plot_detector_signal_channels
 
 from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME, MAX_DISTANCE_KPC
 from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
+from ..utils.defaults import LOG_EPS
 from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
-
-DIST_EPS_KPC = 0.01
 
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.
@@ -575,9 +574,9 @@ class hThetaMulti(Dataset):
         d_idx = params.shape[1] - 2
         d = params[:, d_idx]
         
-        log_d = np.log(d + DIST_EPS_KPC)
-        log_d_min = np.log(DIST_EPS_KPC)
-        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)
+        log_d = np.log(d + LOG_EPS)
+        log_d_min = np.log(LOG_EPS)
+        log_d_max = np.log(MAX_DISTANCE_KPC + LOG_EPS)
         d_norm = 2 * (log_d - log_d_min) / (log_d_max - log_d_min) - 1
         
         params_norm[:, d_idx] = d_norm
@@ -597,10 +596,10 @@ class hThetaMulti(Dataset):
         d_idx = params_norm.shape[1] - 2
         d_norm_flat = params_norm[:, d_idx]
         
-        log_d_min = np.log(DIST_EPS_KPC)
-        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)
+        log_d_min = np.log(LOG_EPS)
+        log_d_max = np.log(MAX_DISTANCE_KPC + LOG_EPS)
         log_d = (d_norm_flat + 1) / 2 * (log_d_max - log_d_min) + log_d_min
-        d = np.exp(log_d) - DIST_EPS_KPC
+        d = np.exp(log_d) - LOG_EPS
         
         params[:, d_idx] = d
         return params
@@ -631,6 +630,18 @@ class hThetaMulti(Dataset):
             theta_range = self.shared_max_theta[:theta_dim] - self.shared_min_theta[:theta_dim]
             theta_norm = 2 * (theta_part - self.shared_min_theta[:theta_dim]) / theta_range - 1
             params_norm_list.append(theta_norm)
+
+        # if theta_dim > 0:
+        #     theta_part = params[:, :theta_dim].copy()
+        #     val = theta_part[:, :theta_dim]
+        #     val_min = self.shared_min_theta[:theta_dim]
+        #     val_max = self.shared_max_theta[:theta_dim]
+
+        #     log_val = np.log(val + LOG_EPS)
+        #     log_min = np.log(val_min + LOG_EPS)
+        #     log_max = np.log(val_max + LOG_EPS)
+        #     theta_norm = 2 * (log_val - log_min) / (log_max - log_min) - 1
+        #     params_norm_list.append(theta_norm)
         
         # Sky parameters [ra, dec, d, psi] - extract
         ra = params[:, -4]
@@ -648,14 +659,10 @@ class hThetaMulti(Dataset):
         dec_sin = np.sin(dec)
         params_norm_list.append(np.column_stack([dec_cos, dec_sin]))
         
-        # Distance: linear normalization to [-1, 1]
-        # d ∈ [0, 10] → d_norm = 2 * d / 10 - 1
-        # d_norm = 2 * d / MAX_DISTANCE_KPC - 1
-        # d_norm = np.clip(d_norm, -1.0, 1.0)  # Ensure in [-1, 1]
-        DIST_EPS_KPC = 0.01  # 10 pc floor, matches Supernovae's existing distance clip
-        log_d = np.log(d + DIST_EPS_KPC)
-        log_d_min = np.log(DIST_EPS_KPC)                    # log(eps), corresponds to d=0
-        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)  # corresponds to d=10
+        # Distance: log-space normalization to [-1, 1]
+        log_d = np.log(d + LOG_EPS)
+        log_d_min = np.log(LOG_EPS)                    # log(eps), corresponds to d=0
+        log_d_max = np.log(MAX_DISTANCE_KPC + LOG_EPS)  # corresponds to d=10
         d_norm = 2 * (log_d - log_d_min) / (log_d_max - log_d_min) - 1
         params_norm_list.append(d_norm.reshape(-1, 1))
         
@@ -690,6 +697,19 @@ class hThetaMulti(Dataset):
             theta_phys = (theta_norm + 1) / 2 * theta_range + self.shared_min_theta[:theta_dim]
             params_denorm_list.append(theta_phys)
             col_idx += theta_dim
+    
+        # if theta_dim > 0:
+        #     theta_norm = params_norm[:, :theta_dim].copy()
+
+        #     val_min = self.shared_min_theta[:theta_dim]
+        #     val_max = self.shared_max_theta[:theta_dim]
+
+        #     log_min = np.log(val_min + LOG_EPS)
+        #     log_max = np.log(val_max + LOG_EPS)
+        #     norm_col = theta_norm[:, :theta_dim]
+        #     log_val = (norm_col + 1) / 2 * (log_max - log_min) + log_min
+        #     theta_phys = np.exp(log_val) - LOG_EPS
+        #     params_denorm_list.append(theta_phys)
         
         # RA: (cos, sin) → angle via arctan2
         ra_cos = params_norm[:, col_idx]
@@ -711,11 +731,10 @@ class hThetaMulti(Dataset):
         # d_norm ∈ [-1, 1] → d = (d_norm + 1) / 2 * MAX_DISTANCE_KPC
         d_norm_flat = params_norm[:, col_idx].flatten()
         # d = (d_norm_flat + 1) / 2 * MAX_DISTANCE_KPC
-        DIST_EPS_KPC = 0.01  # 10 pc floor, matches Supernovae's existing distance clip
-        log_d_min = np.log(DIST_EPS_KPC)                    # log(eps), corresponds to d=0
-        log_d_max = np.log(MAX_DISTANCE_KPC + DIST_EPS_KPC)  # corresponds to d=10
+        log_d_min = np.log(LOG_EPS)                    # log(eps), corresponds to d=0
+        log_d_max = np.log(MAX_DISTANCE_KPC + LOG_EPS)  # corresponds to d=10
         log_d = (d_norm_flat + 1) / 2 * (log_d_max - log_d_min) + log_d_min
-        d = np.exp(log_d) - DIST_EPS_KPC
+        d = np.exp(log_d) - LOG_EPS
         params_denorm_list.append(d.reshape(-1, 1))
         col_idx += 1
         

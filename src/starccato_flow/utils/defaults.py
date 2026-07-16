@@ -24,6 +24,8 @@ GPS_TIME = 1457654242.0
 
 VALIDATION_SPLIT = 0.1
 
+LOG_EPS = 0.0001
+
 def get_device() -> torch.device:
     try:
         if torch.cuda.is_available():
