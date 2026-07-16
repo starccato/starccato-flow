@@ -46,17 +46,13 @@ _module_dir = os.path.dirname(os.path.abspath(__file__))
 _starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(_module_dir)))
 _data_root = os.path.join(_starccato_flow_root, "..", "data")
 
-SIGNALS_CSV = os.path.join(_data_root, "training", "richers_1764.csv")
-PARAMETERS_CSV = os.path.join(_data_root, "training", "richers_1764_parameters.csv")
+SIGNALS_CSV = os.path.join(_data_root, "training", "richers_1764_reorder.csv")
+PARAMETERS_CSV = os.path.join(_data_root, "training", "richers_1764_parameters_reorder.csv")
+TIME_CSV = os.path.join(_data_root, "training", "richers_1764_times.csv")
 
 # Legacy noise curves (currently used)
 ALIGO_ASD_FILE = os.path.join(_data_root, "noise_asd", "aligo.txt")
 AVIRGO_ASD_FILE = os.path.join(_data_root, "noise_asd", "advirgo.txt")
 
-# O3 actual noise curves (separate for H1 and L1) - optional alternatives
-# ALIGO_H1_ASD_FILE = os.path.join(_data_root, "noise_asd", "aligo_O3actual_H1.txt")
-# ALIGO_L1_ASD_FILE = os.path.join(_data_root, "noise_asd", "aligo_O3actual_L1.txt")
-# AVIRGO_O3_ASD_FILE = os.path.join(_data_root, "noise_asd", "avirgo_O3actual.txt")
-TIME_CSV = os.path.join(_data_root, "training", "richers_1764_times.csv")
 
 
