@@ -4,14 +4,11 @@ import time
 import numpy as np
 import torch
 
-from ..data.s_theta_toy import sThetaToy
 from ..data.s_theta import sTheta
-from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
-from ..utils.defaults_general import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
-from ....archive.trainer_vae_denoising import VAEDenoisingTrainer
+from ..plotting import plot_signal_distribution
+from ..utils.defaults_general import Y_LENGTH, Z_DIM, DEVICE
 
 def create_train_val_split(
-    toy: bool,
     y_length: int,
     detector_noise_on: bool,
     validation_split: float,
@@ -22,7 +19,6 @@ def create_train_val_split(
     """Create training and validation datasets with proper splitting.
     
     Args:
-        toy: Whether to use toy dataset or CCSN data
         y_length: Length of signal
         detector_noise_on: Whether to add detector noise
         validation_split: Fraction of data for validation
@@ -44,113 +40,60 @@ def create_train_val_split(
     # If user requests ONLY sky parameters, stheta_parameters will be empty
     # hThetaMulti will then only output sky parameters
     
-    if toy:
-        # Create full toy dataset
-        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
-        full_toy_dataset = sThetaToy(
-            num_signals=1684, 
-            signal_length=y_length, 
-            detector_noise_on=False
-        )
-        
-        # Split toy data using same logic as real data
-        num_signals = full_toy_dataset.num_signals
-        base_indices = list(range(num_signals))
-        split = int(np.floor(validation_split * num_signals))
-        
-        # Deterministic split with fixed seed
-        rng = np.random.RandomState(seed)
-        rng.shuffle(base_indices)
-        train_indices = base_indices[split:]
-        val_indices = base_indices[:split]
-        
-        print(f"\n=== Toy Data Split ===")
-        print(f"Total signals: {num_signals}")
-        print(f"Training signals: {len(train_indices)}")
-        print(f"Validation signals: {len(val_indices)}")
-        
-        # Create subsets using shared parameter ranges from full dataset
-        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
-        training_dataset = sThetaToy(
-            num_signals=len(train_indices),
-            signal_length=y_length,
-            detector_noise_on=False,
-            shared_params=full_toy_dataset.parameters[train_indices],
-            shared_min=full_toy_dataset.min_parameter,
-            shared_max=full_toy_dataset.max_parameter,
-            shared_max_strain=full_toy_dataset.shared_max_strain
-        )
-        # Note: sThetaToy should always have detector_noise_on=False (noise added only in hThetaMulti)
-        validation_dataset = sThetaToy(
-            num_signals=len(val_indices),
-            signal_length=y_length,
-            detector_noise_on=False,
-            shared_params=full_toy_dataset.parameters[val_indices],
-            shared_min=full_toy_dataset.min_parameter,
-            shared_max=full_toy_dataset.max_parameter,
-            shared_max_strain=full_toy_dataset.shared_max_strain
-        )
-    else:
-        # Create a temporary dataset to get the number of signals
-        # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
-        temp_dataset = sTheta(
-            num_epochs=num_epochs,
-            detector_noise_on=False,
-            parameters=stheta_parameters,
-        )
-        num_signals = temp_dataset.signals.shape[1]
-        
-        # Split signal indices
-        indices = list(range(num_signals))
-        split = int(np.floor(validation_split * num_signals))
-        if num_signals > 1:
-            split = max(1, min(split, num_signals - 1))
-        
-        # Deterministic split with fixed seed
-        rng = np.random.RandomState(seed)
-        rng.shuffle(indices)
-        train_indices = np.array(indices[split:])
-        val_indices = np.array(indices[:split])
-        
-        print(f"\n=== Data Split ===")
-        print(f"Total signals: {num_signals}")
-        print(f"Training signals: {len(train_indices)}")
-        print(f"Validation signals: {len(val_indices)}")
-        print(f"First 5 training indices: {train_indices[:5]}")
-        print(f"First 5 validation indices: {val_indices[:5]}")
-        
-        # Create SEPARATE dataset instances with disjoint indices
-        # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
-        training_dataset = sTheta(
-            num_epochs=num_epochs,
-            detector_noise_on=False,
-            parameters=stheta_parameters,
-            indices=train_indices,
-            shared_min=temp_dataset.shared_min_theta,
-            shared_max=temp_dataset.shared_max_theta,
-            shared_max_strain=temp_dataset.shared_max_strain
-        )
-        
-        validation_dataset = sTheta(
-            num_epochs=num_epochs,
-            detector_noise_on=False,
-            parameters=stheta_parameters,
-            indices=val_indices,
-            shared_min=temp_dataset.shared_min_theta,
-            shared_max=temp_dataset.shared_max_theta,
-            shared_max_strain=temp_dataset.shared_max_strain
-        )
+
+    temp_dataset = sTheta(
+        num_epochs=num_epochs,
+        detector_noise_on=False,
+        parameters=stheta_parameters,
+    )
+    num_signals = temp_dataset.signals.shape[1]
+    
+    # Split signal indices
+    indices = list(range(num_signals))
+    split = int(np.floor(validation_split * num_signals))
+    if num_signals > 1:
+        split = max(1, min(split, num_signals - 1))
+    
+    # Deterministic split with fixed seed
+    rng = np.random.RandomState(seed)
+    rng.shuffle(indices)
+    train_indices = np.array(indices[split:])
+    val_indices = np.array(indices[:split])
+    
+    print(f"\n=== Data Split ===")
+    print(f"Total signals: {num_signals}")
+    print(f"Training signals: {len(train_indices)}")
+    print(f"Validation signals: {len(val_indices)}")
+    print(f"First 5 training indices: {train_indices[:5]}")
+    print(f"First 5 validation indices: {val_indices[:5]}")
+    
+    # Create SEPARATE dataset instances with disjoint indices
+    # Note: sTheta should always have detector_noise_on=False (noise added only in hThetaMulti)
+    training_dataset = sTheta(
+        num_epochs=num_epochs,
+        detector_noise_on=False,
+        parameters=stheta_parameters,
+        indices=train_indices,
+        shared_min=temp_dataset.shared_min_theta,
+        shared_max=temp_dataset.shared_max_theta,
+        shared_max_strain=temp_dataset.shared_max_strain
+    )
+    
+    validation_dataset = sTheta(
+        num_epochs=num_epochs,
+        detector_noise_on=False,
+        parameters=stheta_parameters,
+        indices=val_indices,
+        shared_min=temp_dataset.shared_min_theta,
+        shared_max=temp_dataset.shared_max_theta,
+        shared_max_strain=temp_dataset.shared_max_strain
+    )
     
     # Verify alignment
     training_dataset.verify_alignment()
     validation_dataset.verify_alignment()
     
-    # Return datasets along with validation indices for later use
-    if toy:
-        return training_dataset, validation_dataset, val_indices
-    else:
-        return training_dataset, validation_dataset, val_indices
-
+    return training_dataset, validation_dataset, val_indices
 
 def plot_generated_signal_distribution(
     vae,

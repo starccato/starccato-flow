@@ -37,7 +37,6 @@ class FlowMatchingTrainer:
         outdir: str = None,
         detector_noise_on: bool = True,
         curriculum: bool = True,
-        toy: bool = True,
         max_grad_norm: float = 1.0  # Maximum gradient norm for clipping
     ):
         self.y_length = y_length
@@ -57,13 +56,11 @@ class FlowMatchingTrainer:
         
         self.checkpoint_interval = checkpoint_interval
         self.outdir = outdir
-        self.toy = toy
         self.detector_noise_on = detector_noise_on
         self.curriculum = curriculum
         self.max_grad_norm = max_grad_norm
 
         self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
-            toy=self.toy,
             y_length=self.y_length,
             detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,

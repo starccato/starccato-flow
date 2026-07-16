@@ -3,9 +3,9 @@ import torch
 from torch.utils.data import DataLoader
 from sklearn.datasets import make_moons
 
-from ..utils.defaults_general import Y_LENGTH
-from ..plotting import plot_signal_distribution
-from . import BaseDataset
+from ..src.starccato_flow.utils.defaults_general import Y_LENGTH
+from ..src.starccato_flow.plotting import plot_signal_distribution
+from ..src.starccato_flow.data import BaseDataset
 
 """
 This class generates synthetic time series data for testing purposes.

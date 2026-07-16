@@ -1,13 +1,11 @@
 import os
 import time
-import csv
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
-from torch import mean, nn
+from torch import nn
 from torch.utils.data import DataLoader
 
 from ..data.s_theta import sTheta
@@ -17,7 +15,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
-from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
+from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
@@ -48,7 +46,6 @@ class FlowMatchingTrainerMulti:
         checkpoint_interval: int = 16,
         outdir: str = "outdir",
         detector_noise_on: bool = True,
-        toy: bool = False,
         max_grad_norm: float = 1.0,
         parameters: list = None,
         custom_data: tuple = None,  # (signals_array, params_array) for generated data
@@ -99,7 +96,6 @@ class FlowMatchingTrainerMulti:
             outdir = os.path.join(_starccato_flow_root, "outdir")
         
         self.outdir = outdir
-        self.toy = toy
         self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
         
@@ -238,7 +234,6 @@ class FlowMatchingTrainerMulti:
         else:
             # Use standard train/val split. Probably the most acceptable
             self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
-                toy=self.toy,
                 y_length=self.y_length,
                 detector_noise_on=self.detector_noise_on,
                 validation_split=self.validation_split,
@@ -1006,64 +1001,59 @@ class FlowMatchingTrainerMulti:
                     if n_outside > 0:
                         print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
         
-        # Denormalize parameters
-        if self.toy:
-            samples_denorm = samples_cpu
-            true_params_denorm = true_params_norm
+        if self.use_physics_aware_norm:
+            # Physics-aware denormalization: full 11D → 8D physical
+            # Samples are in physics-aware space (11D for all 8 params)
+            samples_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(samples_cpu)  # (N_samples, 8)
+            true_params_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(
+                true_params_norm.reshape(1, -1)
+            ).flatten()  # (8,)
+            
+            # Extract only the requested parameters in physical space
+            samples_denorm = samples_full_denorm[:, self.param_extract_indices]  # (N_samples, n_requested)
+            true_params_denorm = true_params_full_denorm[self.param_extract_indices]  # (n_requested,)
+            
+            # DEBUG: Check denormalized samples
+            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) - Physics-Aware ===")
+            for i, param_name in enumerate(self.parameters_to_estimate):
+                param_idx = self.param_extract_indices[i]
+                param_samples = samples_full_denorm[:, param_idx]
+                min_bound = h_theta_multi_dataset.shared_min_theta[param_idx]
+                max_bound = h_theta_multi_dataset.shared_max_theta[param_idx]
+                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                if n_outside > 0:
+                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
         else:
-            if self.use_physics_aware_norm:
-                # Physics-aware denormalization: full 11D → 8D physical
-                # Samples are in physics-aware space (11D for all 8 params)
-                samples_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(samples_cpu)  # (N_samples, 8)
-                true_params_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(
-                    true_params_norm.reshape(1, -1)
-                ).flatten()  # (8,)
-                
-                # Extract only the requested parameters in physical space
-                samples_denorm = samples_full_denorm[:, self.param_extract_indices]  # (N_samples, n_requested)
-                true_params_denorm = true_params_full_denorm[self.param_extract_indices]  # (n_requested,)
-                
-                # DEBUG: Check denormalized samples
-                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) - Physics-Aware ===")
-                for i, param_name in enumerate(self.parameters_to_estimate):
-                    param_idx = self.param_extract_indices[i]
-                    param_samples = samples_full_denorm[:, param_idx]
-                    min_bound = h_theta_multi_dataset.shared_min_theta[param_idx]
-                    max_bound = h_theta_multi_dataset.shared_max_theta[param_idx]
-                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
-                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
-                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
-                    if n_outside > 0:
-                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
+            # Linear denormalization: extract then denormalize
+            samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+            
+            # Extract relevant parameters from true_params if dataset has all 8 parameters
+            num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
+            if num_params_in_dataset == 8:
+                # Dataset has all parameters; extract only the requested ones
+                true_params_extracted = true_params_norm[self.param_extract_indices]
             else:
-                # Linear denormalization: extract then denormalize
-                samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
-                
-                # Extract relevant parameters from true_params if dataset has all 8 parameters
-                num_params_in_dataset = len(h_theta_multi_dataset.shared_min_theta)
-                if num_params_in_dataset == 8:
-                    # Dataset has all parameters; extract only the requested ones
-                    true_params_extracted = true_params_norm[self.param_extract_indices]
-                else:
-                    # Dataset has only requested parameters
-                    true_params_extracted = true_params_norm
-                
-                true_params_denorm = self._denormalize_extracted_params(
-                    true_params_extracted.reshape(1, -1), h_theta_multi_dataset
-                ).flatten()
-                
-                # DEBUG: Check denormalized samples
-                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
-                for i, param_name in enumerate(self.parameters_to_estimate):
-                    param_samples = samples_denorm[:, i]
-                    min_bound = h_theta_multi_dataset.shared_min_theta[i]
-                    max_bound = h_theta_multi_dataset.shared_max_theta[i]
-                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
-                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
-                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
-                    if n_outside > 0:
-                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
-        
+                # Dataset has only requested parameters
+                true_params_extracted = true_params_norm
+            
+            true_params_denorm = self._denormalize_extracted_params(
+                true_params_extracted.reshape(1, -1), h_theta_multi_dataset
+            ).flatten()
+            
+            # DEBUG: Check denormalized samples
+            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
+            for i, param_name in enumerate(self.parameters_to_estimate):
+                param_samples = samples_denorm[:, i]
+                min_bound = h_theta_multi_dataset.shared_min_theta[i]
+                max_bound = h_theta_multi_dataset.shared_max_theta[i]
+                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                if n_outside > 0:
+                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
+    
         t1 = time.time()
         print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
         
@@ -1599,8 +1589,6 @@ class FlowMatchingTrainerMulti:
         using the parameter_mapping indices. With physics-aware normalization, returns the full
         normalized parameters (which are already in the reduced space from __getitem__).
         """
-        if self.toy:
-            return full_params
         
         # With physics-aware normalization, the dataset __getitem__ already returns
         # the full normalized parameters in physics-aware space. We don't need to extract

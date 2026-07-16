@@ -12,7 +12,6 @@ class TestTrainValSplit:
         """Verify no overlap between train and validation sets for CCSN data."""
         # Create train/val split
         training_dataset, validation_dataset, val_indices = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             noise=True,
             validation_split=0.1,
@@ -40,45 +39,11 @@ class TestTrainValSplit:
         print(f"  Validation signals: {len(val_indices)}")
         print(f"  Total coverage: {total_signals}")
     
-    def test_no_overlap_toy_data(self):
-        """Verify no overlap between train and validation sets for toy data."""
-        # Create train/val split
-        training_dataset, validation_dataset, val_indices = create_train_val_split(
-            toy=True,
-            y_length=Y_LENGTH,
-            noise=True,
-            validation_split=0.1,
-            seed=42,
-            num_epochs=256
-        )
-        
-        # For toy data, we need to check if parameters overlap
-        # Convert to tuples for set comparison
-        train_params = set(map(tuple, training_dataset.parameters))
-        val_params = set(map(tuple, validation_dataset.parameters))
-        
-        # Check for overlap
-        overlap = train_params.intersection(val_params)
-        
-        # Assert no overlap
-        assert len(overlap) == 0, (
-            f"Data leakage detected! {len(overlap)} parameter sets appear in both "
-            f"train and validation sets"
-        )
-        
-        # Verify coverage
-        total_signals = len(train_params) + len(val_params)
-        print(f"\n✓ No overlap verified:")
-        print(f"  Training signals: {len(train_params)}")
-        print(f"  Validation signals: {len(val_params)}")
-        print(f"  Total coverage: {total_signals}")
-    
     def test_split_ratio_ccsn(self):
         """Verify the split ratio is approximately correct for CCSN data."""
         validation_split = 0.15
         
         training_dataset, validation_dataset, val_indices = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             detector_noise_on=True,
             validation_split=validation_split,
@@ -101,41 +66,12 @@ class TestTrainValSplit:
         print(f"  Expected: {validation_split}")
         print(f"  Actual: {actual_val_ratio:.4f}")
     
-    def test_split_ratio_toy(self):
-        """Verify the split ratio is approximately correct for toy data."""
-        validation_split = 0.15
-        
-        training_dataset, validation_dataset, val_indices = create_train_val_split(
-            toy=True,
-            y_length=Y_LENGTH,
-            detector_noise_on=True,
-            validation_split=validation_split,
-            seed=42,
-            num_epochs=256
-        )
-        
-        train_size = training_dataset.num_signals
-        val_size = validation_dataset.num_signals
-        total_size = train_size + val_size
-        
-        actual_val_ratio = val_size / total_size
-        
-        # Allow 1% tolerance
-        assert abs(actual_val_ratio - validation_split) < 0.01, (
-            f"Split ratio incorrect: expected {validation_split}, got {actual_val_ratio}"
-        )
-        
-        print(f"\n✓ Split ratio verified:")
-        print(f"  Expected: {validation_split}")
-        print(f"  Actual: {actual_val_ratio:.4f}")
-    
     def test_deterministic_split(self):
         """Verify that using the same seed produces the same split."""
         seed = 123
         
         # Create first split
         train1, val1, val_indices1 = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             detector_noise_on=True,
             validation_split=0.1,
@@ -145,7 +81,6 @@ class TestTrainValSplit:
         
         # Create second split with same seed
         train2, val2, val_indices2 = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             detector_noise_on=True,
             validation_split=0.1,
@@ -167,7 +102,6 @@ class TestTrainValSplit:
         """Verify that different seeds produce different splits."""
         # Create split with seed 1
         train1, val1, val_indices1 = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             detector_noise_on=True,
             validation_split=0.1,
@@ -177,7 +111,6 @@ class TestTrainValSplit:
         
         # Create split with seed 2
         train2, val2, val_indices2 = create_train_val_split(
-            toy=False,
             y_length=Y_LENGTH,
             detector_noise_on=True,
             validation_split=0.1,

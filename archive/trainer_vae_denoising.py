@@ -49,7 +49,6 @@ class VAEDenoisingTrainer:
         checkpoint_interval: int = 16,
         outdir: Optional[str] = None,
         detector_noise_on: bool = True,
-        toy: bool = False,
         max_grad_norm: float = 1.0,
         curriculum_snr_start: float = 200.0,
         curriculum_snr_end: float = 8.0,
@@ -69,7 +68,6 @@ class VAEDenoisingTrainer:
             checkpoint_interval: Interval for saving checkpoints
             outdir: Output directory for models and plots
             detector_noise_on: Whether to add detector noise
-            toy: Whether to use toy dataset
             max_grad_norm: Maximum gradient norm for clipping
             curriculum_snr_start: Starting SNR for curriculum (high quality = high SNR)
             curriculum_snr_end: Ending SNR for curriculum (low quality = low SNR)
@@ -84,7 +82,6 @@ class VAEDenoisingTrainer:
         self.validation_split = validation_split
         self.learning_rate = learning_rate
         self.checkpoint_interval = checkpoint_interval
-        self.toy = toy
         self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
         self.beta = beta
@@ -119,7 +116,6 @@ class VAEDenoisingTrainer:
         
         # Create train/val split
         self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
-            toy=self.toy,
             y_length=self.y_length,
             detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,
@@ -436,7 +432,6 @@ if __name__ == "__main__":
     # Example usage
     trainer = VAEDenoisingTrainer(
         num_epochs=256,
-        toy=False,
         curriculum_snr_start=200.0,
         curriculum_snr_end=8.0,
         beta=1.0,

@@ -43,7 +43,6 @@ class ConditionalVAETrainer:
         checkpoint_interval: int = 16,
         outdir: str = None,
         detector_noise_on: bool = False,
-        toy: bool = True,
         max_grad_norm: float = 1.0,
         varying_param_index: int = 0,
         theta_label: Optional[str] = None,
@@ -66,7 +65,6 @@ class ConditionalVAETrainer:
             outdir = os.path.join(_starccato_flow_root, "outdir")
         
         self.outdir = outdir
-        self.toy = toy
         self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
         self.varying_param_index = varying_param_index
@@ -77,7 +75,6 @@ class ConditionalVAETrainer:
 
         # Create train/val split using shared utility function
         self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
-            toy=self.toy,
             y_length=self.y_length,
             detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,
