@@ -11,7 +11,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
-from ..nn.vae_vanilla import VAE
+from ....archive.vae_vanilla import VAE
 from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..plotting import plot_loss
 from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
