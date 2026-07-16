@@ -2,7 +2,7 @@
 
 import numpy as np
 from starccato_flow.training import create_train_val_split
-from starccato_flow.utils.defaults import Y_LENGTH
+from starccato_flow.utils.defaults_general import Y_LENGTH
 
 
 class TestTrainValSplit:

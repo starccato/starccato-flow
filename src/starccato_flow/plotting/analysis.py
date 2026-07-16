@@ -14,8 +14,8 @@ import corner
 from PIL import Image
 import io
 
-from ..utils.defaults import TEN_KPC
-from ..utils.plotting_defaults import (
+from ..utils.defaults_general import TEN_KPC
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     SIGNAL_LIM_UPPER,
@@ -1483,7 +1483,7 @@ def create_snr_variation_gif(
     frames = []
     
     # Import required utilities
-    from ..utils.defaults import SAMPLING_FREQ, Y_LENGTH
+    from ..utils.defaults_general import SAMPLING_FREQ, Y_LENGTH
     
     is_even = (Y_LENGTH % 2 == 0)
     half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2

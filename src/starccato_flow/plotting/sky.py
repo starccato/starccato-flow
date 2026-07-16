@@ -13,11 +13,11 @@ from matplotlib.markers import MarkerStyle
 from matplotlib.patches import Circle, Patch
 from matplotlib.path import Path
 
-from ..utils.plotting_defaults import GENERATED_SIGNAL_COLOUR, SIGNAL_COLOUR
+from ..utils.defaults_plotting import GENERATED_SIGNAL_COLOUR, SIGNAL_COLOUR
 
 from . import set_plot_style
 
-from ..utils.plotting_defaults import (
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     SIGNAL_LIM_UPPER,

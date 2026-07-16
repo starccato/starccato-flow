@@ -10,7 +10,7 @@ import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 import torch
 from . import set_plot_style, get_time_axis
-from ..utils.plotting_defaults import (
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, DEFAULT_FONT_FAMILY, 
     DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
 )

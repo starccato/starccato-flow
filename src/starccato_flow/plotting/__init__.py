@@ -13,7 +13,7 @@ Common utility functions are exposed at the top level.
 from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
-from ..utils.plotting_defaults import DEFAULT_FONT_SIZE
+from ..utils.defaults_plotting import DEFAULT_FONT_SIZE
 
 # Utility functions
 def set_plot_style(background: str = "white", font_family: str = "serif", font_name: str = "Times New Roman") -> None:

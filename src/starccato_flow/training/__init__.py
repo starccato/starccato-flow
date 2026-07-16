@@ -7,8 +7,8 @@ import torch
 from ..data.s_theta_toy import sThetaToy
 from ..data.s_theta import sTheta
 from ..plotting import plot_signal_distribution, plot_candidate_signal, plot_loss, plot_signal_grid, plot_latent_space_3d
-from ..utils.defaults import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
-from .trainer_vae_denoising import VAEDenoisingTrainer
+from ..utils.defaults_general import Y_LENGTH, Z_DIM, DEVICE, TEN_KPC
+from ....archive.trainer_vae_denoising import VAEDenoisingTrainer
 
 def create_train_val_split(
     toy: bool,

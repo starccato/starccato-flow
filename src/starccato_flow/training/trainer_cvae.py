@@ -12,13 +12,13 @@ from tqdm.auto import trange
 
 from ..nn.cvae import ConditionalVAE
 
-from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 
 from . import create_train_val_split         
 from ..plotting import plot_loss
 from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
 from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down
-from ..utils.plotting_defaults import PARAMETER_LABELS
+from ..utils.defaults_plotting import PARAMETER_LABELS
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
@@ -407,7 +407,7 @@ class ConditionalVAETrainer:
                                        param_values=None, param_label=None, param_colors=None):
         """Plot signal grid with color-coded frames based on parameter values."""
         from ..plotting import set_plot_style, get_time_axis
-        from ..utils.plotting_defaults import GENERATED_SIGNAL_COLOUR, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
+        from ..utils.defaults_plotting import GENERATED_SIGNAL_COLOUR, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
         
         set_plot_style("white", "Serif", "Times New Roman")
         

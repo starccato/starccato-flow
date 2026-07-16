@@ -9,14 +9,11 @@ from PIL import Image
 
 from ..plotting.analysis import plot_surface_density
 
+from ..utils.defaults_physical import SUN_LOCATION
 
 class Supernovae:
-    """Manages supernova locations in galactic and equatorial coordinates."""
-    
-    # Earth's position in galactic coordinates (kpc)
-    SUN_LOCATION = np.array([0.0, 8.178, 0.0208]) # Sun is about 8.178 kpc from galactic center, and ~20.8 pc above the galactic plane
-    EARTH_LOCATION = np.array([0.0, 0.0, 0.0])  # Assume that the sun and earth are co-located for simplicity in heliocentric coordinates
-    
+    """Manages supernova locations in galactic and equatorial coordinates."""    
+
     def __init__(
         self,
         locations_file: Optional[str] = None,
@@ -32,6 +29,7 @@ class Supernovae:
                            Positive values rotate eastward. Default is +60 degrees.
             limit: Maximum number of locations to load (None for all)
         """
+        self.sun_location = SUN_LOCATION
         self.locations_file = locations_file
         self.rotation_offset = rotation_offset
         self._galactic_coords = None
@@ -149,7 +147,7 @@ class Supernovae:
             raise ValueError("No galactic coordinates available. Load or generate locations first.")
         
         # Heliocentric coordinates (relative to Sun/Earth location in galactocentric frame)
-        helio_coords = self._galactic_coords - self.SUN_LOCATION
+        helio_coords = self._galactic_coords - self.sun_location
         
         # Distance in kpc
         self._distances = np.linalg.norm(helio_coords, axis=1)
@@ -402,7 +400,7 @@ class Supernovae:
 
         return plot_galactic_distribution(
             galactic_coords=self._galactic_coords,
-            sun_location=self.SUN_LOCATION,
+            sun_location=self.sun_location,
             highlight_indices=highlight_indices,
             fname_3d=fname_3d,
             fname_xy=fname_xy,
@@ -453,7 +451,7 @@ class Supernovae:
         Returns:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
         """
-        from ..utils.defaults import MAX_DISTANCE_KPC
+        from ..utils.defaults_general import MAX_DISTANCE_KPC
         
         threshold_d = MAX_DISTANCE_KPC
         min_d_mask = 0.0
@@ -630,7 +628,7 @@ class Supernovae:
             ... )
         """
         import matplotlib.pyplot as plt
-        from ..utils.defaults import MAX_DISTANCE_KPC
+        from ..utils.defaults_general import MAX_DISTANCE_KPC
         
         frames = []
         print(f"Generating {num_epochs} epoch frames for GIF...")
@@ -671,7 +669,7 @@ class Supernovae:
                 from ..plotting.analysis import plot_galactic_distribution
                 fig_list = plot_galactic_distribution(
                     galactic_coords=self._galactic_coords,
-                    sun_location=self.SUN_LOCATION,
+                    sun_location=self.sun_location,
                     highlight_indices=sampled_indices,
                     fname_3d=None,
                     fname_xy=None,

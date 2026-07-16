@@ -8,8 +8,8 @@ import torch
 from PIL import Image
 import io
 
-from ..utils.defaults import DEVICE, TEN_KPC
-from ..utils.plotting_defaults import (
+from ..utils.defaults_general import DEVICE, TEN_KPC
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR, 
     GENERATED_SIGNAL_COLOUR, 
     LATENT_SPACE_COLOUR,

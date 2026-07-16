@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from . import set_plot_style
-from ..utils.plotting_defaults import (
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR
 )
 

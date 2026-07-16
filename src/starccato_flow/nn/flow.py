@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM
+from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM
 
 class FlowFCL(nn.Module):
     """Fully Connected Layers version of Flow (original implementation)."""

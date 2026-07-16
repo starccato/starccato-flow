@@ -11,11 +11,11 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
-from ....archive.vae_vanilla import VAE
-from ..utils.defaults import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
-from ..plotting import plot_loss
-from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
-from ..utils.plotting_defaults import PARAMETER_LABELS
+from .vae_vanilla import VAE
+from ..src.starccato_flow.utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
+from ..src.starccato_flow.plotting import plot_loss
+from ..src.starccato_flow.plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
+from ..src.starccato_flow.utils.defaults_plotting import PARAMETER_LABELS
 
 
 def _set_seed(seed: int):
@@ -115,7 +115,7 @@ class VAEDenoisingTrainer:
         _set_seed(self.seed)
         
         # Import here to avoid circular import
-        from . import create_train_val_split
+        from ..src.starccato_flow.training import create_train_val_split
         
         # Create train/val split
         self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(

@@ -41,9 +41,6 @@ def get_device() -> torch.device:
 
 DEVICE = get_device()
 
-# Construct absolute paths based on module location
-# defaults.py is at: src/starccato_flow/utils/defaults.py
-# We need to go up 3 levels to reach the starccato-flow root, then up 1 more to reach starccato/
 _module_dir = os.path.dirname(os.path.abspath(__file__))
 _starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(_module_dir)))
 _data_root = os.path.join(_starccato_flow_root, "..", "data")

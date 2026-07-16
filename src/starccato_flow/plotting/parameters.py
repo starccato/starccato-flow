@@ -11,7 +11,7 @@ import torch
 import corner
 from scipy import stats
 from . import set_plot_style
-from ..utils.plotting_defaults import (
+from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     PARAMETER_LABELS,

@@ -7,13 +7,13 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
-from ..plotting import plot_corner
-from ..plotting.signals import plot_candidate_signal
+from ..src.starccato_flow.plotting import plot_corner
+from ..src.starccato_flow.plotting.signals import plot_candidate_signal
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
-from ..nn.flow import Flow
+from ..src.starccato_flow.utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
+from ..src.starccato_flow.nn.flow import Flow
 
-from . import create_train_val_split, display_results_method
+from ..src.starccato_flow.training import create_train_val_split, display_results_method
 
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""

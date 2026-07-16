@@ -20,9 +20,9 @@ from ..plotting.signals import plot_detector_signal_channels, plot_candidate_sig
 from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_eos_ye_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
-from ..utils.defaults import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
-from ..utils.plotting_defaults import PARAMETER_LABELS 
-from ..nn.flow_multi import FlowFCL, FlowCNN
+from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
+from ..utils.defaults_plotting import PARAMETER_LABELS 
+from ..nn.flow import FlowFCL, FlowCNN
 
 from . import create_train_val_split
 
@@ -1090,7 +1090,7 @@ class FlowMatchingTrainerMulti:
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
         """
-        from starccato_flow.utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
+        from starccato_flow.utils.defaults_plotting import PARAMETER_LABELS, PARAMETER_RANGES
         
         # Clip posterior samples to valid ranges for corner plot visualization only
         # This prevents histogram errors from out-of-bounds samples without affecting sky plots
@@ -1337,7 +1337,7 @@ class FlowMatchingTrainerMulti:
         
         # Get galactic distribution coordinates
         galactic_coords = self.supernovae.galactic_coords
-        sun_location = self.supernovae.SUN_LOCATION
+        sun_location = self.supernovae.sun_location
         
         plot_galactic_distribution_with_posterior(
             galactic_coords=galactic_coords,
@@ -1405,7 +1405,7 @@ class FlowMatchingTrainerMulti:
         
         # Get galactic distribution coordinates
         galactic_coords = self.supernovae.galactic_coords
-        sun_location = self.supernovae.SUN_LOCATION
+        sun_location = self.supernovae.sun_location
         
         plot_galactic_distribution_with_posterior_zoom(
             galactic_coords=galactic_coords,

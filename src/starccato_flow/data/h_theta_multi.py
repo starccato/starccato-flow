@@ -14,10 +14,10 @@ from scipy.fft import fft, ifft
 
 from starccato_flow.plotting.signals import plot_detector_signal_channels
 
-from ..utils.defaults import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME, MAX_DISTANCE_KPC
-from ..utils.defaults import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
-from ..utils.defaults import LOG_EPS
-from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
+from ..utils.defaults_general import DEVICE, Y_LENGTH, BATCH_SIZE, TEN_KPC, SAMPLING_FREQ, GPS_TIME, MAX_DISTANCE_KPC
+from ..utils.defaults_general import ALIGO_ASD_FILE, AVIRGO_ASD_FILE
+from ..utils.defaults_general import LOG_EPS
+from ..utils.defaults_plotting import PARAMETER_LABELS, PARAMETER_RANGES
 
 class hThetaMulti(Dataset):
     """Multi-channel CCSN dataset for sky localization with generated data only.

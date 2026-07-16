@@ -7,10 +7,10 @@ import torch
 from scipy.fft import ifft
 
 from ..plotting import plot_signal_distribution, plot_signal_grid, plot_parameter_distribution
-from ..utils.defaults import BATCH_SIZE, DEVICE, TEN_KPC
-from ..utils.defaults import SAMPLING_FREQ, Y_LENGTH
-from ..utils.defaults import PARAMETERS_CSV, SIGNALS_CSV
-from ..utils.plotting_defaults import PARAMETER_LABELS, PARAMETER_RANGES
+from ..utils.defaults_general import BATCH_SIZE, DEVICE, TEN_KPC
+from ..utils.defaults_general import SAMPLING_FREQ, Y_LENGTH
+from ..utils.defaults_general import PARAMETERS_CSV, SIGNALS_CSV
+from ..utils.defaults_plotting import PARAMETER_LABELS, PARAMETER_RANGES
 from . import BaseDataset
 
 """This loads the signal data from the raw simulation outputs from Richers et al (2017) ."""
