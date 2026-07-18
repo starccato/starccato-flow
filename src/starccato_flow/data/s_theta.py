@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from scipy.fft import ifft
 
+from starccato_flow.plotting.parameters import plot_parameter_distributions
+
 from ..plotting import plot_signal_distribution, plot_signal_grid, plot_parameter_distribution
 from ..utils.defaults_general import BATCH_SIZE, DEVICE, TEN_KPC
 from ..utils.defaults_general import SAMPLING_FREQ, Y_LENGTH
@@ -111,9 +113,8 @@ class sTheta(BaseDataset, Dataset):
             parameters = ["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
         self.parameter_names = parameters
         
-        # Build the filtering mask from the full parameter table before column selection.
         if remove_erroneous:
-            beta_keep_idx = params_df["beta1_IC_b"].values > 0
+            beta_keep_idx = params_df["beta1_IC_b"].values >= 0
         else:
             beta_keep_idx = np.ones(len(params_df), dtype=bool)
 
@@ -201,10 +202,22 @@ class sTheta(BaseDataset, Dataset):
         
         return None
 
-
-
     def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None):
         plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+
+    def plot_parameter_distributions(self, fname, font_family="sans-serif", font_name="Avenir"):
+        params_dict = {
+            param: self.parameters[:, self.parameter_names.index(param)] 
+            for param in self.parameter_names
+        }
+
+        plot_parameter_distributions(
+            parameters_dict=params_dict,
+            fname=fname,
+            font_family=font_family,
+            font_name=font_name
+        )
+
 
     def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
         # Collect indices of the signals to plot

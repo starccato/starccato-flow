@@ -16,7 +16,7 @@ BATCH_SIZE = 32
 
 SAMPLING_FREQ = 4096
 
-TEN_KPC = 3.086e+22
+TEN_KPC = 3.086e+22 # 10 kpc in cm
 
 MAX_DISTANCE_KPC = 10.0  # Maximum distance in kpc for sampling and model range
 

@@ -77,7 +77,7 @@ from .losses import (
 
 from .parameters import (
     plot_parameter_distribution,
-    plot_parameter_distribution_grid,
+    plot_parameter_distributions,
     plot_corner
 )
 
@@ -120,7 +120,7 @@ __all__ = [
     'plot_gradients',
     # Parameter plotting
     'plot_parameter_distribution',
-    'plot_parameter_distribution_grid',
+    'plot_parameter_distribution',
     # Latent space
     'plot_latent_morphs',
     'plot_latent_morph_grid',

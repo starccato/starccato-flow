@@ -105,7 +105,7 @@ def plot_parameter_distribution(
     return fig if return_fig else axes
 
 
-def plot_parameter_distribution_grid(
+def plot_parameter_distributions(
     parameters_dict: dict,
     labels_dict: Optional[dict] = None,
     ranges_dict: Optional[dict] = None,
