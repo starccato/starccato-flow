@@ -6,7 +6,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from scipy.fft import ifft
 
-from starccato_flow.plotting.parameters import plot_parameter_distributions
+from starccato_flow.plotting.parameters import plot_parameter_distributions, plot_eos_ye_distribution
+
 
 from ..plotting import plot_signal_distribution, plot_signal_grid, plot_parameter_distribution
 from ..utils.defaults_general import BATCH_SIZE, DEVICE, TEN_KPC
@@ -218,7 +219,6 @@ class sTheta(BaseDataset, Dataset):
             font_name=font_name
         )
 
-
     def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
         # Collect indices of the signals to plot
         selected_signals = []
@@ -342,6 +342,19 @@ class sTheta(BaseDataset, Dataset):
                 alpha=alpha,
                 show_stats=show_stats
             )
+
+
+    def plot_eos_ye_distribution(self, fname, font_family="sans-serif", font_name="Avenir"):
+        plot_eos_ye_distribution(
+            eos_values=self.eos,
+            ye_values=self.parameters[:, self.parameter_names.index("Ye_c_b")],
+            fname=fname,
+            background="white",
+            font_family=font_family,
+            font_name=font_name,
+            alpha=0.6,
+            point_size=50
+        )
  
     def __str__(self):
         return f"TrainingData: {self.signals.shape}"
