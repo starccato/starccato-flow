@@ -11,33 +11,34 @@ from ..plotting.analysis import plot_surface_density
 
 from ..utils.defaults_physical import SUN_LOCATION
 
+from ..utils.defaults_general import SUPERNOVAE_CSV
+
 class Supernovae:
     """Manages supernova locations in galactic and equatorial coordinates."""    
 
     def __init__(
         self,
-        locations_file: Optional[str] = None,
+        complex: bool,
         rotation_offset: float = np.deg2rad(0.0),
         limit: Optional[int] = None,
     ):
         """Initialize supernova location handler.
         
         Args:
-            locations_file: Path to CSV file with galactic coordinates (x_kpc, y_kpc, z_kpc)
-                          If None, locations will be generated on demand
+            complex: complex vs simple galactic supernovae distribution
             rotation_offset: Additional rotation angle (in radians) to apply to Earth's orientation.
                            Positive values rotate eastward. Default is +60 degrees.
             limit: Maximum number of locations to load (None for all)
         """
         self.sun_location = SUN_LOCATION
-        self.locations_file = locations_file
+        self.locations_file = SUPERNOVAE_CSV
         self.rotation_offset = rotation_offset
         self._galactic_coords = None
         self._equatorial_coords = None
         self._distances = None
         
-        if locations_file is not None:
-            self.load_locations(locations_file, limit)
+        if complex:
+            self.load_locations(self.locations_file, limit)
         else:
             self.generate_locations(num_supernovae=2000000, seed=42)  # Generate a default set of locations if no file is provided
     

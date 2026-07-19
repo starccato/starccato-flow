@@ -49,9 +49,10 @@ SIGNALS_CSV = os.path.join(_data_root, "training", "richers_1764_reorder.csv")
 PARAMETERS_CSV = os.path.join(_data_root, "training", "richers_1764_parameters_reorder.csv")
 TIME_CSV = os.path.join(_data_root, "training", "richers_1764_times.csv")
 
-# Legacy noise curves (currently used)
 ALIGO_ASD_FILE = os.path.join(_data_root, "noise_asd", "aligo.txt")
 AVIRGO_ASD_FILE = os.path.join(_data_root, "noise_asd", "advirgo.txt")
+
+SUPERNOVAE_CSV = os.path.join(_data_root, "supernovae", "exploded_supernovae_t100_sf5.csv")
 
 
 

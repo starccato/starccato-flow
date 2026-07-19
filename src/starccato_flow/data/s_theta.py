@@ -242,28 +242,28 @@ class sTheta(BaseDataset, Dataset):
             font_name=font_name
 );
 
-    def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
-        # Collect indices of the signals to plot
-        selected_signals = []
-        for i in range(n_signals):
-            signal = self.__getitem__(i+110)[1].cpu().numpy().flatten()  # Flatten the signal
-            selected_signals.append(signal)
+    # def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
+    #     # Collect indices of the signals to plot
+    #     selected_signals = []
+    #     for i in range(n_signals):
+    #         signal = self.__getitem__(i+110)[1].cpu().numpy().flatten()  # Flatten the signal
+    #         selected_signals.append(signal)
 
-        # Convert selected signals to a NumPy array for plotting
-        selected_signals = np.array(selected_signals)
+    #     # Convert selected signals to a NumPy array for plotting
+    #     selected_signals = np.array(selected_signals)
 
-        plot_signal_grid(
-            signals=selected_signals/TEN_KPC,
-            noisy_signals=None,
-            max_value=self.shared_max_strain,
-            num_cols=1,
-            num_rows=1,
-            fname=fname,
-            background=background,
-            generated=False,
-            font_family=font_family,
-            font_name=font_name
-        )
+    #     plot_signal_grid(
+    #         signals=selected_signals/TEN_KPC,
+    #         noisy_signals=None,
+    #         max_value=self.shared_max_strain,
+    #         num_cols=1,
+    #         num_rows=1,
+    #         fname=fname,
+    #         background=background,
+    #         generated=False,
+    #         font_family=font_family,
+    #         font_name=font_name
+    #     )
 
     def plot_parameter_distribution(
         self, 

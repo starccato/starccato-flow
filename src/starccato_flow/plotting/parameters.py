@@ -109,7 +109,7 @@ def plot_parameter_distributions(
     parameters_dict: dict,
     labels_dict: Optional[dict] = None,
     ranges_dict: Optional[dict] = None,
-    bins: int = 25,
+    bins: int = 50,
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "sans-serif",
