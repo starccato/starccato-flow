@@ -37,8 +37,8 @@ def plot_signal_grid(
     signals: np.ndarray,
     noisy_signals: np.ndarray,
     max_value: int,
-    num_cols: int = 2,
-    num_rows: int = 4,
+    n_cols: int = 2,
+    n_rows: int = 4,
     fname: Optional[str] = None,
     generated: bool = False,
     background: str = "white",
@@ -52,8 +52,8 @@ def plot_signal_grid(
     Args:
         signals (np.ndarray): Array of signals to plot
         noisy_signals (np.ndarray): Noisy version of signals (currently unused)
-        num_cols (int): Number of columns in grid
-        num_rows (int): Number of rows in grid
+        n_cols (int): Number of columns in grid
+        n_rows (int): Number of rows in grid
         fname (Optional[str]): Filename to save plot
         generated (bool): Whether signals are generated (affects color)
         background (str): Background color theme
@@ -73,7 +73,7 @@ def plot_signal_grid(
 
     # Adjust figsize if we have parameter labels
     figsize = (15, 10) if param_values is not None and param_label is not None else (15, 8)
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     axes = axes.flatten()
 
     d = get_time_axis()
@@ -97,9 +97,9 @@ def plot_signal_grid(
             param_text = f"{param_label} = {param_values[i]:.3f}"
             ax.set_title(param_text, fontsize=11, color=text_color, pad=8)
         
-        if i % num_cols != 0:
+        if i % n_cols != 0:
             ax.yaxis.set_ticklabels([])
-        if i < num_cols * (num_rows - 1):
+        if i < n_cols * (n_rows - 1):
             ax.xaxis.set_ticklabels([])
 
     fig.supxlabel('time (s)', fontsize=20)

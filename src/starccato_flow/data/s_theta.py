@@ -219,6 +219,29 @@ class sTheta(BaseDataset, Dataset):
             font_name=font_name
         )
 
+    def plot_random_signals_grid(self, n_signals, n_rows, n_cols, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
+        np.random.seed(42)
+        random_indices = np.random.choice(len(self), size=n_signals, replace=False)
+        selected_signals = []
+        for idx in random_indices:
+            signal = self[idx][1].cpu().numpy().flatten()
+            selected_signals.append(signal)
+
+        selected_signals = np.array(selected_signals)
+        # Plot in 4x4 grid
+        plot_signal_grid(
+            signals=selected_signals / TEN_KPC,  # TEN_KPC normalization
+            noisy_signals=None,
+            max_value=self.shared_max_strain,
+            n_cols=n_rows,
+            n_rows=n_cols,
+            fname=fname,
+            generated=False,
+            background=background,
+            font_family=font_family,
+            font_name=font_name
+);
+
     def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
         # Collect indices of the signals to plot
         selected_signals = []
