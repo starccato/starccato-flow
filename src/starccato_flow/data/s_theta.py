@@ -203,8 +203,16 @@ class sTheta(BaseDataset, Dataset):
         
         return None
 
-    def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None):
-        plot_signal_distribution(self.signals/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+    def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None, beta_min=None, beta_max=None):
+        beta = self.parameters[:, 0]
+        mask = np.ones(len(beta), dtype=bool)
+        if beta_min is not None:
+            mask &= beta >= beta_min
+        if beta_max is not None:
+            mask &= beta <= beta_max
+
+        print(f"Plotting signal distribution for {mask.sum()} signals with beta in [{beta_min}, {beta_max}]")
+        plot_signal_distribution(self.signals[:,mask]/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
 
     def plot_parameter_distributions(self, fname, font_family="sans-serif", font_name="Avenir"):
         params_dict = {
