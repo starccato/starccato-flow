@@ -84,7 +84,7 @@ def plot_signal_grid(
             continue
             
         y = signals[i].flatten()
-        y = y * max_value
+        # y = y * max_value
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
         ax.plot(d, y, color=signal_colour)

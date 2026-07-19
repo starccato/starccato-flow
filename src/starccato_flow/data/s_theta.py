@@ -224,13 +224,13 @@ class sTheta(BaseDataset, Dataset):
         random_indices = np.random.choice(len(self), size=n_signals, replace=False)
         selected_signals = []
         for idx in random_indices:
-            signal = self[idx][1].cpu().numpy().flatten()
+            signal = self.signals[:,idx]
             selected_signals.append(signal)
 
         selected_signals = np.array(selected_signals)
         # Plot in 4x4 grid
         plot_signal_grid(
-            signals=selected_signals / TEN_KPC,  # TEN_KPC normalization
+            signals=selected_signals/TEN_KPC,
             noisy_signals=None,
             max_value=self.shared_max_strain,
             n_cols=n_rows,

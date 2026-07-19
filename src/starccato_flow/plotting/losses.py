@@ -59,13 +59,13 @@ def plot_loss(
     axes.set_xlabel("Epoch", size=20)
     axes.set_ylabel(loss_type, size=20)
     axes.set_xlim(0, len(train_losses) - 1)
-    axes.set_ylim(0, 0.0250)
+    axes.set_ylim(0, max(max(train_losses), max(val_losses) if val_losses is not None else 0) * 1.1)
     axes.legend(fontsize=20, framealpha=0.0)
     axes.tick_params(labelsize=18)
     axes.grid(False)
     
     # Set y-axis ticks to 0.005 increments
-    axes.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
+    # axes.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
     
     plt.tight_layout()
     if fname:

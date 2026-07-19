@@ -138,18 +138,8 @@ class FlowMatchingTrainerMulti:
         print(f"Extract indices (sequential from hThetaMulti): {self.param_extract_indices}")
         print(f"Final flow parameter dimension: {len(self.param_extract_indices)}")
         print(f"{'='*40}\n")
-
-        # Construct absolute path to supernovae data file
-        # __file__ is at src/starccato_flow/training/trainer_flow_matching_multi.py
-        # We need to go up to starccato-flow root, then to data/supernovae/
-        trainer_dir = os.path.dirname(os.path.abspath(__file__))
-        starccato_flow_root = os.path.dirname(os.path.dirname(os.path.dirname(trainer_dir)))
-        supernovae_file = os.path.join(starccato_flow_root, "..", "data", "supernovae", "exploded_supernovae_t100_sf5.csv")
         
-        self.supernovae = Supernovae(
-            locations_file=supernovae_file,
-            rotation_offset=np.deg2rad(0.0),
-        )
+        self.supernovae = Supernovae(complex=True)
 
         # Load data from files if paths are provided
         if train_data_path is not None and val_data_path is not None:            

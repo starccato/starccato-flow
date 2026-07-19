@@ -1017,22 +1017,10 @@ def plot_galactic_distribution_with_posterior_zoom(
 
     # Transform posterior samples to galactic coordinates
     from ..supernovae.supernovae import Supernovae
-    sn_temp = Supernovae()  # Temporary instance for coordinate transformation
+    sn_temp = Supernovae(complex=True)  # Temporary instance for coordinate transformation
     post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
         posterior_ra, posterior_dec, posterior_distance
     )
-    
-    # Apply the same 90° rotation used for highlighted points in the galactic plots
-    # so the posterior overlay uses the same visual orientation as the background.
-    # rotation_angle = np.deg2rad(-90.0)
-    # rotation_matrix = np.array([
-    #     [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
-    #     [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
-    #     [0.0, 0.0, 1.0],
-    # ])
-    # posterior_coords = np.column_stack([post_x, post_y, post_z])
-    # posterior_coords = posterior_coords @ rotation_matrix.T
-    # post_x, post_y, post_z = posterior_coords.T
 
     # Create figure with proper styling (matching plot_galactic_distribution)
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)

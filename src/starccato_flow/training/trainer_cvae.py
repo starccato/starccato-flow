@@ -79,7 +79,8 @@ class ConditionalVAETrainer:
             detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,
             seed=self.seed,
-            num_epochs=self.num_epochs
+            num_epochs=self.num_epochs,
+            parameters=["beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"]
         )
 
         # Get parameter dimension from dataset
@@ -128,7 +129,7 @@ class ConditionalVAETrainer:
         self.ye_param_index = None
         if hasattr(self.training_dataset, 'parameter_names'):
             for i, name in enumerate(self.training_dataset.parameter_names):
-                if 'Ye' in name or 'ye' in name:
+                if 'beta' in name or 'beta' in name:
                     self.ye_param_index = i
                     break
         
@@ -138,6 +139,8 @@ class ConditionalVAETrainer:
         
         # Use Ye parameter for grid if found, otherwise use varying_param_index
         grid_varying_index = self.ye_param_index if self.ye_param_index is not None else self.varying_param_index
+
+        print(grid_varying_index)
         
         # Create noise samples for columns (repeat across rows)
         noise_samples = torch.randn(num_cols, self.z_dim)  # 4 unique noise samples
@@ -188,7 +191,7 @@ class ConditionalVAETrainer:
         print("\n" + "=" * 60)
         print("DIAGNOSTIC: Dataset Information")
         print("=" * 60)
-        print(f"Max strain in dataset: {self.training_dataset.max_strain:.6e}")
+        print(f"Max strain in dataset: {self.training_dataset.shared_max_strain:.6e}")
         sample_signal = self.training_dataset.signals[0]
         print(f"Sample raw signal range: [{sample_signal.min():.6e}, {sample_signal.max():.6e}]")
         
@@ -390,7 +393,7 @@ class ConditionalVAETrainer:
         print(f"\nGenerating signal grid for epoch {epoch}...")
         self._plot_signal_grid_with_colors(
             signals=generated_signals / TEN_KPC,
-            max_value=self.validation_dataset.max_strain,
+            max_value=self.validation_dataset.shared_max_strain,
             num_cols=4,
             num_rows=4,
             fname=fname,
@@ -462,7 +465,7 @@ class ConditionalVAETrainer:
         plot_candidate_signal(
             signal=signal_denorm,
             noisy_signal=noisy_signal_denorm,
-            max_value=self.val_loader.dataset.max_strain,
+            max_value=self.val_loader.dataset.shared_max_strain,
             background=background,
             fname=fname
         )
@@ -481,7 +484,7 @@ class ConditionalVAETrainer:
         plot_reconstruction(
             original=val_signal.detach().cpu().numpy(),
             reconstructed=recon.detach().cpu().numpy(),
-            max_value=self.validation_dataset.max_strain / TEN_KPC,
+            max_value=self.validation_dataset.shared_max_strain / TEN_KPC,
             font_family="Serif",
             font_name="Times New Roman",
             fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction.svg")
@@ -708,7 +711,9 @@ class ConditionalVAETrainer:
         background: str = "white",
         font_family: str = "serif",
         font_name: str = "Times New Roman",
-        sample_from_data: bool = False
+        sample_from_data: bool = False,
+        beta_min: float = 0.0,
+        beta_max: float = 0.25
     ) -> np.ndarray:
         """Generate signals by sampling from z and parameter space, then plot distribution.
         
@@ -740,15 +745,18 @@ class ConditionalVAETrainer:
         # Sample parameters based on flag
         if sample_from_data:
             # Combine training and validation datasets
-            combined_params = np.vstack([
+            combined_theta = np.vstack([
                 self.training_dataset.parameters,
                 self.validation_dataset.parameters
             ])
-            total_params = combined_params.shape[0]
-                        
+
+            beta = combined_theta[:, self.ye_param_index]
+            mask = (beta >= beta_min) & (beta <= beta_max)
+            combined_theta = combined_theta[mask, :]
+
             # Sample parameter indices with replacement
-            param_indices = np.random.choice(total_params, size=num_samples, replace=True)
-            params_sampled = combined_params[param_indices].astype(np.float32)
+            param_indices = np.random.choice(combined_theta.shape[0], size=num_samples, replace=True)
+            params_sampled = combined_theta[param_indices].astype(np.float32)
 
             # normalised parmeters
             params_sampled = self.training_dataset.normalize_parameters(params_sampled)
@@ -768,7 +776,7 @@ class ConditionalVAETrainer:
                 
         # Signals are already in normalized space from decoder
         # Reshape from (num_samples, signal_length) to (signal_length, num_samples)
-        signals_array = generated_signals_norm.T * self.training_dataset.max_strain  # Scale by max strain to get physical units
+        signals_array = generated_signals_norm.T * self.training_dataset.shared_max_strain  # Scale by max strain to get physical units
                 
         # Plot signal distribution
         plot_signal_distribution(
@@ -872,12 +880,12 @@ class ConditionalVAETrainer:
         
         # Get signals in normalized space (shape: 1, signal_length)
         signal_1 = torch.tensor(
-            val_signals[:, idx_1] / self.training_dataset.max_strain,
+            val_signals[:, idx_1] / self.training_dataset.shared_max_strain,
             dtype=torch.float32,
             device=DEVICE
         ).unsqueeze(0)  # Add batch dimension: (signal_length,) -> (1, signal_length)
         signal_2 = torch.tensor(
-            val_signals[:, idx_2] / self.training_dataset.max_strain,
+            val_signals[:, idx_2] / self.training_dataset.shared_max_strain,
             dtype=torch.float32,
             device=DEVICE
         ).unsqueeze(0)  # Add batch dimension: (signal_length,) -> (1, signal_length)
@@ -925,7 +933,7 @@ class ConditionalVAETrainer:
                 signal_2=signal_2,
                 params_1=params_1,
                 params_2=params_2,
-                max_value=self.training_dataset.max_strain,
+                max_value=self.training_dataset.shared_max_strain,
                 train_dataset=self.training_dataset,
                 steps=steps,
                 background=background,
