@@ -10,6 +10,8 @@ DEFAULT_FONT = "Avenir"
 SIGNAL_LIM_UPPER = 300 / 3.086e+22
 SIGNAL_LIM_LOWER = -600 / 3.086e+22
 
+CM_TO_INCHES = 2.54
+
 # Unified parameter mapping for LaTeX labels and ranges throughout the codebase
 PARAMETER_LABELS = {
     # Intrinsic (CCSN) parameters

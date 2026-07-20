@@ -248,7 +248,7 @@ class sTheta(BaseDataset, Dataset):
             background=background,
             font_family=font_family,
             font_name=font_name
-);
+        );
 
     # def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):
     #     # Collect indices of the signals to plot

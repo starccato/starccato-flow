@@ -15,6 +15,7 @@ from ..utils.defaults_plotting import (
     DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
 )
 
+from starccato_flow.utils.defaults_plotting import CM_TO_INCHES
 
 def _map_detector_labels(labels: Sequence[str]) -> Tuple[str, ...]:
     """Map detector short codes to full names for display.
@@ -71,8 +72,8 @@ def plot_signal_grid(
     vline_color = "white" if background == "black" else "black"
     text_color = "white" if background == "black" else "black"
 
-    # Adjust figsize if we have parameter labels
-    figsize = (15, 10) if param_values is not None and param_label is not None else (15, 8)
+    # figsize = (15, 10) if param_values is not None and param_label is not None else (15, 8)
+    figsize = (15 / CM_TO_INCHES, 12 / CM_TO_INCHES)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     axes = axes.flatten()
 
@@ -84,9 +85,11 @@ def plot_signal_grid(
             continue
             
         y = signals[i].flatten()
-        # y = y * max_value
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
+        ax.tick_params(axis='both', labelsize=11)
+        ax.xaxis.get_offset_text().set_fontsize(9)
+        ax.yaxis.get_offset_text().set_fontsize(9)
         ax.plot(d, y, color=signal_colour)
         
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
@@ -95,15 +98,16 @@ def plot_signal_grid(
         # Display parameter value above each subplot if provided
         if param_values is not None and param_label is not None and i < len(param_values):
             param_text = f"{param_label} = {param_values[i]:.3f}"
-            ax.set_title(param_text, fontsize=11, color=text_color, pad=8)
+            ax.set_title(param_text, fontsize=11, color=text_color, pad=4)
         
         if i % n_cols != 0:
-            ax.yaxis.set_ticklabels([])
+            ax.tick_params(labelleft=False)
         if i < n_cols * (n_rows - 1):
-            ax.xaxis.set_ticklabels([])
+            ax.tick_params(labelbottom=False)
 
-    fig.supxlabel('time (s)', fontsize=20)
-    fig.supylabel('h', fontsize=20)
+
+    fig.supxlabel('time (s)', fontsize=16)
+    fig.supylabel('h', fontsize=16)
 
     plt.tight_layout()
     if fname:
@@ -493,7 +497,7 @@ def plot_signal_distribution(
     median_color = vline_color
     text_color = vline_color
     
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(12 / CM_TO_INCHES, 12 / CM_TO_INCHES))
     distribution_color = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
 
     signals_df = pd.DataFrame(signals)
@@ -518,14 +522,20 @@ def plot_signal_distribution(
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
     plt.ylabel('h', size=16, color=text_color)
+    plt.xticks(size=11, color=text_color)
+    plt.yticks(size=11, color=text_color)
     plt.grid(False)
+
+    ax = plt.gca()  # Get current axes
+    ax.xaxis.get_offset_text().set_fontsize(9)
+    ax.yaxis.get_offset_text().set_fontsize(9)
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     plt.text(
         0.98, 0.02, f"n = {n}",
         ha='right', va='bottom',
         transform=plt.gca().transAxes,
-        fontsize=12, color=text_color,
+        fontsize=11, color=text_color,
         alpha=0.8
     )
 
@@ -539,7 +549,7 @@ def plot_signal_distribution(
     ]
     plt.legend(handles=legend_handles, loc='upper right',
               facecolor="none", edgecolor=text_color, 
-              labelcolor=text_color, fontsize=12, framealpha=0.0)
+              labelcolor=text_color, fontsize=11, framealpha=0.0)
 
     plt.tight_layout()
     if fname:

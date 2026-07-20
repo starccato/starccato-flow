@@ -15,7 +15,8 @@ from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     PARAMETER_LABELS,
-    PARAMETER_RANGES
+    PARAMETER_RANGES,
+    CM_TO_INCHES
 )
 
 
@@ -138,7 +139,7 @@ def plot_parameter_distributions(
     """
     set_plot_style(background, font_family, font_name)
     
-    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    fig, axes = plt.subplots(2, 2, figsize=(15 / CM_TO_INCHES, 12 / CM_TO_INCHES))
     axes = axes.flatten()
     
     if color is None:
@@ -169,20 +170,19 @@ def plot_parameter_distributions(
             param_label = param_name
         
         ax.set_xlabel(param_label, size=16)
-        ax.set_ylabel("Count", size=16)
-        ax.set_title(param_label, size=18, pad=10)
+        ax.set_ylabel("Count", size=11)
         
         if ranges_dict and param_name in ranges_dict:
             ax.set_xlim(ranges_dict[param_name][0], ranges_dict[param_name][1])
         else:
             ax.set_xlim(min(values), max(values))
         
-        ax.tick_params(labelsize=14)
+        ax.tick_params(labelsize=11)
         ax.tick_params(axis='x', rotation=45)
         ax.grid(False)
     
-    for idx in range(len(parameters_dict), 4):
-        axes[idx].axis('off')
+    # for idx in range(len(parameters_dict), 4):
+    #     axes[idx].axis('off')
     
     plt.tight_layout()
     if fname:
