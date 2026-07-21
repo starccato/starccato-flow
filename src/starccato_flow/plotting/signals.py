@@ -90,9 +90,9 @@ def plot_signal_grid(
         ax.tick_params(axis='both', labelsize=11)
         ax.xaxis.get_offset_text().set_fontsize(9)
         ax.yaxis.get_offset_text().set_fontsize(9)
-        ax.plot(d, y, color=signal_colour)
+        ax.plot(d, y, color=signal_colour, linewidth=1.0, alpha=1.0)
         
-        ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
+        ax.axvline(x=0, color=vline_color, linestyle="--", linewidth=0.75, alpha=0.5)
         ax.grid(False)
         
         # Display parameter value above each subplot if provided
@@ -104,7 +104,6 @@ def plot_signal_grid(
             ax.tick_params(labelleft=False)
         if i < n_cols * (n_rows - 1):
             ax.tick_params(labelbottom=False)
-
 
     fig.supxlabel('time (s)', fontsize=16)
     fig.supylabel('h', fontsize=16)
@@ -124,7 +123,6 @@ def plot_signal_grid(
 def plot_detector_signal_channels(
     signals: np.ndarray,
     noisy_signals: Optional[np.ndarray] = None,
-    max_value: float = 1.0,
     detector_labels: Sequence[str] = ("H1", "L1", "V1"),
     fname: Optional[str] = None,
     generated: bool = False,

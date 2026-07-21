@@ -561,9 +561,8 @@ class FlowMatchingTrainerMulti:
             active_h_theta_multi = self.h_theta_multi_val
         
         plot_detector_signal_channels(
-            signals=case[0].detach().cpu().numpy() / TEN_KPC,
-            noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC,
-            max_value=active_h_theta_multi.shared_max_strain,
+            signals=case[0].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain,
+            noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain,
             detector_labels=active_h_theta_multi.detectors,
             background="black",
             generated=False,

@@ -615,7 +615,6 @@ def plot_eos_ye_distribution(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    figsize: Tuple[float, float] = (16, 8),
     alpha: float = 0.7,
     point_size: float = 50
 ) -> plt.Figure:
@@ -650,7 +649,7 @@ def plot_eos_ye_distribution(
     # Sort EOS by mean Ye for better visualization
     eos_order = df_plot.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
     
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
     
     # Create violin plot
     sns.violinplot(
@@ -682,7 +681,7 @@ def plot_eos_ye_distribution(
     # Formatting
     ax.set_xlabel('Equation of State (EOS)', fontsize=16)
     ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
-    ax.tick_params(labelsize=12, axis='x')
+    ax.tick_params(labelsize=7, axis='x')
     # Rotate x-axis labels for readability
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     

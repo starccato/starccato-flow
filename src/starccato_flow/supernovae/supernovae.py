@@ -416,8 +416,7 @@ class Supernovae:
             scatter_size=scatter_size,
             sun_marker_size=sun_marker_size,
             show=show,
-            dpi=dpi,
-            figsize=figsize,
+            dpi=dpi
         )
     
     def sample_supernovae_for_epoch(
@@ -430,7 +429,8 @@ class Supernovae:
         fname: Optional[str] = None,
         font_family: str = "sans-serif",
         font_name: str = "Avenir",
-        transparent: Optional[bool] = None
+        transparent: Optional[bool] = None,
+        background: str = "black"
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Sample RA/Dec/d sky parameters for an epoch distance shell.
 
@@ -493,7 +493,7 @@ class Supernovae:
             # Use provided filename (thesis plots)
             self.plot_galactic_distribution(
                 fname_xy=fname,
-                background="black",
+                background=background,
                 light_year=False,
                 highlight_indices=sampled_indices,
                 show=False,
@@ -509,14 +509,14 @@ class Supernovae:
             
             self.plot_galactic_distribution(
                 fname_xy=epoch_fname,
-                background="black",
+                background=background,
                 transparent=False,
                 light_year=False,
                 highlight_indices=sampled_indices,
                 show=False,
                 dpi=300,
                 font_family=font_family,
-                font_name=font_name,
+                font_name=font_name
             )
         sampled_sky_params = self.get_sky_params(indices=sampled_indices)
 

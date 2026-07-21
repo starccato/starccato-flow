@@ -21,7 +21,8 @@ from ..utils.defaults_plotting import (
     SIGNAL_LIM_UPPER,
     SIGNAL_LIM_LOWER,
     PARAMETER_LABELS,
-    PARAMETER_RANGES
+    PARAMETER_RANGES,
+    CM_TO_INCHES
 )
 from . import set_plot_style, get_time_axis
 from .signals import plot_signal_grid, plot_candidate_signal
@@ -65,7 +66,6 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
     """Plot surface density of supernovae in the galactic plane."""
 
     plt.rcParams["font.family"] = font_family
-    plt.rcParams["font.size"] = 18
     if font_family == "sans-serif":
         plt.rcParams["font.sans-serif"] = [font_name]
     elif font_family == "serif":
@@ -87,20 +87,23 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
         * np.exp(-beta * r)
     )
 
+
+
     # Create figure and axes
-    _, ax = plt.subplots(figsize=(8, 6), facecolor="white")
+    _, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 10 / CM_TO_INCHES), facecolor="white")
 
     ax.plot(r, surface_density, color="lightblue", linewidth=2)
 
     # Put ticks only on visible axes
     ax.xaxis.set_ticks_position("bottom")
     ax.yaxis.set_ticks_position("left")
+    ax.tick_params(size=11)
 
     # Turn off grid
     ax.grid(False)
 
-    ax.set_xlabel("r (kpc)")
-    ax.set_ylabel("Surface Density")
+    ax.set_xlabel("r (kpc)", size=16)
+    ax.set_ylabel("Surface Density", size=16)
 
     ax.set_xlim(0, 30)
     ax.set_ylim(0, 1.0)
@@ -191,15 +194,6 @@ def plot_galactic_distribution(
     coord_scale = kpc_to_ly if light_year else 1.0
     galactic_coords = galactic_coords * coord_scale
     sun_location = sun_location * coord_scale
-    # if highlight_coords is not None:
-    #     highlight_coords = highlight_coords * coord_scale
-    #     rotation_angle = np.deg2rad(-90.0)
-    #     rotation_matrix = np.array([
-    #         [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
-    #         [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
-    #         [0.0, 0.0, 1.0],
-    #     ])
-    #     highlight_coords = highlight_coords @ rotation_matrix.T
 
     x, y, z = galactic_coords.T
     # xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
@@ -433,7 +427,18 @@ def plot_galactic_distribution(
         marker="o",
         label="Galactic Center: Sgr A*",
     )
-    ax2.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    # ax2.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
+    ax2.scatter(
+        sun_location[0],
+        sun_location[1],
+        s=sun_marker_size,
+        c="yellow",
+        marker="*",
+        edgecolors="black",
+        linewidths=0.25,
+        label="Sun",
+        zorder=20,
+    )
     if hx is not None:
         ax2.scatter(
             hx,
