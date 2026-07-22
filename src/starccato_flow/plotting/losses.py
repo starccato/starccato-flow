@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from . import set_plot_style
 from ..utils.defaults_plotting import (
-    SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR
+    SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, CM_TO_INCHES
 )
 
 
@@ -19,7 +19,10 @@ def plot_loss(
     axes: Optional[plt.Axes] = None,
     background: str = "white",
     font_family: str = "sans-serif",
-    font_name: str = "Avenir"
+    font_name: str = "Avenir",
+    fontsize_title=float,
+    fontsize_tick=float,
+    figsize=tuple[float, float]
 ):
     """Plot training and validation loss curves.
     
@@ -41,7 +44,7 @@ def plot_loss(
     set_plot_style(background, font_family, font_name)
     
     if axes is None:
-        fig = plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
         axes = fig.gca()
     
     if train_label is None:
@@ -56,12 +59,12 @@ def plot_loss(
         axes.plot(val_losses, label=val_label, color=GENERATED_SIGNAL_COLOUR, 
                   linewidth=3, alpha=1.0, linestyle='-')
     
-    axes.set_xlabel("Epoch", size=20)
-    axes.set_ylabel(loss_type, size=20)
+    axes.set_xlabel("Epoch", size=fontsize_title)
+    axes.set_ylabel(loss_type, size=fontsize_title)
     axes.set_xlim(0, len(train_losses) - 1)
     axes.set_ylim(0, max(max(train_losses), max(val_losses) if val_losses is not None else 0) * 1.1)
-    axes.legend(fontsize=20, framealpha=0.0)
-    axes.tick_params(labelsize=18)
+    axes.legend(fontsize=fontsize_tick, framealpha=0.0)
+    axes.tick_params(labelsize=fontsize_tick)
     axes.grid(False)
     
     # Set y-axis ticks to 0.005 increments

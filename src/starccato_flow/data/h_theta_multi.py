@@ -779,7 +779,7 @@ class hThetaMulti(Dataset):
         """Rescale signal by distance (inverse proportionality)."""
         return signal * (10.0 / max(distance_kpc, 1e-8))
     
-    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman"):
+    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float):
         n_samples = self.s.shape[1]
         h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
         h_delayed = np.zeros_like(h)
@@ -794,44 +794,52 @@ class hThetaMulti(Dataset):
         # h
         plot_detector_signal_channels(
             signals=h / TEN_KPC,
-            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title
         )
         # h_delayed
         plot_detector_signal_channels(
             signals=h_delayed / TEN_KPC,
-            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title
         )
         # h_rescaled
         plot_detector_signal_channels(
             signals=h_rescaled / TEN_KPC,
-            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed_rescaled,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title
         )
         # h_rescaled with noise
         h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
         h_rescaled_noise = self.denormalise_signals(h_rescaled_noise_normalized)  # Denormalize to match other plots
         plot_detector_signal_channels(
             signals=h_rescaled_noise / TEN_KPC,
-            max_value=self.shared_max_strain,
             detector_labels=self.detectors,
             background="white",
             fname=f_name_h_delayed_rescaled_noise,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title
         )
 
         return

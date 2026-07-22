@@ -31,7 +31,7 @@ def _set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
     return seed
 
-class FlowMatchingTrainerMulti:
+class FlowMatchingTrainer:
     def __init__(
         self,
         y_length: int = Y_LENGTH,
@@ -53,7 +53,7 @@ class FlowMatchingTrainerMulti:
         val_data_path: str = None,  # Path to validation data files (real CVAE val set)
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization (Gabbard-inspired)
     ):
-        """Initialize FlowMatchingTrainerMulti.
+        """Initialize FlowMatchingTrainer.
         
         Args:
             parameters: List of parameter names to estimate. Examples:
@@ -880,7 +880,7 @@ class FlowMatchingTrainerMulti:
         self.save_losses()
         self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
-    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman"):
+    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
         params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
         d = 5 # kpc
@@ -917,7 +917,7 @@ class FlowMatchingTrainerMulti:
             random_polarization=True,
             seed=1,
             intrinsic_param_names=self.intrinsic_params,
-            use_physics_aware_norm=self.use_physics_aware_norm
+            use_physics_aware_norm=self.use_physics_aware_norm,
         )
 
         temp_h_theta_multi._plot_project_to_detectors_steps(
@@ -927,7 +927,10 @@ class FlowMatchingTrainerMulti:
             f_name_h_delayed_rescaled=f_name_h_delayed_rescaled,
             f_name_h_delayed_rescaled_noise=f_name_h_delayed_rescaled_noise,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title,
         )
 
 

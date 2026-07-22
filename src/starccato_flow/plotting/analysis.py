@@ -288,7 +288,7 @@ def plot_galactic_distribution(
                         markeredgecolor="none",
                     )
                 )
-            elif label == "Sampled Supernovae":
+            elif label == "Sampled Supernova":
                 adjusted_handles.append(
                     mlines.Line2D(
                         [],
@@ -296,7 +296,7 @@ def plot_galactic_distribution(
                         linestyle="None",
                         marker="o",
                         markersize=9,
-                        markerfacecolor="yellow",
+                        markerfacecolor="darkblue",
                         markeredgecolor="none",
                     )
                 )
@@ -356,7 +356,7 @@ def plot_galactic_distribution(
             c="yellow",
             edgecolors="none",
             marker="o",
-            label="Sampled Supernovae",
+            label="Sampled Supernova",
             zorder=10,
         )
     ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
@@ -434,8 +434,8 @@ def plot_galactic_distribution(
         s=sun_marker_size,
         c="yellow",
         marker="*",
-        edgecolors="black",
-        linewidths=0.25,
+        edgecolor="white" if background is "black" else "black",
+        linewidths=0.75,
         label="Sun",
         zorder=20,
     )
@@ -444,10 +444,10 @@ def plot_galactic_distribution(
             hx,
             hy,
             s=max(sun_marker_size * 0.1, 10),
-            c="yellow",
+            c="darkblue",
             edgecolors="none",
             marker="o",
-            label="Sampled Supernovae",
+            label="Sampled Supernova",
             zorder=10,
         )
     ax2.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
@@ -505,10 +505,10 @@ def plot_galactic_distribution(
             hx,
             hz,
             s=max(sun_marker_size * 0.1, 18),
-            c="yellow",
+            c="darkblue",
             edgecolors="none",
             marker="o",
-            label="Sampled Supernovae",
+            label="Sampled Supernova",
             zorder=10,
         )
     ax3.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)

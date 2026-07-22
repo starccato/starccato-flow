@@ -161,6 +161,37 @@ def plot_parameter_distributions(
             alpha=alpha, 
             edgecolor='none'
         )
+
+        if param_name == "beta1_IC_b":
+            ax.axvline(0.06, color='grey', linestyle='--', linewidth=1)
+            ax.axvline(0.17, color='grey', linestyle='--', linewidth=1)
+            ax.text(
+                0.03, 0.98, "Slow rotation",
+                rotation=90,
+                ha="center",
+                va="top",
+                transform=ax.get_xaxis_transform(),
+                fontsize=9,
+                color="#6baed6"
+            )
+            ax.text(
+                0.115, 0.98, "Rapid rotation",
+                rotation=90,
+                ha="center",
+                va="top",
+                transform=ax.get_xaxis_transform(),
+                fontsize=9,
+                color="#fdae6b"
+            )
+            ax.text(
+                0.20, 0.98, "Extreme rotation",
+                rotation=90,
+                ha="center",
+                va="top",
+                transform=ax.get_xaxis_transform(),
+                fontsize=9,
+                color="#de2d26"
+    )
         
         if labels_dict and param_name in labels_dict:
             param_label = labels_dict[param_name]
@@ -181,8 +212,6 @@ def plot_parameter_distributions(
         ax.tick_params(axis='x', rotation=45)
         ax.grid(False)
     
-    # for idx in range(len(parameters_dict), 4):
-    #     axes[idx].axis('off')
     
     plt.tight_layout()
     if fname:

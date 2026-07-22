@@ -15,7 +15,8 @@ from ..utils.defaults_plotting import (
     LATENT_SPACE_COLOUR,
     SIGNAL_LIM_UPPER, 
     SIGNAL_LIM_LOWER,
-    PARAMETER_LABELS
+    PARAMETER_LABELS,
+    CM_TO_INCHES
 )
 from . import set_plot_style, get_time_axis
 
@@ -750,99 +751,137 @@ def plot_latent_space_3d(
     plt.rcdefaults()
     return fig
 
-
 def plot_latent_space_2d_3d(
     latent_means: np.ndarray,
-    param_denorm: np.ndarray,
     epoch: int,
     fname: Optional[str] = None,
-    background: str = "black",
-    param_label: str = "β",
-    ye_colors: Optional[list] = None
-) -> None:
-    """Plot 3 different 2D projections of latent space colored by Ye parameter.
-    
-    Args:
-        latent_means (np.ndarray): Latent space means, shape (num_samples, latent_dim)
-        param_denorm (np.ndarray): Denormalized parameter values, shape (num_samples, param_dim)
-        epoch (int): Current training epoch for title
-        fname (Optional[str]): Filename to save plot
-        background (str): Background color ("black" or "white")
-        param_label (str): Label for the parameter being visualized
-        ye_colors (Optional[list]): List of colors for each point (blue to yellow gradient)
-    """
-    # Use up to 2000 samples for better visualization
+    background: str = "white",
+    point_colors: Optional[np.ndarray] = None,
+    figsize=tuple[float, float],
+    fontsize_title=float,
+    fontsize_tick=float
+):
+    """Plot three 2D projections of the latent space."""
+
     n_samples = min(2000, len(latent_means))
-    sample_indices = np.random.choice(len(latent_means), n_samples, replace=False)
-    
+    sample_indices = np.random.choice(
+        len(latent_means),
+        n_samples,
+        replace=False,
+    )
+
     latent_sample = latent_means[sample_indices]
-    param_sample = param_denorm[sample_indices]
-    colors_sample = [ye_colors[i] for i in sample_indices] if ye_colors is not None else None
-    
-    # Create figure with GridSpec for better control over colorbar spacing
-    fig = plt.figure(figsize=(17, 5), facecolor=background)
-    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.15], wspace=0.3)
-    
-    # Define the three 2D projections
+    colours = (
+        point_colors[sample_indices]
+        if point_colors is not None
+        else "tab:blue"
+    )
+
+    text_colour = "white" if background == "black" else "black"
+
+    fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES), facecolor=background)
+    gs = fig.add_gridspec(1, 3)
+
     projections = [
-        (0, 1, "Latent Dimension 0", "Latent Dimension 1"),
-        (1, 2, "Latent Dimension 1", "Latent Dimension 2"),
-        (0, 2, "Latent Dimension 0", "Latent Dimension 2")
+        (0, 1),
+        (1, 2),
+        (0, 2),
     ]
-    
-    scatter = None  # For colorbar reference if needed
-    
-    for idx, (dim1, dim2, xlabel, ylabel) in enumerate(projections):
+
+    for idx, (dim1, dim2) in enumerate(projections):
+
         ax = fig.add_subplot(gs[0, idx], facecolor=background)
-        
-        # Plot scatter
-        if ye_colors is not None:
-            for i, point in enumerate(latent_sample[:, [dim1, dim2]]):
-                ax.scatter(point[0], point[1], c=[colors_sample[i]], s=20, alpha=0.6, edgecolors='none')
-        else:
-            scatter = ax.scatter(latent_sample[:, dim1], latent_sample[:, dim2], 
-                                c=param_sample[:, 0], cmap='viridis', 
-                                alpha=0.6, s=20)
-        
-        ax.set_xlabel(xlabel, fontsize=11, color='white' if background == 'black' else 'black')
-        ax.set_ylabel(ylabel, fontsize=11, color='white' if background == 'black' else 'black')
+
+        ax.scatter(
+            latent_sample[:, dim1],
+            latent_sample[:, dim2],
+            c=colours,
+            s=15,
+            alpha=0.7,
+            edgecolors="none",
+        )
+
+        ax.set_xlabel(f"Latent Dimension {dim1}", fontsize=fontsize_title)
+        ax.set_ylabel(f"Latent Dimension {dim2}", fontsize=fontsize_title)
+
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
-        ax.set_aspect('equal')
-        ax.tick_params(colors='white' if background == 'black' else 'black', labelsize=9)
+        ax.set_aspect("equal")
+
+        ax.tick_params(
+            colors=text_colour,
+            labelsize=fontsize_tick,
+        )
+
+        ax.xaxis.label.set_color(text_colour)
+        ax.yaxis.label.set_color(text_colour)
+
         for spine in ax.spines.values():
-            spine.set_color('white' if background == 'black' else 'black')
-            spine.set_linewidth(1.5)
-        ax.grid(True, alpha=0.3, color='gray', linestyle=':')
-    
-    # Create separate axis for colorbar
-    cbar_ax = fig.add_subplot(gs[0, 3])
-    
-    if ye_colors is not None:
-        from matplotlib.colors import LinearSegmentedColormap
-        # Gradient: blue (low) to red (high) - higher values appear higher on colorbar
-        sm = plt.cm.ScalarMappable(cmap=LinearSegmentedColormap.from_list('blue_red', ['blue', 'red']), 
-                                   norm=plt.Normalize(vmin=param_sample[:, 0].max(), vmax=param_sample[:, 0].min()))
-        sm.set_array([])
-        cbar = plt.colorbar(sm, cax=cbar_ax)
-        # Use PARAMETER_LABELS for param_label if available
-        label = PARAMETER_LABELS.get(param_label, param_label)
-        cbar.set_label(label, fontsize=11, color='white' if background == 'black' else 'black')
-        cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
-                                      labelcolor='white' if background == 'black' else 'black', labelsize=9)
-        cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
-        cbar.outline.set_linewidth(1.5)
-    else:
-        cbar = plt.colorbar(scatter, cax=cbar_ax)
-        cbar.set_label(param_label, fontsize=11, color='white' if background == 'black' else 'black')
-        cbar.ax.yaxis.set_tick_params(color='white' if background == 'black' else 'black', 
-                                      labelcolor='white' if background == 'black' else 'black', labelsize=9)
-        cbar.outline.set_edgecolor('white' if background == 'black' else 'black')
-        cbar.outline.set_linewidth(1.5)
-    
+            spine.set_color(text_colour)
+            spine.set_linewidth(0.75)
+
+        ax.grid(True, alpha=0.3, linestyle=":")
+
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="grey",
+            markeredgecolor="none",
+            markersize=8,
+            label="No rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#6baed6",
+            markeredgecolor="none",
+            markersize=8,
+            label="Slow rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#fdae6b",
+            markeredgecolor="none",
+            markersize=8,
+            label="Rapid rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#de2d26",
+            markeredgecolor="none",
+            markersize=8,
+            label="Extreme rotation",
+        ),
+    ]
+
+    fig.legend(
+        handles=legend_elements,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.98),
+        ncol=4,
+        frameon=False,
+        fontsize=fontsize_tick,
+        labelcolor=text_colour,
+        handletextpad=0.4,
+        columnspacing=1.5,
+    )
+
     plt.tight_layout()
-    
-    if fname:
-        plt.savefig(fname, bbox_inches='tight', dpi=300, facecolor=background, edgecolor='none')
-    
+    if fname is not None:
+        plt.savefig(
+            fname,
+            dpi=300,
+            bbox_inches="tight",
+            facecolor=background,
+        )
+
     plt.close()

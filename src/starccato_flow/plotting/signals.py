@@ -132,9 +132,10 @@ def plot_detector_signal_channels(
     transparent: bool = False,
     figsize_mm: Tuple[float, float] = (165, 190),
     fontsize_tick: int = 12,
-    fontsize_text: int = 18,
+    fontsize_title: int = 18,
     line_weight: float = 1.4,
     left_margin: float = 0.05,
+    figsize: Tuple[float, float] = (6.5, 8.0)
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
@@ -179,11 +180,8 @@ def plot_detector_signal_channels(
             )
     else:
         channel_noisy = None
-
-    # Convert mm to inches (1 inch = 25.4 mm)
-    figsize_inches = (figsize_mm[0] / 25.4, figsize_mm[1] / 25.4)
     
-    fig = plt.figure(figsize=figsize_inches)
+    fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     gs = gridspec.GridSpec(3, 1, figure=fig, height_ratios=[1, 1, 1], 
                           hspace=0.4, left=0.15, right=0.95, top=0.88, bottom=0.12)
     axes = [fig.add_subplot(gs[i]) for i in range(3)]
@@ -223,9 +221,10 @@ def plot_detector_signal_channels(
 
         ax.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5, linewidth=line_weight)
         ax.grid(False)
-        ax.set_title(display_labels[i], fontsize=fontsize_text)
+        ax.set_title(display_labels[i], fontsize=fontsize_tick)
         ax.tick_params(axis='x', colors=vline_color, labelsize=fontsize_tick)
         ax.tick_params(axis='y', colors=vline_color, labelsize=fontsize_tick)
+        ax.yaxis.get_offset_text().set_fontsize(fontsize_tick-2)
 
         for spine in ax.spines.values():
             spine.set_color(vline_color)
@@ -239,8 +238,8 @@ def plot_detector_signal_channels(
     axes[-1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
     
     # Set axis labels with proper size and color
-    axes[-1].set_xlabel('time (s)', fontsize=fontsize_text, color=vline_color)
-    axes[1].set_ylabel('h', fontsize=fontsize_text, color=vline_color)
+    axes[-1].set_xlabel('time (s)', fontsize=fontsize_title, color=vline_color)
+    axes[1].set_ylabel('h', fontsize=fontsize_title, color=vline_color)
 
     # Add legend outside/on top if we have both signals
     # if channel_noisy is not None:

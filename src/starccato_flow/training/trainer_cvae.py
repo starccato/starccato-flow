@@ -126,19 +126,19 @@ class ConditionalVAETrainer:
         num_fixed_samples = num_rows * num_cols
         
         # Find Ye parameter index for grid variation
-        self.ye_param_index = None
+        self.beta_param_index = None
         if hasattr(self.training_dataset, 'parameter_names'):
             for i, name in enumerate(self.training_dataset.parameter_names):
                 if 'beta' in name or 'beta' in name:
-                    self.ye_param_index = i
+                    self.beta_param_index = i
                     break
         
-        print(f"Ye parameter index found: {self.ye_param_index}")
-        if self.ye_param_index is not None:
-            print(f"  Ye parameter name: {self.training_dataset.parameter_names[self.ye_param_index]}")
+        print(f"Ye parameter index found: {self.beta_param_index}")
+        if self.beta_param_index is not None:
+            print(f"  Ye parameter name: {self.training_dataset.parameter_names[self.beta_param_index]}")
         
         # Use Ye parameter for grid if found, otherwise use varying_param_index
-        grid_varying_index = self.ye_param_index if self.ye_param_index is not None else self.varying_param_index
+        grid_varying_index = self.beta_param_index if self.beta_param_index is not None else self.varying_param_index
 
         print(grid_varying_index)
         
@@ -358,14 +358,14 @@ class ConditionalVAETrainer:
         param_colors = None
         param_label_to_use = None
         
-        if self.ye_param_index is not None:
+        if self.beta_param_index is not None:
             # Denormalize fixed parameters to physical units for display
             fixed_params_denorm = np.array([
                 self.training_dataset.denormalize_parameters(p) 
                 for p in self.fixed_params.cpu().numpy()
             ])
-            param_values_to_display = fixed_params_denorm[:, self.ye_param_index]
-            param_label_to_use = self.training_dataset.parameter_names[self.ye_param_index] if hasattr(self.training_dataset, 'parameter_names') else "Ye"
+            param_values_to_display = fixed_params_denorm[:, self.beta_param_index]
+            param_label_to_use = self.training_dataset.parameter_names[self.beta_param_index] if hasattr(self.training_dataset, 'parameter_names') else "Ye"
             
             # Create color gradient from blue to yellow based on unique Ye values
             unique_ye_values = np.unique(np.round(param_values_to_display, 4))
@@ -490,67 +490,60 @@ class ConditionalVAETrainer:
             fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction.svg")
         )
 
-    def _plot_latent_space(self, fname=None, epoch=None):
-        """Plot the latent space of the validation set colored by Ye parameter."""
+    def _plot_latent_space(self, fname=None, epoch=None, figsize=tuple[float, float]):
+        """Plot the latent space of the validation set coloured by rotation class."""
         self.cvae.eval()
-        
-        # Extract all latent means from validation dataset
+
         latent_means_list = []
         param_list = []
-        
+
         with torch.no_grad():
             for batch_idx in range(len(self.val_loader.dataset)):
                 _, noisy_signal, params = self.val_loader.dataset.__getitem__(batch_idx)
+
                 noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
                 params = params.view(1, -1).to(DEVICE)
-                
-                # Get latent means
+
                 mean, _ = self.cvae.encoder(noisy_signal, params)
-                latent_means_list.append(mean.cpu().detach().numpy())
-                param_list.append(params.cpu().detach().numpy())
-        
+
+                latent_means_list.append(mean.cpu().numpy())
+                param_list.append(params.cpu().numpy())
+
         latent_means = np.vstack(latent_means_list)
-        param_denorm = self.validation_dataset.denormalize_parameters(np.vstack(param_list))
-        
-        # Create Ye colors if ye_param_index is available
-        ye_colors = None
-        ye_param_label = "Ye"
-        
-        if self.ye_param_index is not None:
-            ye_values = param_denorm[:, self.ye_param_index]
-            unique_ye_values = np.unique(np.round(ye_values, 4))
-            ye_min = unique_ye_values.min()
-            ye_max = unique_ye_values.max()
-            
-            # Create colormap: yellow to blue
-            from matplotlib.colors import LinearSegmentedColormap
-            colors_list = ['yellow', 'blue']
-            n_bins = len(unique_ye_values)
-            cmap = LinearSegmentedColormap.from_list('yellow_blue', colors_list, N=n_bins)
-            
-            # Map each Ye value to a color
-            ye_colors = []
-            for val in ye_values:
-                normalized = (val - ye_min) / (ye_max - ye_min) if ye_max > ye_min else 0.5
-                ye_colors.append(cmap(normalized))
-            
-            # Use Ye parameter name if found
-            if hasattr(self.training_dataset, 'parameter_names'):
-                ye_param_label = self.training_dataset.parameter_names[self.ye_param_index]
-        
-        # Plot latent space
+        param_denorm = self.validation_dataset.denormalize_parameters(
+            np.vstack(param_list)
+        )
+
+        point_colors = None
+
+        if self.beta_param_index is not None:
+            beta_values = param_denorm[:, self.beta_param_index]
+
+            point_colors = np.empty(len(beta_values), dtype=object)
+
+            point_colors[np.isclose(beta_values, 0.0)] = "grey"
+            point_colors[(beta_values > 0.0) & (beta_values <= 0.06)] = "#6baed6"
+            point_colors[(beta_values > 0.06) & (beta_values <= 0.17)] = "#fdae6b"
+            point_colors[beta_values > 0.17] = "#de2d26"
+
         if fname is None:
-            fname = os.path.join(self.outdir, "cvae", "cvae_latent_space.svg")
-        
+            fname = os.path.join(
+                self.outdir,
+                "cvae",
+                "cvae_latent_space.svg",
+            )
+
         plot_latent_space_2d_3d(
             latent_means=latent_means,
-            param_denorm=param_denorm,
-            epoch=epoch if epoch is not None else 0,
+            epoch=0 if epoch is None else epoch,
             fname=fname,
             background="white",
-            param_label=ye_param_label,
-            ye_colors=ye_colors
+            point_colors=point_colors,
+            figsize=figsize,
+            fontsize_title=9,
+            fontsize_tick=7
         )
+
         print(f"Saved latent space plot to {fname}")
 
     def display_results(self, background="black", fname_total=None, fname_recon=None, fname_kld=None, font_family="Serif", font_name="Times New Roman"):
@@ -565,7 +558,10 @@ class ConditionalVAETrainer:
             background=background,
             fname=fname_total,  
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=(15,8),
+            fontsize_title=16,
+            fontsize_tick=11
         )
         
         # Plot reconstruction losses
@@ -578,7 +574,10 @@ class ConditionalVAETrainer:
             background=background,
             fname=fname_recon,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=(15,8),
+            fontsize_title=16,
+            fontsize_tick=11
         )
         
         # Plot KLD losses...
@@ -591,7 +590,10 @@ class ConditionalVAETrainer:
             background=background,
             fname=fname_kld,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=(15,8),
+            fontsize_title=16,
+            fontsize_tick=11
         )
 
     @property
@@ -750,7 +752,7 @@ class ConditionalVAETrainer:
                 self.validation_dataset.parameters
             ])
 
-            beta = combined_theta[:, self.ye_param_index]
+            beta = combined_theta[:, self.beta_param_index]
             mask = (beta >= beta_min) & (beta <= beta_max)
             combined_theta = combined_theta[mask, :]
 
