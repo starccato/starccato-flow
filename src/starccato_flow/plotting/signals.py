@@ -509,21 +509,29 @@ def plot_signal_distribution(
     ax.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
     ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
-    ax.set_xlabel('time (s)', size=16, color=text_color)
-    ax.set_ylabel('h', size=16, color=text_color)
+    ax.set_xlabel('time (s)', size=16, color=text_color, font=font_name)
+    ax.set_ylabel('h', size=16, color=text_color, font=font_name)
     ax.tick_params(axis='x', labelsize=11, colors=text_color)
     ax.tick_params(axis='y', labelsize=11, colors=text_color)
+
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontfamily(font_family)
+        label.set_fontname(font_name)
+
     ax.grid(False)
 
     ax.xaxis.get_offset_text().set_fontsize(9)
     ax.yaxis.get_offset_text().set_fontsize(9)
+    ax.xaxis.get_offset_text().set_fontfamily(font_family)
+    ax.yaxis.get_offset_text().set_fontfamily(font_family)
+
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     ax.text(
         0.98, 0.02, f"n = {n}",
         ha='right', va='bottom',
         transform=ax.transAxes,
-        fontsize=11, color=text_color,
+        fontsize=11, font=font_name, color=text_color,
         alpha=0.8
     )
 
@@ -533,9 +541,12 @@ def plot_signal_distribution(
         mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)),
                       linewidth=1.5, label="Median")
     ]
-    ax.legend(handles=legend_handles, loc='upper right',
-              facecolor="none", edgecolor=text_color,
-              labelcolor=text_color, fontsize=11, framealpha=0.0)
+
+    ax.legend(handles=legend_handles, loc='lower center',
+            bbox_to_anchor=(0.5, 1.08),
+            facecolor="none", edgecolor=text_color,
+            labelcolor=text_color, fontsize=7, framealpha=0.0,
+            ncol=3)
 
     if axes is None:
         plt.tight_layout()

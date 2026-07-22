@@ -41,12 +41,12 @@ def create_train_val_split(
     # hThetaMulti will then only output sky parameters
     
 
-    temp_dataset = sTheta(
+    full_dataset = sTheta(
         num_epochs=num_epochs,
         detector_noise_on=False,
         parameters=stheta_parameters,
     )
-    num_signals = temp_dataset.signals.shape[1]
+    num_signals = full_dataset.signals.shape[1]
     
     # Split signal indices
     indices = list(range(num_signals))
@@ -74,9 +74,9 @@ def create_train_val_split(
         detector_noise_on=False,
         parameters=stheta_parameters,
         indices=train_indices,
-        shared_min=temp_dataset.shared_min_theta,
-        shared_max=temp_dataset.shared_max_theta,
-        shared_max_strain=temp_dataset.shared_max_strain
+        shared_min=full_dataset.shared_min_theta,
+        shared_max=full_dataset.shared_max_theta,
+        shared_max_strain=full_dataset.shared_max_strain
     )
     
     validation_dataset = sTheta(
@@ -84,16 +84,16 @@ def create_train_val_split(
         detector_noise_on=False,
         parameters=stheta_parameters,
         indices=val_indices,
-        shared_min=temp_dataset.shared_min_theta,
-        shared_max=temp_dataset.shared_max_theta,
-        shared_max_strain=temp_dataset.shared_max_strain
+        shared_min=full_dataset.shared_min_theta,
+        shared_max=full_dataset.shared_max_theta,
+        shared_max_strain=full_dataset.shared_max_strain
     )
     
     # Verify alignment
     training_dataset.verify_alignment()
     validation_dataset.verify_alignment()
     
-    return training_dataset, validation_dataset, val_indices
+    return full_dataset, training_dataset, validation_dataset, val_indices
 
 def plot_generated_signal_distribution(
     vae,

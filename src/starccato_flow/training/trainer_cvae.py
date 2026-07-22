@@ -74,7 +74,7 @@ class ConditionalVAETrainer:
         self.device = DEVICE
 
         # Create train/val split using shared utility function
-        self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
+        self.full_dataset, self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
             y_length=self.y_length,
             detector_noise_on=self.detector_noise_on,
             validation_split=self.validation_split,
@@ -690,11 +690,13 @@ class ConditionalVAETrainer:
             figsize=individual_fig_size
         )
 
-        self.training_dataset.plot_signal_distribution(
+        self.full_dataset.plot_signal_distribution(
             beta_min=beta_min,
             beta_max=beta_max,
             axes=ax_real,
-            figsize=individual_fig_size
+            figsize=individual_fig_size,
+            font_name=font_name,
+            font_family=font_family
         )
 
         plt.tight_layout()
@@ -786,7 +788,8 @@ class ConditionalVAETrainer:
             font_family=font_family,
             font_name=font_name,
             fname=fname,
-            figsize=figsize
+            figsize=figsize,
+            axes=axes
         )
         
         return signals_array
