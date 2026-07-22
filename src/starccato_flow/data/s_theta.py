@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from scipy.fft import ifft
 
+import matplotlib.pyplot as plt
+
 from starccato_flow.plotting.parameters import plot_parameter_distributions, plot_eos_ye_distribution
 
 
@@ -203,7 +205,7 @@ class sTheta(BaseDataset, Dataset):
         
         return None
 
-    def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None, beta_min=None, beta_max=None):
+    def plot_signal_distribution(self, background=None, font_family="serif", font_name="Times New Roman", fname=None, beta_min=None, beta_max=None, figsize=tuple[float, float], axes: Optional[plt.Axes] = None):
         beta = self.parameters[:, 0]
         mask = np.ones(len(beta), dtype=bool)
         if beta_min is not None:
@@ -212,7 +214,7 @@ class sTheta(BaseDataset, Dataset):
             mask &= beta <= beta_max
 
         print(f"Plotting signal distribution for {mask.sum()} signals with beta in [{beta_min}, {beta_max}]")
-        plot_signal_distribution(self.signals[:,mask]/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname)
+        plot_signal_distribution(self.signals[:,mask]/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname, figsize=figsize, axes=axes)
 
     def plot_parameter_distributions(self, fname, font_family="sans-serif", font_name="Avenir"):
         params_dict = {
@@ -227,7 +229,7 @@ class sTheta(BaseDataset, Dataset):
             font_name=font_name
         )
 
-    def plot_random_signals_grid(self, n_signals, n_rows, n_cols, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
+    def plot_random_signals_grid(self, n_signals, n_rows, n_cols, background="white", font_family="sans-serif", font_name="Avenir", fname=None, figsize=tuple[float, float]):
         np.random.seed(42)
         random_indices = np.random.choice(len(self), size=n_signals, replace=False)
         selected_signals = []
@@ -239,15 +241,14 @@ class sTheta(BaseDataset, Dataset):
         # Plot in 4x4 grid
         plot_signal_grid(
             signals=selected_signals/TEN_KPC,
-            noisy_signals=None,
-            max_value=self.shared_max_strain,
             n_cols=n_rows,
             n_rows=n_cols,
             fname=fname,
             generated=False,
             background=background,
             font_family=font_family,
-            font_name=font_name
+            font_name=font_name,
+            figsize=figsize
         );
 
     # def plot_signal_grid(self, n_signals=3, background=True, font_family="sans-serif", font_name="Avenir", fname=None):

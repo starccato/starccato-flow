@@ -818,7 +818,7 @@ def plot_latent_space_2d_3d(
 
         for spine in ax.spines.values():
             spine.set_color(text_colour)
-            spine.set_linewidth(0.75)
+            spine.set_linewidth(1.0)
 
         ax.grid(True, alpha=0.3, linestyle=":")
 

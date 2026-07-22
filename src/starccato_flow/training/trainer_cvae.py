@@ -16,7 +16,7 @@ from ..utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH
 
 from . import create_train_val_split         
 from ..plotting import plot_loss
-from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
+from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution, plot_signal_grid
 from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down
 from ..utils.defaults_plotting import PARAMETER_LABELS
 
@@ -348,7 +348,7 @@ class ConditionalVAETrainer:
         return generated
     
 
-    def _plot_signal_grid(self, epoch, fname=None):
+    def _plot_signal_grid(self, epoch, fname=None, font_name=str, font_family=str, figsize=tuple[float, float]):
         self.cvae.eval()  # Set to eval mode to disable dropout
         with torch.no_grad():
             generated_signals = self.cvae.decoder(self.fixed_noise, self.fixed_params).cpu().detach().numpy()
@@ -391,70 +391,19 @@ class ConditionalVAETrainer:
         # Plot signal grid with custom coloring
         fname = os.path.join(self.outdir, "cvae", f"cvae_generated_signals_epoch_{epoch+1}.svg") if fname is None else fname
         print(f"\nGenerating signal grid for epoch {epoch}...")
-        self._plot_signal_grid_with_colors(
-            signals=generated_signals / TEN_KPC,
-            max_value=self.validation_dataset.shared_max_strain,
-            num_cols=4,
-            num_rows=4,
+        plot_signal_grid(
+            signals=generated_signals / TEN_KPC * self.validation_dataset.shared_max_strain,
+            n_cols=4,
+            n_rows=4,
             fname=fname,
+            generated=True,
             param_values=param_values_to_display,
             param_label=param_label_to_use,
-            param_colors=param_colors
+            font_family=font_family,
+            font_name=font_name,
+            figsize=figsize
         )
         print(f"✓ Saved signal grid to: {fname}")
-
-    def _plot_signal_grid_with_colors(self, signals, max_value, num_cols, num_rows, fname, 
-                                       param_values=None, param_label=None, param_colors=None):
-        """Plot signal grid with color-coded frames based on parameter values."""
-        from ..plotting import set_plot_style, get_time_axis
-        from ..utils.defaults_plotting import GENERATED_SIGNAL_COLOUR, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
-        
-        set_plot_style("white", "Serif", "Times New Roman")
-        
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 10))
-        axes = axes.flatten()
-        
-        d = get_time_axis()
-        
-        for i, ax in enumerate(axes):
-            if i >= len(signals):
-                ax.axis('off')
-                continue
-            
-            y = signals[i].flatten()
-            y = y * max_value
-            ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-            ax.set_xlim(min(d), max(d))
-            ax.plot(d, y, color=GENERATED_SIGNAL_COLOUR)
-            
-            ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
-            ax.grid(False)
-            
-            # Display parameter value above each subplot
-            if param_values is not None and param_label is not None and i < len(param_values):
-                # Use LaTeX label from PARAMETER_LABELS if available
-                latex_label = PARAMETER_LABELS.get(param_label, param_label)
-                param_text = f"{latex_label} = {param_values[i]:.4f}"
-                ax.set_title(param_text, fontsize=11, color="black", pad=8, fontweight='bold')
-            
-            if i % num_cols != 0:
-                ax.yaxis.set_ticklabels([])
-            if i < num_cols * (num_rows - 1):
-                ax.xaxis.set_ticklabels([])
-        
-        fig.supxlabel('time (s)', fontsize=20)
-        fig.supylabel('h', fontsize=20)
-        
-        plt.tight_layout()
-        if fname:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(fname), exist_ok=True)
-            plt.savefig(fname, dpi=300, bbox_inches="tight")
-            print(f"  Plot saved to: {fname}")
-        else:
-            print("  No filename provided - plot not saved")
-        
-        plt.close()
 
     def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
         """Plot a candidate signal with noise."""
@@ -705,6 +654,53 @@ class ConditionalVAETrainer:
             self.avg_reproduction_losses_val = []
             self.avg_kld_losses_val = []
             print(f"  (Loss history file not found at {losses_path})")
+
+    def compare_generated_and_real_signal_distributions(
+        self, 
+        num_samples: int = 10000,
+        fname: Optional[str] = None,
+        background: str = "white",
+        font_family: str = "serif",
+        font_name: str = "Times New Roman",
+        sample_from_data: bool = False,
+        beta_min: float = 0.0,
+        beta_max: float = 0.25,
+        figsize: tuple[float, float] = (15, 10)
+    ) -> np.ndarray:
+
+        from ..utils.defaults_plotting import CM_TO_INCHES  # or wherever this lives
+
+        individual_fig_size = (figsize[0] / 2, figsize[1])
+
+        # One figure, two axes side-by-side, each 7.5cm x 7.5cm (if figsize=(15,7.5))
+        fig, (ax_gen, ax_real) = plt.subplots(
+            1, 2,
+            figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+        )
+
+        self.generate_and_plot_signal_distribution(
+            num_samples=num_samples,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            sample_from_data=sample_from_data,
+            beta_min=beta_min,
+            beta_max=beta_max,
+            axes=ax_gen,
+            figsize=individual_fig_size
+        )
+
+        self.training_dataset.plot_signal_distribution(
+            beta_min=beta_min,
+            beta_max=beta_max,
+            axes=ax_real,
+            figsize=individual_fig_size
+        )
+
+        plt.tight_layout()
+        if fname:
+            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+
     
     def generate_and_plot_signal_distribution(
         self, 
@@ -715,7 +711,9 @@ class ConditionalVAETrainer:
         font_name: str = "Times New Roman",
         sample_from_data: bool = False,
         beta_min: float = 0.0,
-        beta_max: float = 0.25
+        beta_max: float = 0.25,
+        axes: Optional[plt.Axes] = None,
+        figsize: tuple[float, float] = (12, 12)
     ) -> np.ndarray:
         """Generate signals by sampling from z and parameter space, then plot distribution.
         
@@ -787,7 +785,8 @@ class ConditionalVAETrainer:
             background=background,
             font_family=font_family,
             font_name=font_name,
-            fname=fname
+            fname=fname,
+            figsize=figsize
         )
         
         return signals_array

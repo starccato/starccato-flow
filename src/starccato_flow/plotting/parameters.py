@@ -171,8 +171,9 @@ def plot_parameter_distributions(
                 ha="center",
                 va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=9,
-                color="#6baed6"
+                fontsize=8,
+                color="#6baed6",
+                weight="bold"
             )
             ax.text(
                 0.115, 0.98, "Rapid rotation",
@@ -180,8 +181,9 @@ def plot_parameter_distributions(
                 ha="center",
                 va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=9,
-                color="#fdae6b"
+                fontsize=8,
+                color="#fdae6b",
+                weight="bold"
             )
             ax.text(
                 0.20, 0.98, "Extreme rotation",
@@ -189,9 +191,10 @@ def plot_parameter_distributions(
                 ha="center",
                 va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=9,
-                color="#de2d26"
-    )
+                fontsize=8,
+                color="#de2d26",
+                weight="bold"
+            )
         
         if labels_dict and param_name in labels_dict:
             param_label = labels_dict[param_name]
@@ -702,7 +705,7 @@ def plot_eos_ye_distribution(
         order=eos_order,
         ax=ax,
         size=point_size / 20,  # Scale down seaborn point size
-        color='black',
+        color=SIGNAL_COLOUR,
         alpha=0.4,
         jitter=True
     )

@@ -12,7 +12,7 @@ import torch
 from . import set_plot_style, get_time_axis
 from ..utils.defaults_plotting import (
     SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, DEFAULT_FONT_FAMILY, 
-    DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER
+    DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER, PARAMETER_LABELS
 )
 
 from starccato_flow.utils.defaults_plotting import CM_TO_INCHES
@@ -36,8 +36,6 @@ def _map_detector_labels(labels: Sequence[str]) -> Tuple[str, ...]:
 
 def plot_signal_grid(
     signals: np.ndarray,
-    noisy_signals: np.ndarray,
-    max_value: int,
     n_cols: int = 2,
     n_rows: int = 4,
     fname: Optional[str] = None,
@@ -46,7 +44,8 @@ def plot_signal_grid(
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
     param_values: Optional[np.ndarray] = None,
-    param_label: Optional[str] = None
+    param_label: Optional[str] = None,
+    figsize=tuple[float, float]
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot a grid of waveform signals.
     
@@ -72,8 +71,7 @@ def plot_signal_grid(
     vline_color = "white" if background == "black" else "black"
     text_color = "white" if background == "black" else "black"
 
-    # figsize = (15, 10) if param_values is not None and param_label is not None else (15, 8)
-    figsize = (15 / CM_TO_INCHES, 12 / CM_TO_INCHES)
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     axes = axes.flatten()
 
@@ -87,18 +85,19 @@ def plot_signal_grid(
         y = signals[i].flatten()
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
-        ax.tick_params(axis='both', labelsize=11)
-        ax.xaxis.get_offset_text().set_fontsize(9)
+        ax.tick_params(axis='both', labelsize=9)
         ax.yaxis.get_offset_text().set_fontsize(9)
-        ax.plot(d, y, color=signal_colour, linewidth=1.0, alpha=1.0)
+        ax.plot(d, y, color=signal_colour, linewidth=1, alpha=1.0)
         
         ax.axvline(x=0, color=vline_color, linestyle="--", linewidth=0.75, alpha=0.5)
         ax.grid(False)
         
-        # Display parameter value above each subplot if provided
+        # Display parameter value above each subplot
         if param_values is not None and param_label is not None and i < len(param_values):
-            param_text = f"{param_label} = {param_values[i]:.3f}"
-            ax.set_title(param_text, fontsize=11, color=text_color, pad=4)
+            # Use LaTeX label from PARAMETER_LABELS if available
+            latex_label = PARAMETER_LABELS.get(param_label, param_label)
+            param_text = f"{latex_label} = {param_values[i]:.4f}"
+            ax.set_title(param_text, fontsize=7, color="black", pad=4, loc="right")
         
         if i % n_cols != 0:
             ax.tick_params(labelleft=False)
@@ -108,7 +107,6 @@ def plot_signal_grid(
     fig.supxlabel('time (s)', fontsize=16)
     fig.supylabel('h', fontsize=16)
 
-    plt.tight_layout()
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
@@ -125,7 +123,6 @@ def plot_detector_signal_channels(
     noisy_signals: Optional[np.ndarray] = None,
     detector_labels: Sequence[str] = ("H1", "L1", "V1"),
     fname: Optional[str] = None,
-    generated: bool = False,
     background: str = "black",
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
@@ -467,34 +464,29 @@ def plot_single_signal(
     plt.rcdefaults()
     return fig
 
-
 def plot_signal_distribution(
     signals: np.ndarray,
     generated: bool = False,
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    fname: Optional[str] = None
+    fname: Optional[str] = None,
+    axes: Optional[plt.Axes] = None,
+    figsize: tuple = (12, 12)
 ) -> plt.Figure:
-    """Plot distribution of signals with percentiles and median.
-    
-    Args:
-        signals (np.ndarray): Array of signals (y_length, num_signals)
-        generated (bool): Whether signals are generated
-        background (str): Background color theme
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-        fname (Optional[str]): Filename to save plot
-    
-    Returns:
-        plt.Figure: The figure object
-    """
+    """Plot distribution of signals with percentiles and median."""
     set_plot_style(background, font_family, font_name)
     vline_color = "white" if background == "black" else "black"
     median_color = vline_color
     text_color = vline_color
-    
-    fig = plt.figure(figsize=(12 / CM_TO_INCHES, 12 / CM_TO_INCHES))
+
+    if axes is None:
+        fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
+        ax = fig.gca()
+    else:
+        ax = axes
+        fig = ax.figure
+
     distribution_color = GENERATED_SIGNAL_COLOUR if generated else SIGNAL_COLOUR
 
     signals_df = pd.DataFrame(signals)
@@ -506,54 +498,53 @@ def plot_signal_distribution(
 
     d = get_time_axis()
 
-    plt.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
-    plt.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
-    plt.fill_between(d, p25, p75, color="white", alpha=0.4)
-    plt.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
+    ax.fill_between(d, p2_5, p97_5, color="white", alpha=0.2)
+    ax.fill_between(d, p2_5, p97_5, color=distribution_color, alpha=0.4)
+    ax.fill_between(d, p25, p75, color="white", alpha=0.4)
+    ax.fill_between(d, p25, p75, color=distribution_color, alpha=0.6)
 
-    plt.plot(d, median_line.values, color=median_color,
-             linestyle=(0, (1, 1)), linewidth=1.5, alpha=1.0)
+    ax.plot(d, median_line.values, color=median_color,
+            linestyle=(0, (1, 1)), linewidth=1.5, alpha=1.0)
 
-    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
-    plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-    plt.xlim(min(d), max(d))
-    plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel('h', size=16, color=text_color)
-    plt.xticks(size=11, color=text_color)
-    plt.yticks(size=11, color=text_color)
-    plt.grid(False)
+    ax.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
+    ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
+    ax.set_xlim(min(d), max(d))
+    ax.set_xlabel('time (s)', size=16, color=text_color)
+    ax.set_ylabel('h', size=16, color=text_color)
+    ax.tick_params(axis='x', labelsize=11, colors=text_color)
+    ax.tick_params(axis='y', labelsize=11, colors=text_color)
+    ax.grid(False)
 
-    ax = plt.gca()  # Get current axes
     ax.xaxis.get_offset_text().set_fontsize(9)
     ax.yaxis.get_offset_text().set_fontsize(9)
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
-    plt.text(
+    ax.text(
         0.98, 0.02, f"n = {n}",
         ha='right', va='bottom',
-        transform=plt.gca().transAxes,
+        transform=ax.transAxes,
         fontsize=11, color=text_color,
         alpha=0.8
     )
 
     legend_handles = [
-        mpatches.Patch(color=distribution_color, alpha=0.6, 
-                      label="Central 95%"),
-        mpatches.Patch(color=distribution_color, alpha=1.00, 
-                      label="Central 50%"),
-        mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)), 
-                     linewidth=1.5, label="Median")
+        mpatches.Patch(color=distribution_color, alpha=0.6, label="Central 95%"),
+        mpatches.Patch(color=distribution_color, alpha=1.00, label="Central 50%"),
+        mlines.Line2D([], [], color=median_color, linestyle=(0, (1, 1)),
+                      linewidth=1.5, label="Median")
     ]
-    plt.legend(handles=legend_handles, loc='upper right',
-              facecolor="none", edgecolor=text_color, 
+    ax.legend(handles=legend_handles, loc='upper right',
+              facecolor="none", edgecolor=text_color,
               labelcolor=text_color, fontsize=11, framealpha=0.0)
 
-    plt.tight_layout()
+    if axes is None:
+        plt.tight_layout()
+
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', 
-                       transparent=(background=="black"))
+            fig.savefig(fname, format='svg', transparent=(background == "black"))
         else:
-            plt.savefig(fname, dpi=300, bbox_inches="tight", 
-                       transparent=(background=="black"))
+            fig.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+
+    return fig
