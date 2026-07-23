@@ -383,7 +383,6 @@ def plot_latent_morph_up_and_down(
     signal_2: torch.Tensor,
     params_1: torch.Tensor,
     params_2: torch.Tensor,
-    max_value: float,
     train_dataset,
     steps=10,
     background="white",
@@ -404,11 +403,11 @@ def plot_latent_morph_up_and_down(
         # Use params_1 for decoder (morphing only in latent space)
         signal_mid = model.decoder(mean_mid, params_1).squeeze(0).cpu().detach().numpy().flatten()
         # Clip to same range as input signals to avoid out-of-distribution decoder outputs
-        signal_mid = np.clip(signal_mid, -1.0, 1.0) * max_value
+        signal_mid = np.clip(signal_mid, -1.0, 1.0)
 
         # Reconstruct signals (and clip to valid range)
-        signal_1_np = np.clip(signal_1.cpu().detach().numpy().flatten(), -1.0, 1.0) * max_value
-        signal_2_np = np.clip(signal_2.cpu().detach().numpy().flatten(), -1.0, 1.0) * max_value
+        signal_1_np = np.clip(signal_1.cpu().detach().numpy().flatten(), -1.0, 1.0)
+        signal_2_np = np.clip(signal_2.cpu().detach().numpy().flatten(), -1.0, 1.0)
 
         # X-axis
         x_vals = [i / 4096 for i in range(0, 256)]

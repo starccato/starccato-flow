@@ -520,11 +520,9 @@ def plot_signal_distribution(
 
     ax.grid(False)
 
-    ax.xaxis.get_offset_text().set_fontsize(9)
     ax.yaxis.get_offset_text().set_fontsize(9)
-    ax.xaxis.get_offset_text().set_fontfamily(font_family)
     ax.yaxis.get_offset_text().set_fontfamily(font_family)
-
+    ax.ticklabel_format(axis='x', style='plain')
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     ax.text(
@@ -542,20 +540,27 @@ def plot_signal_distribution(
                       linewidth=1.5, label="Median")
     ]
 
-    ax.legend(handles=legend_handles, loc='lower center',
+    if axes is None:
+        ax.legend(handles=legend_handles, loc='lower center',
+                bbox_to_anchor=(0.5, 1.0),
+                facecolor="none", edgecolor=text_color,
+                labelcolor=text_color, fontsize=9, framealpha=0.0,
+                ncol=3)
+    else:
+        ax.legend(handles=legend_handles, loc='lower center',
             bbox_to_anchor=(0.5, 1.08),
             facecolor="none", edgecolor=text_color,
             labelcolor=text_color, fontsize=7, framealpha=0.0,
             ncol=3)
 
     if axes is None:
-        plt.tight_layout()
+        plt.tight_layout(pad=0.3)
 
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
             fig.savefig(fname, format='svg', transparent=(background == "black"))
         else:
-            fig.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+            fig.savefig(fname, dpi=300, bbox_inches="tight", pad_inches=0.00, transparent=(background == "black"))
 
     return fig

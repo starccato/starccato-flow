@@ -223,7 +223,7 @@ class FlowMatchingTrainer:
             )
         else:
             # Use standard train/val split. Probably the most acceptable
-            self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
+            self.full_dataset, self.training_dataset, self.validation_dataset, self.val_indices = create_train_val_split(
                 y_length=self.y_length,
                 detector_noise_on=self.detector_noise_on,
                 validation_split=self.validation_split,
@@ -565,7 +565,6 @@ class FlowMatchingTrainer:
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain,
             detector_labels=active_h_theta_multi.detectors,
             background="black",
-            generated=False,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png") if fname_signal is None else fname_signal,
             font_family=font_family,
             font_name=font_name,
@@ -1594,7 +1593,7 @@ class FlowMatchingTrainer:
     
     def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir") -> None:
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="Mean Squared Error Loss", train_label="Training Mean Squared Error Loss", val_label="Validation Mean Squared Error Loss", background=background, fname=fname, font_family=font_family, font_name=font_name)        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="MSE Loss", train_label="Training MSE Loss", val_label="Validation MSE Loss", background=background, fname=fname, font_family=font_family, font_name=font_name, figsize=(15,8), fontsize_title=16, fontsize_tick=11)        
         
     @property
     def save_fname(self):

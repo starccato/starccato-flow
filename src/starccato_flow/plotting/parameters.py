@@ -683,31 +683,17 @@ def plot_eos_ye_distribution(
     
     fig, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
     
-    # Create violin plot
-    sns.violinplot(
-        data=df_plot,
-        x='EOS',
-        y='Ye',
-        hue='EOS',
-        order=eos_order,
-        palette='coolwarm',
-        ax=ax,
-        inner=None,  # Remove inner details for cleaner look
-        alpha=alpha,
-        legend=False
-    )
-    
-    # Overlay individual points with jitter
+    # Overlay individual points (one per EOS, no distribution to show)
     sns.stripplot(
         data=df_plot,
         x='EOS',
         y='Ye',
         order=eos_order,
         ax=ax,
-        size=point_size / 20,  # Scale down seaborn point size
+        size=point_size / 10,  # Scale down seaborn point size
         color=SIGNAL_COLOUR,
-        alpha=0.4,
-        jitter=True
+        alpha=alpha,
+        jitter=False
     )
     
     # Formatting

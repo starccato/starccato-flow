@@ -677,6 +677,7 @@ class ConditionalVAETrainer:
             1, 2,
             figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
         )
+        fig.subplots_adjust(left=0.08, right=0.98, wspace=0.15)
 
         self.generate_and_plot_signal_distribution(
             num_samples=num_samples,
@@ -933,11 +934,10 @@ class ConditionalVAETrainer:
         if use_grid:
             plot_latent_morph_up_and_down(
                 model=self.cvae,
-                signal_1=signal_1,
-                signal_2=signal_2,
+                signal_1=signal_1/TEN_KPC*self.training_dataset.shared_max_strain,
+                signal_2=signal_2/TEN_KPC*self.training_dataset.shared_max_strain,
                 params_1=params_1,
                 params_2=params_2,
-                max_value=self.training_dataset.shared_max_strain,
                 train_dataset=self.training_dataset,
                 steps=steps,
                 background=background,
@@ -948,11 +948,10 @@ class ConditionalVAETrainer:
         else:
             plot_latent_morphs(
                 model=self.cvae,
-                signal_1=signal_1,
-                signal_2=signal_2,
+                signal_1=signal_1/TEN_KPC*self.training_dataset.shared_max_strain,
+                signal_2=signal_2/TEN_KPC*self.training_dataset.shared_max_strain,
                 params_1=params_1,
                 params_2=params_2,
-                max_value=self.training_dataset.max_strain,
                 steps=steps,
                 fname=fname,
                 background=background,
