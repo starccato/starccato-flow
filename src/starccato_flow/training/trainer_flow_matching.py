@@ -465,7 +465,7 @@ class FlowMatchingTrainer:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_posterior_galactic: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False) -> None:
+    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_posterior_galactic: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False, fontsize_tick: int = 10, fontsize_title: int = 12) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -570,8 +570,8 @@ class FlowMatchingTrainer:
             font_name=font_name,
             transparent=transparent,
             figsize_mm=(165, 190),
-            fontsize_tick=12,
-            fontsize_text=18,
+            fontsize_tick=fontsize_tick,
+            fontsize_title=fontsize_title,
             line_weight=1.4
         )
         # Generate posterior samples once and reuse for both plots
@@ -1591,9 +1591,9 @@ class FlowMatchingTrainer:
         # With linear normalization, extract only the requested parameter indices
         return full_params[:, self.param_extract_indices]
     
-    def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir") -> None:
+    def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir", fontsize_title=11, fontsize_tick=11) -> None:
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="MSE Loss", train_label="Training MSE Loss", val_label="Validation MSE Loss", background=background, fname=fname, font_family=font_family, font_name=font_name, figsize=(15,8), fontsize_title=16, fontsize_tick=11)        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="MSE Loss", train_label="Training MSE Loss", val_label="Validation MSE Loss", background=background, fname=fname, font_family=font_family, font_name=font_name, figsize=(15,8), fontsize_title=fontsize_title, fontsize_tick=fontsize_tick)        
         
     @property
     def save_fname(self):

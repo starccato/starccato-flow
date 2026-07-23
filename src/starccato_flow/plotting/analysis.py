@@ -738,7 +738,7 @@ def plot_galactic_distribution_with_posterior(
     y = galactic_coords[:, 1]
 
     # Transform posterior samples to galactic coordinates
-    sn_temp = Supernovae()  # Temporary instance for coordinate transformation
+    sn_temp = Supernovae(complex=True)  # Temporary instance for coordinate transformation
     post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
         posterior_ra, posterior_dec, posterior_distance
     )
