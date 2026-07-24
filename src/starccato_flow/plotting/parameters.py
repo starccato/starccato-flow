@@ -395,7 +395,7 @@ def plot_epoch_sky_parameters(
 
 
 def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 
-                labels=None, ranges=None, font_family="sans-serif", font_name="Avenir"):
+                labels=None, ranges=None, font_family="sans-serif", font_name="Avenir", figsize=(15, 15), fontsize_title=16, fontsize_tick=12):
     """Plot corner plot of parameter posterior distribution.
     
     Args:
@@ -509,11 +509,11 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
                 alpha=0.7, density=True, edgecolor='none')
         if true_param is not None and len(true_param) > 0:
             ax.axvline(true_param[0], color=SIGNAL_COLOUR, linewidth=2, label='True value')
-        ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=24, color=text_color)
-        ax.set_ylabel('Density', fontsize=24, color=text_color)
+        ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=fontsize_title, color=text_color)
+        ax.set_ylabel('Density', fontsize=fontsize_title, color=text_color)
         if ranges is not None and ranges[0] is not None:
             ax.set_xlim(ranges[0])
-        ax.tick_params(labelsize=12, colors=text_color)
+        ax.tick_params(labelsize=fontsize_tick, colors=text_color)
         for spine in ax.spines.values():
             spine.set_edgecolor(spine_color)
         ax.set_facecolor(axes_color)
@@ -532,7 +532,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         # Add title with quantiles
         q = np.percentile(samples_cpu.flatten(), [16, 50, 84])
         title = f"{q[1]:.4f}$_{{-{q[1]-q[0]:.4f}}}^{{+{q[2]-q[1]:.4f}}}$"
-        ax.set_title(title, fontsize=12, color=text_color)
+        ax.set_title(title, fontsize=fontsize_tick, color=text_color)
         
         # Determine format from filename extension and configure for SVG vector output
         file_format = None
@@ -566,15 +566,16 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         'show_titles': True,
         'title_quantiles': [0.16, 0.5, 0.84],
         'title_fmt': '.4f',
-        'title_kwargs': {'fontsize': 12},
-        'label_kwargs': {'fontsize': 24},
+        'title_kwargs': {'fontsize': fontsize_tick},
+        'label_kwargs': {'fontsize': fontsize_title},
         'bins': 100,
         'smooth': 3,
         'color': GENERATED_SIGNAL_COLOUR,
         'hist_kwargs': {'density': False, 'alpha': 1.0},
         'levels': (0.68, 0.95),
         'fill_contours': True,
-        'plot_datapoints': False
+        'plot_datapoints': False,
+        'fig': plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     }
     
     # Add range only if specified
@@ -700,6 +701,7 @@ def plot_eos_ye_distribution(
     ax.set_xlabel('Equation of State (EOS)', fontsize=16)
     ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
     ax.tick_params(labelsize=7, axis='x')
+    ax.tick_params(labelsize=11, axis='y')
     # Rotate x-axis labels for readability
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
@@ -776,7 +778,7 @@ def plot_eos_ye_posterior_distribution(
     
     # Create figure with GridSpec for marginal plot (swapped: marginal on left 1/4, main on right 3/4)
     from matplotlib.gridspec import GridSpec
-    fig = plt.figure(figsize=figsize)
+    fig, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
     gs = GridSpec(1, 2, width_ratios=[1, 3], wspace=0.3)
     ax_marginal = fig.add_subplot(gs[0, 0])
     ax_main = fig.add_subplot(gs[0, 1])
@@ -796,9 +798,10 @@ def plot_eos_ye_posterior_distribution(
     ax_marginal.axhline(true_ye, color=SIGNAL_COLOUR, linewidth=2.5)
     
     # Marginal plot formatting
-    ax_marginal.set_xlabel('Density', fontsize=12)
-    ax_marginal.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=14)
-    ax_marginal.tick_params(labelsize=11)
+    ax_marginal.set_xlabel('Density', fontsize=16)
+    ax_marginal.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
+    ax_marginal.tick_params(labelsize=7, axis='x')
+    # ax_marginal.tick_params(labelsize=11, axis='y')    
     ax_marginal.grid(True, alpha=0.3, linestyle='--', axis='y')
     ax_marginal.set_axisbelow(True)
     
@@ -810,10 +813,10 @@ def plot_eos_ye_posterior_distribution(
         y='Ye',
         order=eos_order,
         ax=ax_main,
-        size=point_size / 20,
+        size=point_size / 10,
         color='black',
         alpha=0.2,
-        jitter=True
+        jitter=False
     )
     
     # Highlight true EOS with background box
@@ -857,7 +860,7 @@ def plot_eos_ye_posterior_distribution(
     # Main plot formatting
     ax_main.set_xlabel('Equation of State (EOS)', fontsize=16)
     ax_main.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
-    ax_main.tick_params(labelsize=12, axis='x')
+    ax_main.tick_params(labelsize=7, axis='x')
     
     # Highlight true EOS on x-axis with SIGNAL_COLOUR
     ax_main_xticklabels = ax_main.get_xticklabels()

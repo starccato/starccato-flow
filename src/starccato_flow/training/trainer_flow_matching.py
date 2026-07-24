@@ -465,7 +465,28 @@ class FlowMatchingTrainer:
             remaining -= current_batch_size
         return signals, params
 
-    def run_parameter_estimation(self, signal_idx: int = None, d: float = None, ra: float = None, dec: float = None, epoch: int = None, export_on: bool = False, random_psi: bool = True, font_family: str = "Sans-serif", font_name: str = "Avenir", fname_signal: str = None, fname_posterior: str = None, fname_posterior_sky: str = None, fname_posterior_galactic: str = None, fname_eos_ye: str = None, background: str = "white", transparent: bool = False, fontsize_tick: int = 10, fontsize_title: int = 12) -> None:
+    def run_parameter_estimation(
+        self, signal_idx: int = None, 
+        d: float = None, 
+        ra: float = None, 
+        dec: float = None, 
+        epoch: int = None, 
+        export_on: bool = False, 
+        random_psi: bool = True, 
+        font_family: str = "Sans-serif", 
+        font_name: str = "Avenir", 
+        fname_signal: str = None, 
+        fname_posterior: str = None, 
+        fname_posterior_sky: str = None, 
+        fname_posterior_galactic: str = None, 
+        fname_eos_ye: str = None, 
+        background: str = "white", 
+        transparent: bool = False, 
+        fontsize_tick: int = 11, 
+        fontsize_title: int = 16, 
+        figsize_detector_signals: tuple[float, float] = (15,8),
+        figsize_corner: tuple[float, float] = (15,15)
+    ) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
         Args:
@@ -564,7 +585,7 @@ class FlowMatchingTrainer:
             signals=case[0].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain,
             noisy_signals=case[1].detach().cpu().numpy() / TEN_KPC * active_h_theta_multi.shared_max_strain,
             detector_labels=active_h_theta_multi.detectors,
-            background="black",
+            background=background,
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_signal.png") if fname_signal is None else fname_signal,
             font_family=font_family,
             font_name=font_name,
@@ -572,33 +593,25 @@ class FlowMatchingTrainer:
             figsize_mm=(165, 190),
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            line_weight=1.4
+            line_weight=1.4,
+            figsize=figsize_detector_signals
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
             case, active_h_theta_multi, num_samples=3000, n_steps=20
         )
         
-        # Clip posterior samples to valid parameter ranges
-        # Use dataset bounds if available, otherwise skip clipping
-        # if (hasattr(self.training_dataset, 'shared_min_theta') and 
-        #     hasattr(self.training_dataset, 'shared_max_theta') and
-        #     len(self.training_dataset.shared_min_theta) > 0 and
-        #     len(self.training_dataset.shared_max_theta) > 0):
-        #     posterior_samples_denorm = np.clip(
-        #         posterior_samples_denorm,
-        #         self.training_dataset.shared_min_theta,
-        #         self.training_dataset.shared_max_theta
-        #     )
-        
         self.plot_corner_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
             posterior_samples_denorm=posterior_samples_denorm,
             true_param_denorm=true_param_denorm,
-            background="black",
+            background=background,
             font_family=font_family,
             font_name=font_name,
-            transparent=transparent
+            transparent=transparent,
+            figsize=figsize_corner,
+            fontsize_title=fontsize_title,
+            fontsize_tick=fontsize_tick
         )
         # Debug: print true parameters being plotted
         print(f"\nTrue parameters to plot:")
@@ -1058,7 +1071,10 @@ class FlowMatchingTrainer:
         background: str = "white",
         font_family: str = "Serif",
         font_name: str = "Times New Roman",
-        transparent: bool = False
+        transparent: bool = False,
+        figsize: tuple[float, float] = (12,12),
+        fontsize_title: float = 16,
+        fontsize_tick: float = 11
     ):
         """Generate a corner plot for posterior samples.
 
@@ -1154,6 +1170,9 @@ class FlowMatchingTrainer:
             background=background,
             font_family=font_family,
             font_name=font_name,
+            figsize=figsize,
+            fontsize_title=fontsize_title,
+            fontsize_tick=fontsize_tick
         )
 
     def plot_sky_localisation_sampled_signal(
@@ -1591,9 +1610,9 @@ class FlowMatchingTrainer:
         # With linear normalization, extract only the requested parameter indices
         return full_params[:, self.param_extract_indices]
     
-    def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir", fontsize_title=11, fontsize_tick=11) -> None:
+    def display_results(self, background="black", fname=None, font_family="sans-serif", font_name="Avenir", fontsize_title=11, fontsize_tick=11, figsize=tuple[float, float]) -> None:
         """Display training results."""
-        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="MSE Loss", train_label="Training MSE Loss", val_label="Validation MSE Loss", background=background, fname=fname, font_family=font_family, font_name=font_name, figsize=(15,8), fontsize_title=fontsize_title, fontsize_tick=fontsize_tick)        
+        plot_loss(self.avg_mse_losses, self.avg_mse_losses_val, loss_type="MSE Loss", train_label="Training MSE Loss", val_label="Validation MSE Loss", background=background, fname=fname, font_family=font_family, font_name=font_name, figsize=figsize, fontsize_title=fontsize_title, fontsize_tick=fontsize_tick)        
         
     @property
     def save_fname(self):

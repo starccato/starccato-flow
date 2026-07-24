@@ -484,7 +484,6 @@ class ConditionalVAETrainer:
 
         plot_latent_space_2d_3d(
             latent_means=latent_means,
-            epoch=0 if epoch is None else epoch,
             fname=fname,
             background="white",
             point_colors=point_colors,

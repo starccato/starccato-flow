@@ -752,13 +752,13 @@ def plot_latent_space_3d(
 
 def plot_latent_space_2d_3d(
     latent_means: np.ndarray,
-    epoch: int,
     fname: Optional[str] = None,
     background: str = "white",
     point_colors: Optional[np.ndarray] = None,
     figsize=tuple[float, float],
     fontsize_title=float,
-    fontsize_tick=float
+    fontsize_tick=float,
+    font_name="Times New Roman",
 ):
     """Plot three 2D projections of the latent space."""
 
@@ -800,8 +800,8 @@ def plot_latent_space_2d_3d(
             edgecolors="none",
         )
 
-        ax.set_xlabel(f"Latent Dimension {dim1}", fontsize=fontsize_title)
-        ax.set_ylabel(f"Latent Dimension {dim2}", fontsize=fontsize_title)
+        ax.set_xlabel(f"Latent Dimension {dim1}", fontsize=fontsize_title, font=font_name)
+        ax.set_ylabel(f"Latent Dimension {dim2}", fontsize=fontsize_title, font=font_name)
 
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
@@ -810,6 +810,7 @@ def plot_latent_space_2d_3d(
         ax.tick_params(
             colors=text_colour,
             labelsize=fontsize_tick,
+            labelfontfamily=font_name
         )
 
         ax.xaxis.label.set_color(text_colour)
@@ -872,6 +873,7 @@ def plot_latent_space_2d_3d(
         labelcolor=text_colour,
         handletextpad=0.4,
         columnspacing=1.5,
+        prop={'family': font_name}
     )
 
     plt.tight_layout()
