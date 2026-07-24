@@ -725,6 +725,7 @@ class FlowMatchingTrainer:
                 background=background,
                 font_family=font_family,
                 font_name=font_name,
+                figsize=(15, 8),
                 fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png") if fname_eos_ye is None else fname_eos_ye,
             ) 
 
@@ -1439,7 +1440,7 @@ class FlowMatchingTrainer:
         )
 
     def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
-                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False) -> None:
+                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
         This plot shows empirical vs theoretical coverage of credible intervals for each parameter.
@@ -1587,7 +1588,8 @@ class FlowMatchingTrainer:
             background=background,
             font_family=font_family,
             font_name=font_name,
-            transparent=transparent
+            transparent=transparent,
+            figsize=figsize
         )
         
         print(f"✓ Saved p-p coverage plot to {fname}")

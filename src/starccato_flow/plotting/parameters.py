@@ -232,8 +232,10 @@ def plot_pp_coverage(
     background: str = "white",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
-    figsize: Tuple[float, float] = (10, 8),
+    figsize: Tuple[float, float] = (12, 12),
     transparent: bool = False,
+    fontsize_title: float = 16,
+    fontsize_tick: float = 11
 ) -> plt.Figure:
     """Plot credible interval coverage (p-p plot) for multiple parameters.
     
@@ -257,7 +259,7 @@ def plot_pp_coverage(
     """
     set_plot_style(background, font_family, font_name)
     
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     
     # Credible interval levels to evaluate (0-100%)
     n_credible_levels = 100
@@ -313,17 +315,17 @@ def plot_pp_coverage(
     ax.plot([0, 1], [0, 1], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
     
     # Formatting
-    ax.set_xlabel('Probability within the Credible Interval', size=16)
-    ax.set_ylabel(r'Fraction of events within the Credible Interval', size=16)
+    ax.set_xlabel('Probability within the Credible Interval', size=fontsize_title)
+    ax.set_ylabel(r'Fraction of events within the Credible Interval', size=fontsize_title)
     
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect('equal')
     
-    ax.tick_params(labelsize=12)
+    ax.tick_params(labelsize=fontsize_tick)
     ax.grid(True, alpha=0.3)
     legend_alpha = 0 if transparent else 0.95
-    ax.legend(fontsize=12, loc='lower right', framealpha=legend_alpha)
+    ax.legend(fontsize=fontsize_tick, loc='lower right', framealpha=legend_alpha)
     
     plt.tight_layout()
     if fname:
@@ -565,7 +567,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         'truth_color': SIGNAL_COLOUR,
         'show_titles': True,
         'title_quantiles': [0.16, 0.5, 0.84],
-        'title_fmt': '.4f',
+        'title_fmt': '.2f',
         'title_kwargs': {'fontsize': fontsize_tick},
         'label_kwargs': {'fontsize': fontsize_title},
         'bins': 100,
@@ -583,6 +585,13 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         corner_kwargs['range'] = ranges
     
     figure = corner.corner(samples_cpu, **corner_kwargs)
+
+    # Manually set font size and family on the per-panel titles (mean ± sd text)
+    for ax in figure.get_axes():
+        if ax.get_title():  # only diagonal panels have titles
+            ax.title.set_fontsize(fontsize_tick)
+            ax.title.set_fontfamily(font_name)
+            ax.title.set_color(text_color)
 
     # Fill hist patches with appropriate color
     for ax in figure.get_axes():
@@ -778,7 +787,7 @@ def plot_eos_ye_posterior_distribution(
     
     # Create figure with GridSpec for marginal plot (swapped: marginal on left 1/4, main on right 3/4)
     from matplotlib.gridspec import GridSpec
-    fig, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
+    fig = plt.figure(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
     gs = GridSpec(1, 2, width_ratios=[1, 3], wspace=0.3)
     ax_marginal = fig.add_subplot(gs[0, 0])
     ax_main = fig.add_subplot(gs[0, 1])
@@ -793,8 +802,8 @@ def plot_eos_ye_posterior_distribution(
     
     # Plot KDE as line only (no fill)
     ax_marginal.plot(kde_values, ye_range, color='red', linewidth=2)
-    
-    # Mark true Ye value
+
+    # Mark true Ye value with a horizontal line
     ax_marginal.axhline(true_ye, color=SIGNAL_COLOUR, linewidth=2.5)
     
     # Marginal plot formatting
@@ -856,11 +865,17 @@ def plot_eos_ye_posterior_distribution(
     
     # Add true Ye line to main plot
     ax_main.axhline(true_ye, color=SIGNAL_COLOUR, linewidth=2.5)
+
+    # Add a dot marking the true value at the true EOS location
+    ax_main.scatter(true_eos_idx, true_ye, color=SIGNAL_COLOUR, s=80, zorder=5, edgecolor='none')
     
     # Main plot formatting
     ax_main.set_xlabel('Equation of State (EOS)', fontsize=16)
-    ax_main.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
     ax_main.tick_params(labelsize=7, axis='x')
+
+    # Remove y-axis label and ticks on the main plot (already shown on the marginal plot)
+    ax_main.set_ylabel('')
+    ax_main.tick_params(axis='y', left=False, labelleft=False)
     
     # Highlight true EOS on x-axis with SIGNAL_COLOUR
     ax_main_xticklabels = ax_main.get_xticklabels()
