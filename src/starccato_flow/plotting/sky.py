@@ -21,7 +21,8 @@ from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     SIGNAL_LIM_UPPER,
-    SIGNAL_LIM_LOWER
+    SIGNAL_LIM_LOWER,
+    CM_TO_INCHES
 )
 
 try:
@@ -296,6 +297,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     transparent: bool = False,
     mode: str = "print",
     n_background_supernovae: int = 20000,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -357,7 +359,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     
     config = mode_config[mode]
     figsize_mm = config["figsize_mm"]
-    figsize = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
+    figsize_inches = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
+    if figsize is not None:
+        figsize_inches = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    figsize = figsize_inches
     fontsize_title = config["fontsize_title"]
     fontsize_main = config["fontsize_main"]
     fontsize_label = config["fontsize_label"]

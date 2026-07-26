@@ -32,7 +32,8 @@ def plot_latent_morphs(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (25, 50)
 ) -> Tuple[plt.Figure, List[plt.Axes]]:
     """Plot a sequence of signals showing latent space morphing between two signals.
     
@@ -72,7 +73,8 @@ def plot_latent_morphs(
 
     # Setup figure
     num_plots = steps + 2
-    fig, axes = plt.subplots(num_plots, 1, figsize=(10, 2 * num_plots))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, axes = plt.subplots(num_plots, 1, figsize=figsize)
     axes = axes.flatten()
     
     # Get time axis
@@ -126,7 +128,8 @@ def plot_latent_morph_grid(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (38, 25)
 ) -> plt.Figure:
     """Plot a grid showing latent space morphing between two signals with 3D latent visualization.
     
@@ -177,7 +180,8 @@ def plot_latent_morph_grid(
         all_means = np.concatenate(all_means, axis=0)
 
     # Set up figure
-    fig = plt.figure(figsize=(15, 10))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     
     # ----- Row 1: Signals -----
     ax1 = fig.add_subplot(2, 3, 1)
@@ -268,7 +272,8 @@ def animate_latent_morphs(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (25, 43)
 ) -> animation.Animation:
     """Create an animation of latent space morphing between two signals.
     
@@ -315,7 +320,8 @@ def animate_latent_morphs(
         all_means = np.concatenate(all_means, axis=0)
 
     # Setup figure
-    fig = plt.figure(figsize=(10, 17))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
 
     # Create 3D plot for latent space
     ax_latent = fig.add_subplot(211, projection='3d')
@@ -388,7 +394,8 @@ def plot_latent_morph_up_and_down(
     background="white",
     font_family="sans-serif",
     font_name="Avenir",
-    fname="plots/latent_morph.svg"
+    fname="plots/latent_morph.svg",
+    figsize: Tuple[float, float] = (15, 23)
 ):
     """Plot a 2-panel figure showing signal interpolation and latent space path."""
     model.eval()
@@ -455,8 +462,8 @@ def plot_latent_morph_up_and_down(
     mean_mid = mean_mid.squeeze()
 
     # Set up figure
-    px = 1/plt.rcParams['figure.dpi']
-    fig = plt.figure(figsize=(600*px, 900*px))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(2, 1, 1)
     # plot all the signals on the plot
@@ -517,7 +524,8 @@ def create_latent_morph_gif(
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
     fname: str = "plots/latent_morph_animation.gif",
-    duration: int = 100
+    duration: int = 100,
+    figsize: Tuple[float, float] = (25, 43)
 ):
     """Create an animated GIF showing interpolation between two signals in latent space.
     
@@ -610,7 +618,8 @@ def create_latent_morph_gif(
         mean_interp_sq = mean_interp.squeeze()
         
         # Set up figure with same dimensions as animate_latent_morphs
-        fig = plt.figure(figsize=(10, 17))
+        figsize_px = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+        fig = plt.figure(figsize=figsize_px)
         
         # Signal plot - show only interpolation
         ax1 = fig.add_subplot(2, 1, 1)
@@ -684,7 +693,8 @@ def plot_latent_space_3d(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: Tuple[float, float] = (30, 25)
 ) -> plt.Figure:
     """Plot 3D visualization of the latent space.
     
@@ -704,6 +714,8 @@ def plot_latent_space_3d(
     model.eval()
     latent_vectors = []
 
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+
     with torch.no_grad():
         for y, y_noisy, d in dataloader:
             y = y.to(DEVICE)
@@ -718,7 +730,7 @@ def plot_latent_space_3d(
     latent_3d = latent_vectors[:, :3]  # First 3 dimensions
 
     # Plot in 3D
-    fig = plt.figure(figsize=(12, 10))
+    fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection='3d')
 
     scatter = ax.scatter(latent_3d[:, 0], latent_3d[:, 1], latent_3d[:, 2],
@@ -755,7 +767,7 @@ def plot_latent_space_2d_3d(
     fname: Optional[str] = None,
     background: str = "white",
     point_colors: Optional[np.ndarray] = None,
-    figsize=tuple[float, float],
+    figsize: Tuple[float, float] = (30, 10),
     fontsize_title=float,
     fontsize_tick=float,
     font_name="Times New Roman",

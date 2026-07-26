@@ -33,7 +33,8 @@ def plot_parameter_distribution(
     color: Optional[str] = None,
     alpha: float = 0.8,
     show_stats: bool = True,
-    param_range: Optional[Tuple[float, float]] = None
+    param_range: Optional[Tuple[float, float]] = None,
+    figsize: Tuple[float, float] = (15, 15)
 ) -> Union[plt.Figure, plt.Axes]:
     """Plot the distribution of a single parameter.
     
@@ -58,7 +59,8 @@ def plot_parameter_distribution(
     set_plot_style(background, font_family, font_name)
     
     if axes is None:
-        fig = plt.figure(figsize=(6, 6))
+        figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+        fig = plt.figure(figsize=figsize)
         axes = fig.gca()
         return_fig = True
     else:
@@ -117,7 +119,7 @@ def plot_parameter_distributions(
     font_name: str = "Avenir",
     color: Optional[str] = None,
     alpha: float = 0.8,
-    figsize: Tuple[float, float] = (12, 10)
+    figsize: Tuple[float, float] = (15, 12)
 ) -> plt.Figure:
     """Plot distributions for multiple parameters in a 2x2 grid.
     
@@ -139,7 +141,8 @@ def plot_parameter_distributions(
     """
     set_plot_style(background, font_family, font_name)
     
-    fig, axes = plt.subplots(2, 2, figsize=(15 / CM_TO_INCHES, 12 / CM_TO_INCHES))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
     axes = axes.flatten()
     
     if color is None:
@@ -346,6 +349,7 @@ def plot_epoch_sky_parameters(
     background: str = "black",
     color: str = "#3498db",
     bins: int = 40,
+    figsize: Tuple[float, float] = (30, 25)
 ) -> None:
     """Plot sky parameter distributions from a dataset in a 2x2 grid.
     
@@ -363,7 +367,8 @@ def plot_epoch_sky_parameters(
     
     # Create 2x2 grid
     n_rows, n_cols = 2, 2
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 10))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     fig.patch.set_facecolor(background)
     axes = axes.flatten()
     
@@ -506,7 +511,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
 
     # Special case for single parameter - corner library has issues with this
     if num_params == 1:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
         ax.hist(samples_cpu.flatten(), bins=100, color=GENERATED_SIGNAL_COLOUR, 
                 alpha=0.7, density=True, edgecolor='none')
         if true_param is not None and len(true_param) > 0:
@@ -658,7 +663,8 @@ def plot_eos_ye_distribution(
     font_family: str = "serif",
     font_name: str = "Times New Roman",
     alpha: float = 0.7,
-    point_size: float = 50
+    point_size: float = 50,
+    figsize: Tuple[float, float] = (15, 8)
 ) -> plt.Figure:
     """Create a violin plot of Ye values across different EOS types.
     
@@ -691,7 +697,8 @@ def plot_eos_ye_distribution(
     # Sort EOS by mean Ye for better visualization
     eos_order = df_plot.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
     
-    fig, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, ax = plt.subplots(figsize=figsize)
     
     # Overlay individual points (one per EOS, no distribution to show)
     sns.stripplot(
@@ -736,7 +743,7 @@ def plot_eos_ye_posterior_distribution(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    figsize: Tuple[float, float] = (18, 8),
+    figsize: Tuple[float, float] = (15, 8),
     alpha: float = 0.7,
     point_size: float = 50
 ) -> plt.Figure:
@@ -787,7 +794,8 @@ def plot_eos_ye_posterior_distribution(
     
     # Create figure with GridSpec for marginal plot (swapped: marginal on left 1/4, main on right 3/4)
     from matplotlib.gridspec import GridSpec
-    fig = plt.figure(figsize=(15 / CM_TO_INCHES, 8 / CM_TO_INCHES))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     gs = GridSpec(1, 2, width_ratios=[1, 3], wspace=0.3)
     ax_marginal = fig.add_subplot(gs[0, 0])
     ax_main = fig.add_subplot(gs[0, 1])
@@ -908,7 +916,7 @@ def plot_ye_posterior_by_eos(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    figsize: Tuple[float, float] = (16, 8),
+    figsize: Tuple[float, float] = (40, 20),
     alpha: float = 0.7,
     point_size: float = 50
 ) -> plt.Figure:
@@ -953,6 +961,7 @@ def plot_ye_posterior_by_eos(
     # Sort EOS by mean Ye for better visualization
     eos_order = df_dataset.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
     
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     fig, ax = plt.subplots(figsize=figsize)
     
     # Plot dataset as violin plot with coolwarm colors

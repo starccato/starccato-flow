@@ -62,7 +62,7 @@ def _is_dark_color(color_str: str) -> bool:
     # Default to light color (text should be black)
     return False
 
-def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False):
+def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (15, 10)):
     """Plot surface density of supernovae in the galactic plane."""
 
     plt.rcParams["font.family"] = font_family
@@ -90,7 +90,8 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
 
 
     # Create figure and axes
-    _, ax = plt.subplots(figsize=(15 / CM_TO_INCHES, 10 / CM_TO_INCHES), facecolor="white")
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    _, ax = plt.subplots(figsize=figsize, facecolor="white")
 
     ax.plot(r, surface_density, color="lightblue", linewidth=2)
 
@@ -138,7 +139,7 @@ def plot_galactic_distribution(
     show: bool = False,
     dpi: int = 300,
     legend_frameon: bool = False,
-    figsize: tuple = (16, 16),
+    figsize: tuple = (40.6, 40.6),
     rasterize_scatter: bool = True,
     line_weight: float = 1.4,
     fontsize_tick: int = 18,
@@ -324,6 +325,7 @@ def plot_galactic_distribution(
 
     figures: List[plt.Figure] = []
 
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     fig1 = plt.figure(figsize=figsize, facecolor=facecolor)
     ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
     ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
@@ -677,7 +679,7 @@ def plot_galactic_distribution_with_posterior(
     sun_marker_size: float = 100,
     show: bool = False,
     dpi: int = 300,
-    figsize: tuple = (12, 12),
+    figsize: tuple = (30.5, 30.5),
 ) -> plt.Figure:
     """Plot galactic supernova distribution in X-Y plane with posterior credible regions overlaid.
 
@@ -761,6 +763,7 @@ def plot_galactic_distribution_with_posterior(
     # post_z += sun_location[2]
 
     # Create figure with proper styling (matching plot_galactic_distribution)
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
     ax = fig.add_subplot(111, facecolor=facecolor)
 
@@ -948,7 +951,7 @@ def plot_galactic_distribution_with_posterior_zoom(
     true_distance: Optional[float] = None,
     sun_location: Optional[np.ndarray] = None,
     fname: Optional[str] = None,
-    figsize_mm: tuple = (125, 125),
+    figsize: tuple[float, float] = (12.5, 12.5),
     scatter_size: float = 0.00005,
     sun_marker_size: float = 400,
     background: str = "white",
@@ -973,7 +976,7 @@ def plot_galactic_distribution_with_posterior_zoom(
         true_distance: True distance (kpc)
         sun_location: Sun location in galactocentric frame (default [0.0, 8.178, 0.0208])
         fname: Output filename
-        figsize_mm: Figure size in millimeters (converted to inches)
+        figsize: Figure size in cm as (width, height)
         scatter_size: Size of background scatter points
         sun_marker_size: Size of sun marker
         background: Background color
@@ -986,9 +989,8 @@ def plot_galactic_distribution_with_posterior_zoom(
     Returns:
         Matplotlib figure
     """
-    # Convert mm to inches
-    mm_to_inch = 1 / 25.4
-    figsize = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
+    # Convert cm to inches
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     if sun_location is None:
         sun_location = np.array([0.0, 8.178, 0.0208])
     
@@ -1030,9 +1032,6 @@ def plot_galactic_distribution_with_posterior_zoom(
     # Create figure with proper styling (matching plot_galactic_distribution)
     fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
     ax = fig.add_subplot(111, facecolor=ax_facecolor)
-
-    # Plot background galactic distribution (only stars within zoom region) - rasterized for reasonable file size
-    ax.scatter(x_filtered, y_filtered, s=scatter_size, alpha=1, c="lightblue", zorder=1, rasterized=True)
     
     # Black hole at galactic center: two circles (accretion disk outer + event horizon interior)
     from matplotlib.patches import Circle
@@ -1234,7 +1233,8 @@ def plot_reconstruction_distribution(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: tuple[float, float] = (20, 15)
 ):
     """Plot distribution of multiple reconstructions of a single signal.
     
@@ -1260,7 +1260,8 @@ def plot_reconstruction_distribution(
     d = get_time_axis()
 
     # Create figure
-    fig = plt.figure(figsize=(8, 6))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     ax = fig.gca()
 
     # Plot percentiles
@@ -1565,7 +1566,8 @@ def plot_sky_localisation(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: tuple[float, float] = (30, 18)
 ) -> plt.Figure:
     """Plot sky location distribution from RA and Dec samples.
     
@@ -1593,7 +1595,8 @@ def plot_sky_localisation(
         grid_alpha = 0.5
     
     # Create figure with robust projection fallback.
-    fig = plt.figure(figsize=(12, 7))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     try:
         ax = plt.axes(projection='geo aitoff')
     except Exception:

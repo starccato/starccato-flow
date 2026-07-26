@@ -20,9 +20,9 @@ def plot_loss(
     background: str = "white",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
-    fontsize_title=float,
-    fontsize_tick=float,
-    figsize=tuple[float, float]
+    fontsize_title: float = 16,
+    fontsize_tick: float = 12,
+    figsize: tuple[float, float] = (25, 15)
 ):
     """Plot training and validation loss curves.
     
@@ -43,8 +43,9 @@ def plot_loss(
     """
     set_plot_style(background, font_family, font_name)
     
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     if axes is None:
-        fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
+        fig = plt.figure(figsize=figsize)
         axes = fig.gca()
     
     if train_label is None:
@@ -85,7 +86,8 @@ def plot_individual_loss(
     axes: Optional[plt.Axes] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: tuple[float, float] = (25, 15)
 ) -> Union[plt.Figure, plt.Axes]:
     """Plot individual components of the loss.
     
@@ -104,8 +106,9 @@ def plot_individual_loss(
     """
     set_plot_style(background, font_family, font_name)
     
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     if axes is None:
-        fig = plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=figsize)
         axes = fig.gca()
         return_fig = True
     else:
@@ -138,7 +141,8 @@ def plot_training_validation_loss(
     axes: Optional[plt.Axes] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: tuple[float, float] = (25, 15)
 ) -> plt.Axes:
     """Plot training and validation loss curves.
     
@@ -156,8 +160,9 @@ def plot_training_validation_loss(
     """
     set_plot_style(background, font_family, font_name)
     
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     if axes is None:
-        fig = plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=figsize)
         axes = fig.gca()
 
     axes.plot(losses, label="Training Loss", color='orange')
@@ -181,7 +186,8 @@ def plot_gradients(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "serif",
-    font_name: str = "Times New Roman"
+    font_name: str = "Times New Roman",
+    figsize: tuple[float, float] = (25, 46)
 ) -> tuple:
     """Plot encoder, decoder, and Q network gradient norms.
     
@@ -199,7 +205,8 @@ def plot_gradients(
     """
     set_plot_style(background, font_family, font_name)
 
-    fig, axes = plt.subplots(3, 1, figsize=(10, 18))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, axes = plt.subplots(3, 1, figsize=figsize)
     colors = ["deepskyblue", GENERATED_SIGNAL_COLOUR, "green"]
     
     for ax, grads, title, color in zip(

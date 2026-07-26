@@ -46,6 +46,12 @@ def set_plot_style(background: str = "white", font_family: str = "serif", font_n
         'font.size': DEFAULT_FONT_SIZE
     })
 
+    # plt.rcParams['mathtext.fontset'] = 'stix'
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
+    plt.rcParams['mathtext.it'] = f'{font_name}:italic'
+    plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
+
 
 def get_time_axis(length: int = 256) -> np.ndarray:
     """Generate consistent time axis values.

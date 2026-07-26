@@ -45,7 +45,7 @@ def plot_signal_grid(
     font_name: str = DEFAULT_FONT,
     param_values: Optional[np.ndarray] = None,
     param_label: Optional[str] = None,
-    figsize=tuple[float, float]
+    figsize: tuple[float, float] = (20, 30)
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot a grid of waveform signals.
     
@@ -105,7 +105,7 @@ def plot_signal_grid(
             ax.tick_params(labelbottom=False)
 
     fig.supxlabel('time (s)', fontsize=16)
-    fig.supylabel('h', fontsize=16)
+    fig.supylabel(r'$h_+$', fontsize=16)
 
     if fname:
         if fname.endswith('.svg'):
@@ -132,7 +132,8 @@ def plot_detector_signal_channels(
     fontsize_title: int = 18,
     line_weight: float = 1.4,
     left_margin: float = 0.05,
-    figsize: Tuple[float, float] = (6.5, 8.0)
+    figsize: Tuple[float, float] = (16.5, 20.3),
+    y_axis: str = 'h'
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
@@ -236,7 +237,7 @@ def plot_detector_signal_channels(
     
     # Set axis labels with proper size and color
     axes[-1].set_xlabel('time (s)', fontsize=fontsize_title, color=vline_color)
-    axes[1].set_ylabel('h', fontsize=fontsize_title, color=vline_color)
+    axes[1].set_ylabel(r'$' + y_axis + r'$', fontsize=fontsize_title, color=vline_color)
 
     # Add legend outside/on top if we have both signals
     # if channel_noisy is not None:
@@ -265,7 +266,8 @@ def plot_candidate_signal(
     generated: bool = False,
     background: str = "white",
     font_family: str = DEFAULT_FONT_FAMILY,
-    font_name: str = DEFAULT_FONT
+    font_name: str = DEFAULT_FONT,
+    figsize: tuple[float, float] = (15, 15)
 ) -> plt.Figure:
     """Plot clean and noisy signals overlaid with consistent styling.
     
@@ -289,7 +291,8 @@ def plot_candidate_signal(
     vline_color = "white" if background == "black" else "black"
     text_color = vline_color
 
-    fig = plt.figure(figsize=(6, 6))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     d = get_time_axis()
 
     if torch.is_tensor(signal):
@@ -309,7 +312,7 @@ def plot_candidate_signal(
     plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     plt.xlim(min(d), max(d))
     plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel('h', size=16, color=text_color)
+    plt.ylabel(r'$d$', size=16, color=text_color)
     plt.grid(False)
     
     plt.legend(loc='lower right', facecolor="none", edgecolor=text_color, 
@@ -335,7 +338,8 @@ def plot_reconstruction(
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = DEFAULT_FONT_FAMILY,
-    font_name: str = DEFAULT_FONT
+    font_name: str = DEFAULT_FONT,
+    figsize: tuple[float, float] = (30, 13)
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot original and reconstructed signals for comparison.
     
@@ -356,7 +360,8 @@ def plot_reconstruction(
     set_plot_style(background, font_family, font_name)
     vline_color = "white" if background == "black" else "black"
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig, ax = plt.subplots(figsize=figsize)
     d = get_time_axis()
     x_min, x_max = -0.01, 0.05
     tick_step = 0.01
@@ -421,7 +426,8 @@ def plot_single_signal(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    generated: bool = False
+    generated: bool = False,
+    figsize: tuple[float, float] = (20, 15)
 ) -> plt.Figure:
     """Plot a single waveform signal.
     
@@ -441,7 +447,8 @@ def plot_single_signal(
     vline_color = "white" if background == "black" else "black"
     signal_color = GENERATED_SIGNAL_COLOUR if generated else "deepskyblue"
 
-    fig = plt.figure(figsize=(8, 6))
+    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    fig = plt.figure(figsize=figsize)
     d = get_time_axis()
     y = signal.flatten() * max_value
 
@@ -449,7 +456,7 @@ def plot_single_signal(
     plt.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     plt.xlabel('time (s)', size=16)
-    plt.ylabel('h', size=16)
+    plt.ylabel(r'$h_+$', size=16)
     plt.grid(True)
 
     if fname:
@@ -472,7 +479,7 @@ def plot_signal_distribution(
     font_name: str = "Times New Roman",
     fname: Optional[str] = None,
     axes: Optional[plt.Axes] = None,
-    figsize: tuple = (12, 12)
+    figsize: tuple[float, float] = (12, 12)
 ) -> plt.Figure:
     """Plot distribution of signals with percentiles and median."""
     set_plot_style(background, font_family, font_name)
@@ -510,7 +517,7 @@ def plot_signal_distribution(
     ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
     ax.set_xlabel('time (s)', size=16, color=text_color, font=font_name)
-    ax.set_ylabel('h', size=16, color=text_color, font=font_name)
+    ax.set_ylabel(r'$h_+$', size=16, color=text_color, font=font_name)
     ax.tick_params(axis='x', labelsize=11, colors=text_color)
     ax.tick_params(axis='y', labelsize=11, colors=text_color)
 

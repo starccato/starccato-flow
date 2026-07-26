@@ -801,7 +801,8 @@ class hThetaMulti(Dataset):
             font_name=font_name,
             figsize=figsize,
             fontsize_tick=fontsize_tick,
-            fontsize_title=fontsize_title
+            fontsize_title=fontsize_title,
+            y_axis='h'
         )
         # h_delayed
         plot_detector_signal_channels(
@@ -813,7 +814,8 @@ class hThetaMulti(Dataset):
             font_name=font_name,
             figsize=figsize,
             fontsize_tick=fontsize_tick,
-            fontsize_title=fontsize_title
+            fontsize_title=fontsize_title,
+            y_axis='h'
         )
         # h_rescaled
         plot_detector_signal_channels(
@@ -825,7 +827,8 @@ class hThetaMulti(Dataset):
             font_name=font_name,
             figsize=figsize,
             fontsize_tick=fontsize_tick,
-            fontsize_title=fontsize_title
+            fontsize_title=fontsize_title,
+            y_axis='h'
         )
         # h_rescaled with noise
         h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
@@ -839,7 +842,8 @@ class hThetaMulti(Dataset):
             font_name=font_name,
             figsize=figsize,
             fontsize_tick=fontsize_tick,
-            fontsize_title=fontsize_title
+            fontsize_title=fontsize_title,
+            y_axis='d'
         )
 
         return
