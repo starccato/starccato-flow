@@ -590,7 +590,7 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-            figsize_mm=(165, 190),
+            # figsize_mm=(165, 190),
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
             line_weight=1.4,
@@ -1418,7 +1418,7 @@ class FlowMatchingTrainer:
             true_distance=true_d,
             sun_location=sun_location,
             fname=fname,
-            figsize_mm=(125, 125),
+            # figsize_mm=(125, 125),
             background=background,
             font_family=font_family,
             font_name=font_name,
@@ -1439,7 +1439,7 @@ class FlowMatchingTrainer:
             fname=fname
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
+    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 300, n_steps: int = 20, 
                                      fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
@@ -1589,7 +1589,9 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-            figsize=figsize
+            figsize=figsize,
+            fontsize_title=16,
+            fontsize_tick=9
         )
         
         print(f"✓ Saved p-p coverage plot to {fname}")

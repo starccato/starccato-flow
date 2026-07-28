@@ -15,9 +15,12 @@ from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
     PARAMETER_LABELS,
+    PARAMETER_COLOURS,
     PARAMETER_RANGES,
     CM_TO_INCHES
 )
+
+from pypalettes import load_cmap
 
 
 def plot_parameter_distribution(
@@ -261,6 +264,8 @@ def plot_pp_coverage(
         plt.Figure: The figure object
     """
     set_plot_style(background, font_family, font_name)
+
+    palette = load_cmap("Fun", cmap_type="continuous")
     
     fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     
@@ -268,11 +273,19 @@ def plot_pp_coverage(
     n_credible_levels = 100
     credible_levels = np.linspace(0.01, 0.99, n_credible_levels)
     
-    # Define colors for each parameter
-    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6']
-    
     # For each parameter, calculate empirical coverage
     num_params = len(param_names)
+
+    # Keep colors stable by parameter name; only unknown parameters use a fallback palette.
+    unknown_params = [name for name in param_names if name not in PARAMETER_COLOURS]
+    if len(unknown_params) == 1:
+        fallback_colors = [palette(0.5)]
+    elif len(unknown_params) > 1:
+        fallback_colors = [palette(x) for x in np.linspace(0.05, 0.95, len(unknown_params))]
+    else:
+        fallback_colors = []
+    fallback_color_map = dict(zip(unknown_params, fallback_colors))
+
     for param_idx in range(num_params):
         empirical_coverage = []
         
@@ -310,9 +323,13 @@ def plot_pp_coverage(
         
         # Plot line for this parameter
         param_label = PARAMETER_LABELS.get(param_names[param_idx], param_names[param_idx])
-        color = colors[param_idx % len(colors)]
+        param_name = param_names[param_idx]
+        if param_name in PARAMETER_COLOURS:
+            line_color = PARAMETER_COLOURS[param_name]
+        else:
+            line_color = fallback_color_map[param_name]
         ax.plot(credible_levels, np.array(empirical_coverage), 
-                color=color, linewidth=2.5, label=param_label, alpha=0.8)
+            color=line_color, linewidth=2.5, label=param_label, alpha=0.8)
     
     # Plot diagonal (perfect calibration)
     ax.plot([0, 1], [0, 1], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
@@ -517,7 +534,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         if true_param is not None and len(true_param) > 0:
             ax.axvline(true_param[0], color=SIGNAL_COLOUR, linewidth=2, label='True value')
         ax.set_xlabel(labels[0] if labels else 'Parameter', fontsize=fontsize_title, color=text_color)
-        ax.set_ylabel('Density', fontsize=fontsize_title, color=text_color)
+        ax.set_ylabel('Count', fontsize=fontsize_title, color=text_color)
         if ranges is not None and ranges[0] is not None:
             ax.set_xlim(ranges[0])
         ax.tick_params(labelsize=fontsize_tick, colors=text_color)
@@ -815,7 +832,7 @@ def plot_eos_ye_posterior_distribution(
     ax_marginal.axhline(true_ye, color=SIGNAL_COLOUR, linewidth=2.5)
     
     # Marginal plot formatting
-    ax_marginal.set_xlabel('Density', fontsize=16)
+    ax_marginal.set_xlabel('Count', fontsize=16)
     ax_marginal.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
     ax_marginal.tick_params(labelsize=7, axis='x')
     # ax_marginal.tick_params(labelsize=11, axis='y')    

@@ -13,6 +13,8 @@ from ..utils.defaults_physical import SUN_LOCATION
 
 from ..utils.defaults_general import SUPERNOVAE_CSV
 
+from ..plotting import plot_galactic_distribution
+
 class Supernovae:
     """Manages supernova locations in galactic and equatorial coordinates."""    
 
@@ -357,11 +359,8 @@ class Supernovae:
 
     def plot_galactic_distribution(
         self,
-        fname_3d: Optional[str] = None,
         fname_xy: Optional[str] = None,
-        fname_xz: Optional[str] = None,
         fname_xy_closeup: Optional[str] = None,
-        fname_yx_zx: Optional[str] = None,
         background: str = "black",
         transparent: Optional[bool] = None,
         light_year: bool = False,
@@ -372,16 +371,13 @@ class Supernovae:
         sun_marker_size: float = 100,
         show: bool = False,
         dpi: int = 300,
-        figsize: tuple = (16, 16),
+        figsize: tuple = (15, 15),
     ):
         """Plot galactic supernova locations in 3D and projected views.
 
         Args:
-            fname_3d: Output path for the 3D plot
             fname_xy: Output path for the X-Y projection plot
-            fname_xz: Output path for the X-Z projection plot
             fname_xy_closeup: Output path for the X-Y closeup projection plot
-            fname_yx_zx: Output path for the stacked Y-X and Z-X plot
             background: Plot theme, either "white" or "black"
             font_family: Font family to use
             font_name: Specific font name to use
@@ -397,17 +393,11 @@ class Supernovae:
         if self._galactic_coords is None:
             raise ValueError("No galactic coordinates available. Load or generate locations first.")
 
-        from ..plotting import plot_galactic_distribution
-
         return plot_galactic_distribution(
             galactic_coords=self._galactic_coords,
             sun_location=self.sun_location,
             highlight_indices=highlight_indices,
-            fname_3d=fname_3d,
             fname_xy=fname_xy,
-            fname_xz=fname_xz,
-            fname_xy_closeup=fname_xy_closeup,
-            fname_yx_zx=fname_yx_zx,
             background=background,
             transparent=transparent,
             light_year=light_year,
@@ -416,7 +406,8 @@ class Supernovae:
             scatter_size=scatter_size,
             sun_marker_size=sun_marker_size,
             show=show,
-            dpi=dpi
+            dpi=dpi,
+            figsize=figsize
         )
     
     def sample_supernovae_for_epoch(
@@ -667,7 +658,6 @@ class Supernovae:
                 )
                 
                 # Generate plot in memory
-                from ..plotting.analysis import plot_galactic_distribution
                 fig_list = plot_galactic_distribution(
                     galactic_coords=self._galactic_coords,
                     sun_location=self.sun_location,

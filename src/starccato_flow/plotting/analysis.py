@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import List, Optional
+import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
@@ -124,11 +125,7 @@ def plot_galactic_distribution(
     galactic_coords: np.ndarray,
     sun_location: Optional[np.ndarray] = None,
     highlight_indices: Optional[np.ndarray] = None,
-    fname_3d: Optional[str] = None,
     fname_xy: Optional[str] = None,
-    fname_xz: Optional[str] = None,
-    fname_xy_closeup: Optional[str] = "plots/galactic_supernovae_xy_closeup.png",
-    fname_yx_zx: Optional[str] = "plots/galactic_supernovae_yx_zx.png",
     background: str = "white",
     transparent: Optional[bool] = None,
     light_year: bool = False,
@@ -138,26 +135,25 @@ def plot_galactic_distribution(
     sun_marker_size: float = 100,
     show: bool = False,
     dpi: int = 300,
-    legend_frameon: bool = False,
-    figsize: tuple = (40.6, 40.6),
+    figsize: tuple = (15, 15),
     rasterize_scatter: bool = True,
-    line_weight: float = 1.4,
-    fontsize_tick: int = 18,
-    fontsize_text: int = 22,
+    line_weight: float = 1,
+    fontsize_tick: int = 11,
+    fontsize_title: int = 16,
     left_margin: float = 0.15,
 ) -> List[plt.Figure]:
-    """Plot galactic supernova locations in 3D, X-Y, and X-Z views.
+    """Plot galactic supernova locations in the X-Y plane.
 
     Args:
         galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
         sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
         highlight_indices (Optional[np.ndarray]): Optional indices of supernovae to
-            draw as highlighted yellow points.
-        fname_3d (Optional[str]): Output path for the 3D plot
+            draw as highlighted points.
+        fname_3d (Optional[str]): Deprecated. Unused.
         fname_xy (Optional[str]): Output path for the X-Y projection plot
-        fname_xz (Optional[str]): Output path for the X-Z projection plot
-        fname_xy_closeup (Optional[str]): Output path for the X-Y closeup projection plot
-        fname_yx_zx (Optional[str]): Output path for the stacked Y-X (top) and Z-X (bottom) plot
+        fname_xz (Optional[str]): Deprecated. Unused.
+        fname_xy_closeup (Optional[str]): Deprecated. Unused.
+        fname_yx_zx (Optional[str]): Deprecated. Unused.
         background (str): Plot theme, either "white" or "black"
         transparent (Optional[bool]): Override the saved figure transparency
         light_year (bool): If True, convert plot coordinates from kpc to light-years
@@ -171,7 +167,7 @@ def plot_galactic_distribution(
         figsize (tuple): Figure size in inches as (width, height). Default (16, 16) produces ~2400x2400 pixels at 150 dpi. For 2000x2000 pixels use ~(13.3, 13.3)
 
     Returns:
-        List[plt.Figure]: The created matplotlib figures in [3D, X-Y, X-Z] order
+        List[plt.Figure]: A single-item list containing the X-Y figure.
     """
     galactic_coords = np.asarray(galactic_coords)
     if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
@@ -196,30 +192,18 @@ def plot_galactic_distribution(
     galactic_coords = galactic_coords * coord_scale
     sun_location = sun_location * coord_scale
 
-    x, y, z = galactic_coords.T
-    # xy_radius = max(np.max(np.abs(x)), np.max(np.abs(y)), abs(sun_location[0]), abs(sun_location[1]))
-    # print(xy_radius)
+    x, y, _ = galactic_coords.T
     xy_radius = 33
-    xz_radius = max(np.max(np.abs(x)), np.max(np.abs(z)), abs(sun_location[0]), abs(sun_location[2]))
     xy_radius *= 1.02
-    xz_radius *= 1.02
     if highlight_coords is not None and highlight_coords.size > 0:
-        hx, hy, hz = highlight_coords.T
+        hx, hy, _ = highlight_coords.T
     else:
-        hx = hy = hz = None
+        hx = hy = None
     text_color = "white" if _is_dark_color(background) else "black"
     legend_facecolor = "black" if _is_dark_color(background) else "white"
-    grid_color = "gray"
     if transparent is None:
         transparent = _is_dark_color(background)
     facecolor = "none" if transparent else background
-
-    plt.rcParams["font.family"] = font_family
-    plt.rcParams["font.size"] = 18
-    if font_family == "sans-serif":
-        plt.rcParams["font.sans-serif"] = [font_name]
-    elif font_family == "serif":
-        plt.rcParams["font.serif"] = [font_name]
 
     def _prepare_output_path(path: Optional[str]) -> Optional[Path]:
         if path is None:
@@ -229,7 +213,7 @@ def plot_galactic_distribution(
         return output_path
 
     def _style_2d_axes(axes: plt.Axes) -> None:
-        axes.tick_params(colors=text_color, labelsize=fontsize_tick, direction="inout", length=12, width=line_weight)
+        axes.tick_params(colors=text_color, labelsize=fontsize_tick, direction="inout", length=fontsize_tick, width=line_weight)
         for spine in axes.spines.values():
             spine.set_color(text_color)
             spine.set_linewidth(line_weight)
@@ -280,7 +264,7 @@ def plot_galactic_distribution(
             if label == "Supernova":
                 adjusted_handles.append(
                     mlines.Line2D(
-                        [],
+                        [], 
                         [],
                         linestyle="None",
                         marker="o",
@@ -313,24 +297,16 @@ def plot_galactic_distribution(
             facecolor=legend_facecolor,
             edgecolor="none",
             labelcolor=text_color,
-            fontsize=20,
-            frameon=legend_frameon,
+            fontsize=fontsize_tick-2,
+            frameon=False,
         )
 
-    output_3d = _prepare_output_path(fname_3d)
     output_xy = _prepare_output_path(fname_xy)
-    output_xz = _prepare_output_path(fname_xz)
-    # output_xy_closeup = _prepare_output_path(fname_xy_closeup)
-    # output_yx_zx = _prepare_output_path(fname_yx_zx)
 
-    figures: List[plt.Figure] = []
-
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    fig1 = plt.figure(figsize=figsize, facecolor=facecolor)
-    ax1 = fig1.add_subplot(111, projection="3d", facecolor=facecolor)
-    ax1.scatter(x, y, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
+    fig2 = plt.figure(figsize=(figsize[0]/CM_TO_INCHES, figsize[1]/CM_TO_INCHES), facecolor=facecolor)
+    ax1 = fig2.add_subplot(111, facecolor=facecolor)
+    ax1.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
     ax1.scatter(
-        0.0,
         0.0,
         0.0,
         s=sun_marker_size,
@@ -340,109 +316,20 @@ def plot_galactic_distribution(
         marker="o",
         label="Galactic Center: Sgr A*",
     )
+    # ax1.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
     ax1.scatter(
         sun_location[0],
         sun_location[1],
-        sun_location[2],
         s=sun_marker_size,
         c="yellow",
         marker="*",
-        label="Sun",
-    )
-    if hx is not None:
-        ax1.scatter(
-            hx,
-            hy,
-            hz,
-            s=max(sun_marker_size * 0.1, 10),
-            c="yellow",
-            edgecolors="none",
-            marker="o",
-            label="Sampled Supernova",
-            zorder=10,
-        )
-    ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
-    ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
-    ax1.set_zlabel(_axis_label("Z"), color=text_color, fontsize=22)
-    ax1.tick_params(colors=text_color, labelsize=18)
-    ax1.set_aspect("equal")
-    ax1.set_zticks([])
-    ax1.xaxis.pane.set_facecolor("none")
-    ax1.xaxis.pane.set_alpha(0)
-    ax1.yaxis.pane.set_facecolor("none")
-    ax1.yaxis.pane.set_alpha(0)
-    ax1.zaxis.pane.set_facecolor("none")
-    ax1.zaxis.pane.set_alpha(0)
-    ax1.xaxis.pane.set_edgecolor(text_color)
-    ax1.xaxis.pane.set_linewidth(line_weight)
-    ax1.yaxis.pane.set_edgecolor(text_color)
-    ax1.yaxis.pane.set_linewidth(line_weight)
-    ax1.zaxis.pane.set_edgecolor(text_color)
-    ax1.zaxis.pane.set_linewidth(line_weight)
-    ax1.grid(color=grid_color, alpha=0.2)
-    ax1.zaxis._axinfo["grid"]["color"] = (0, 0, 0, 0)
-    ax1.set_xlim(-xy_radius, xy_radius)
-    ax1.set_ylim(-xy_radius, xy_radius)
-    z_max = max(abs(z.min()), abs(z.max()))
-    ax1.set_zlim(-z_max, z_max)
-    if light_year:
-        ax1.xaxis.set_major_locator(mticker.MultipleLocator(20_000))
-        ax1.yaxis.set_major_locator(mticker.MultipleLocator(20_000))
-        ax1.set_zlim(-20_000, 20_000)
-        ax1.zaxis.set_major_locator(mticker.MultipleLocator(10_000))
-        ax1.xaxis.set_major_formatter(
-            mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
-        )
-        ax1.yaxis.set_major_formatter(
-            mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
-        )
-        ax1.zaxis.set_major_formatter(
-            mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
-        )
-        _tighten_light_year_tick_lines(ax1)
-        for tick_label in ax1.get_zticklabels():
-            tick_label.set_linespacing(0.75)
-    else:
-        # Set nice round tick values for kpc
-        ax1.xaxis.set_major_locator(mticker.MultipleLocator(10))
-        ax1.yaxis.set_major_locator(mticker.MultipleLocator(10))
-        ax1.set_zlim(-10, 10)
-        ax1.zaxis.set_major_locator(mticker.MultipleLocator(5))
-        ax1.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
-        ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
-        ax1.zaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
-    _legend_with_supernova_marker(ax1)
-    if output_3d is not None:
-        fig1.savefig(output_3d, dpi=dpi, bbox_inches="tight", transparent=transparent)
-    figures.append(fig1)
-
-    fig2 = plt.figure(figsize=figsize, facecolor=facecolor)
-    ax2 = fig2.add_subplot(111, facecolor=facecolor)
-    ax2.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
-    ax2.scatter(
-        0.0,
-        0.0,
-        s=sun_marker_size,
-        c="black",
-        edgecolors="white",
-        linewidths=1.8,
-        marker="o",
-        label="Galactic Center: Sgr A*",
-    )
-    # ax2.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
-    ax2.scatter(
-        sun_location[0],
-        sun_location[1],
-        s=sun_marker_size,
-        c="yellow",
-        marker="*",
-        edgecolor="white" if background is "black" else "black",
+        edgecolor="white" if background == "black" else "black",
         linewidths=0.75,
         label="Sun",
         zorder=20,
     )
     if hx is not None:
-        ax2.scatter(
+        ax1.scatter(
             hx,
             hy,
             s=max(sun_marker_size * 0.1, 10),
@@ -452,214 +339,54 @@ def plot_galactic_distribution(
             label="Sampled Supernova",
             zorder=10,
         )
-    ax2.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
-    ax2.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
-    # ax2.set_title(
-    #     "Simulated Galactic Supernova Distribution in X-Y Plane",
-    #     color=text_color,
-    #     fontsize=24,
-    #     pad=20,
-    #     fontweight="bold",
-    # )
-    _style_2d_axes(ax2)
-    ax2.set_xlim(-xy_radius, xy_radius)
-    ax2.set_ylim(-xy_radius, xy_radius)
+    ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=fontsize_title)
+    ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=fontsize_title)
+
+    _style_2d_axes(ax1)
+    ax1.set_xlim(-xy_radius, xy_radius)
+    ax1.set_ylim(-xy_radius, xy_radius)
     if light_year:
         tick_values = np.arange(-80_000, 80_001, 20_000)
         axis_padding = 5_000
-        ax2.set_xlim(tick_values[0] - axis_padding, tick_values[-1] + axis_padding)
-        ax2.set_ylim(tick_values[0] - axis_padding, tick_values[-1] + axis_padding)
-        ax2.set_xticks(tick_values)
-        ax2.set_yticks(tick_values)
-        _tighten_light_year_tick_lines(ax2)
+        ax1.set_xlim(tick_values[0] - axis_padding, tick_values[-1] + axis_padding)
+        ax1.set_ylim(tick_values[0] - axis_padding, tick_values[-1] + axis_padding)
+        ax1.set_xticks(tick_values)
+        ax1.set_yticks(tick_values)
+        _tighten_light_year_tick_lines(ax1)
     else:
         # Set kpc limits to match light-year equivalent (-85000 to 85000 ly = -26.07 to 26.07 kpc)
         kpc_limit = 26.07
         kpc_padding = 2.07
         tick_values = np.arange(-25, 26, 5)
-        ax2.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
-        ax2.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
-        ax2.set_xticks(tick_values)
-        ax2.set_yticks(tick_values)
-    _apply_xy_axis_line_window(ax2)
-    _legend_with_supernova_marker(ax2)
-    fig2.subplots_adjust(left=left_margin, right=1 - left_margin, top=1 - left_margin, bottom=left_margin)
+        ax1.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+        ax1.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+        ax1.set_xticks(tick_values)
+        ax1.set_yticks(tick_values)
+    _apply_xy_axis_line_window(ax1)
+    _legend_with_supernova_marker(ax1)
+    plt.tight_layout()
     if output_xy is not None:
-        fig2.savefig(output_xy, dpi=dpi, bbox_inches="tight", transparent=transparent)
-    figures.append(fig2)
-
-    fig3 = plt.figure(figsize=figsize, facecolor=facecolor)
-    ax3 = fig3.add_subplot(111, facecolor=facecolor)
-    ax3.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=rasterize_scatter)
-    ax3.scatter(
-        0.0,
-        0.0,
-        s=sun_marker_size,
-        c="black",
-        edgecolors="white",
-        linewidths=1.8,
-        marker="o",
-        label="Galactic Center: Sgr A*",
-    )
-    ax3.scatter(sun_location[0], sun_location[2], s=sun_marker_size, c="yellow", marker="*", label="Sun")
-    if hx is not None:
-        ax3.scatter(
-            hx,
-            hz,
-            s=max(sun_marker_size * 0.1, 18),
-            c="darkblue",
-            edgecolors="none",
-            marker="o",
-            label="Sampled Supernova",
-            zorder=10,
-        )
-    ax3.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
-    ax3.set_ylabel(_axis_label("Z"), color=text_color, fontsize=22)
-    _style_2d_axes(ax3)
-    ax3.set_xlim(-xz_radius, xz_radius)
-    ax3.set_ylim(-xz_radius, xz_radius)
-    if light_year:
-        ax3.set_ylim(-20_000, 20_000)
-        ax3.yaxis.set_major_locator(mticker.MultipleLocator(10_000))
-        ax3.yaxis.set_major_formatter(
-            mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
-        )
-    else:
-        # Set nice round tick values for kpc on Z axis
-        ax3.set_ylim(-10, 10)
-        ax3.yaxis.set_major_locator(mticker.MultipleLocator(5))
-        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
-    _legend_with_supernova_marker(ax3)
-    fig3.subplots_adjust(left=left_margin, right=1 - left_margin, top=1 - left_margin, bottom=left_margin)
-    if output_xz is not None:
-        fig3.savefig(output_xz, dpi=dpi, bbox_inches="tight", transparent=transparent)
-    figures.append(fig3)
-
-    # fig4 = plt.figure(figsize=(16, 16), facecolor=facecolor)
-    # ax4 = fig4.add_subplot(111, facecolor=facecolor)
-    # ax4.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
-    # ax4.scatter(
-    #     0.0,
-    #     0.0,
-    #     s=sun_marker_size,
-    #     c="black",
-    #     edgecolors="white",
-    #     linewidths=1.8,
-    #     marker="o",
-    #     label="Galactic Center: Sgr A*",
-    # )
-    # ax4.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
-    # ax4.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
-    # ax4.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
-    # _style_2d_axes(ax4)
-
-    # # Closeup bounds requested by user in light-years.
-    # closeup_x_ly = (-60_000.0, 60_000.0)
-    # closeup_y_ly = (-10_000.0, 80_000.0)
-    # closeup_padding_ly = 5_000.0
-    # if light_year:
-    #     ax4.set_xlim(closeup_x_ly[0] - closeup_padding_ly, closeup_x_ly[1] + closeup_padding_ly)
-    #     ax4.set_ylim(closeup_y_ly[0] - closeup_padding_ly, closeup_y_ly[1] + closeup_padding_ly)
-    #     _tighten_light_year_tick_lines(ax4)
-    # else:
-    #     ly_to_kpc = 1.0 / 3261.56
-    #     padding_kpc = closeup_padding_ly * ly_to_kpc
-    #     ax4.set_xlim(closeup_x_ly[0] * ly_to_kpc - padding_kpc, closeup_x_ly[1] * ly_to_kpc + padding_kpc)
-    #     ax4.set_ylim(closeup_y_ly[0] * ly_to_kpc - padding_kpc, closeup_y_ly[1] * ly_to_kpc + padding_kpc)
-    # _apply_xy_axis_line_window(ax4)
-
-    # _legend_with_supernova_marker(ax4)
-    # if output_xy_closeup is not None:
-    #     fig4.savefig(output_xy_closeup, dpi=dpi, bbox_inches="tight", transparent=transparent)
-    # figures.append(fig4)
-
-    # fig5, (ax5_top, ax5_bottom) = plt.subplots(
-    #     2,
-    #     1,
-    #     sharex=True,
-    #     figsize=(16, 20),
-    #     facecolor=facecolor,
-    # )
-    # ax5_top.set_facecolor(facecolor)
-    # ax5_bottom.set_facecolor(facecolor)
-
-    # ax5_top.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
-    # ax5_top.scatter(
-    #     0.0,
-    #     0.0,
-    #     s=sun_marker_size,
-    #     c="black",
-    #     edgecolors="white",
-    #     linewidths=1.8,
-    #     marker="o",
-    #     label="Galactic Center: Sgr A*",
-    # )
-    # ax5_top.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun")
-    # ax5_top.set_ylabel(_axis_label("Y"), color=text_color, fontsize=22)
-    # _style_2d_axes(ax5_top)
-
-    # if light_year:
-    #     tick_values = np.arange(-80_000, 80_001, 20_000)
-    #     axis_padding = 5_000
-    #     x_min = tick_values[0] - axis_padding
-    #     x_max = tick_values[-1] + axis_padding
-    #     y_min = tick_values[0] - axis_padding
-    #     y_max = tick_values[-1] + axis_padding
-    #     ax5_top.set_xlim(x_min, x_max)
-    #     ax5_top.set_ylim(y_min, y_max)
-    #     ax5_top.set_xticks(tick_values)
-    #     ax5_top.set_yticks(tick_values)
-    #     _tighten_light_year_tick_lines(ax5_top)
-    # else:
-    #     ax5_top.set_xlim(-xy_radius, xy_radius)
-    #     ax5_top.set_ylim(-xy_radius, xy_radius)
-    # _apply_xy_axis_line_window(ax5_top)
-    # _legend_with_supernova_marker(ax5_top)
-
-    # ax5_bottom.scatter(x, z, s=scatter_size, alpha=1, c="lightblue", label="Supernova")
-    # ax5_bottom.scatter(
-    #     0.0,
-    #     0.0,
-    #     s=sun_marker_size,
-    #     c="black",
-    #     edgecolors="white",
-    #     linewidths=1.8,
-    #     marker="o",
-    #     label="Galactic Center: Sgr A*",
-    # )
-    # ax5_bottom.scatter(sun_location[0], sun_location[2], s=sun_marker_size, c="yellow", marker="*", label="Sun")
-    # ax5_bottom.set_xlabel(_axis_label("X"), color=text_color, fontsize=22)
-    # ax5_bottom.set_ylabel(_axis_label("Z"), color=text_color, fontsize=22)
-    # _style_2d_axes(ax5_bottom)
-
-    # if light_year:
-    #     ax5_bottom.set_xlim(x_min, x_max)
-    #     ax5_bottom.set_xticks(tick_values)
-    #     ax5_bottom.set_ylim(-10_000, 10_000)
-    #     ax5_bottom.yaxis.set_major_locator(mticker.MultipleLocator(5_000))
-    #     ax5_bottom.yaxis.set_major_formatter(
-    #         mticker.FuncFormatter(lambda val, pos: _light_year_tick_label(val))
-    #     )
-    #     _tighten_light_year_tick_lines(ax5_bottom)
-    # else:
-    #     ly_to_kpc = 1.0 / 3261.56
-    #     ax5_bottom.set_xlim(-xy_radius, xy_radius)
-    #     ax5_bottom.set_ylim(-10_000 * ly_to_kpc, 10_000 * ly_to_kpc)
-
-    # fig5.subplots_adjust(hspace=0.08, top=0.92)
-    # if output_yx_zx is not None:
-    #     fig5.savefig(output_yx_zx, dpi=dpi, bbox_inches="tight", transparent=transparent)
-    # figures.append(fig5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*'mode' parameter is deprecated and will be removed in Pillow 13.*",
+                category=DeprecationWarning,
+                module=r"matplotlib\.backends\.backend_pdf",
+            )
+            fig2.savefig(
+                output_xy,
+                dpi=dpi,
+                bbox_inches="tight",
+                transparent=transparent,
+                facecolor=facecolor,
+            )
 
     if show:
         plt.show()
     else:
-        for figure in figures:
-            plt.close(figure)
+        plt.close(fig2)
 
-    plt.rcdefaults()
-    return figures
-
+    return [fig2]
 
 def plot_galactic_distribution_with_posterior(
     galactic_coords: np.ndarray,
