@@ -11,7 +11,6 @@ from matplotlib import rcParams
 import numpy as np
 import pandas as pd
 import torch
-import corner
 from PIL import Image
 import io
 
@@ -26,7 +25,7 @@ from ..utils.defaults_plotting import (
     CM_TO_INCHES
 )
 from . import set_plot_style, get_time_axis
-from .signals import plot_signal_grid, plot_candidate_signal
+from .signals import plot_signal_grid
 
 def _is_dark_color(color_str: str) -> bool:
     """Determine if a color (hex or named) is dark or light.
@@ -88,8 +87,6 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
         * np.exp(-beta * r)
     )
 
-
-
     # Create figure and axes
     figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     _, ax = plt.subplots(figsize=figsize, facecolor="white")
@@ -104,7 +101,7 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
     # Turn off grid
     ax.grid(False)
 
-    ax.set_xlabel("r (kpc)", size=16)
+    ax.set_xlabel(r"$r\ (\mathrm{kpc})$", size=16)
     ax.set_ylabel("Surface Density", size=16)
 
     ax.set_xlim(0, 30)
@@ -400,284 +397,284 @@ def plot_galactic_distribution(
 
     return [fig2]
 
-def plot_galactic_distribution_with_posterior(
-    galactic_coords: np.ndarray,
-    posterior_ra: np.ndarray,
-    posterior_dec: np.ndarray,
-    posterior_distance: np.ndarray,
-    true_ra: Optional[float] = None,
-    true_dec: Optional[float] = None,
-    true_distance: Optional[float] = None,
-    sun_location: Optional[np.ndarray] = None,
-    fname: Optional[str] = None,
-    background: str = "white",
-    transparent: Optional[bool] = None,
-    font_family: str = "sans-serif",
-    font_name: str = "Avenir",
-    scatter_size: float = 0.001,
-    sun_marker_size: float = 100,
-    show: bool = False,
-    dpi: int = 300,
-    figsize: tuple = (30.5, 30.5),
-) -> plt.Figure:
-    """Plot galactic supernova distribution in X-Y plane with posterior credible regions overlaid.
+# def plot_galactic_distribution_with_posterior(
+#     galactic_coords: np.ndarray,
+#     posterior_ra: np.ndarray,
+#     posterior_dec: np.ndarray,
+#     posterior_distance: np.ndarray,
+#     true_ra: Optional[float] = None,
+#     true_dec: Optional[float] = None,
+#     true_distance: Optional[float] = None,
+#     sun_location: Optional[np.ndarray] = None,
+#     fname: Optional[str] = None,
+#     background: str = "white",
+#     transparent: Optional[bool] = None,
+#     font_family: str = "sans-serif",
+#     font_name: str = "Avenir",
+#     scatter_size: float = 0.001,
+#     sun_marker_size: float = 100,
+#     show: bool = False,
+#     dpi: int = 300,
+#     figsize: tuple = (30.5, 30.5),
+# ) -> plt.Figure:
+#     """Plot galactic supernova distribution in X-Y plane with posterior credible regions overlaid.
 
-    Args:
-        galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
-        posterior_ra (np.ndarray): Posterior RA samples in radians
-        posterior_dec (np.ndarray): Posterior Dec samples in radians
-        posterior_distance (np.ndarray): Posterior distance samples in kpc
-        true_ra (Optional[float]): True RA in radians
-        true_dec (Optional[float]): True Dec in radians
-        true_distance (Optional[float]): True distance in kpc
-        sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
-        fname (Optional[str]): Output path for the plot
-        background (str): Plot theme, either "white" or "black"
-        transparent (Optional[bool]): Override the saved figure transparency
-        font_family (str): Font family to use
-        font_name (str): Specific font name to use
-        scatter_size (float): Marker size for background supernova points
-        sun_marker_size (float): Marker size for the sun marker
-        show (bool): Whether to keep figure open and display it
-        dpi (int): DPI used when saving output files
-        figsize (tuple): Figure size in inches as (width, height)
+#     Args:
+#         galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
+#         posterior_ra (np.ndarray): Posterior RA samples in radians
+#         posterior_dec (np.ndarray): Posterior Dec samples in radians
+#         posterior_distance (np.ndarray): Posterior distance samples in kpc
+#         true_ra (Optional[float]): True RA in radians
+#         true_dec (Optional[float]): True Dec in radians
+#         true_distance (Optional[float]): True distance in kpc
+#         sun_location (Optional[np.ndarray]): Sun position in galactic coordinates
+#         fname (Optional[str]): Output path for the plot
+#         background (str): Plot theme, either "white" or "black"
+#         transparent (Optional[bool]): Override the saved figure transparency
+#         font_family (str): Font family to use
+#         font_name (str): Specific font name to use
+#         scatter_size (float): Marker size for background supernova points
+#         sun_marker_size (float): Marker size for the sun marker
+#         show (bool): Whether to keep figure open and display it
+#         dpi (int): DPI used when saving output files
+#         figsize (tuple): Figure size in inches as (width, height)
 
-    Returns:
-        plt.Figure: The created matplotlib figure
-    """
-    from ..supernovae.supernovae import Supernovae
-    from matplotlib.patches import Patch
-    from matplotlib.colors import to_rgba
+#     Returns:
+#         plt.Figure: The created matplotlib figure
+#     """
+#     from ..supernovae.supernovae import Supernovae
+#     from matplotlib.patches import Patch
+#     from matplotlib.colors import to_rgba
 
-    galactic_coords = np.asarray(galactic_coords)
-    if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
-        raise ValueError("galactic_coords must have shape (N, 3).")
+#     galactic_coords = np.asarray(galactic_coords)
+#     if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
+#         raise ValueError("galactic_coords must have shape (N, 3).")
 
-    if sun_location is None:
-        sun_location = np.array([0.0, 8.178, 0.0208], dtype=float)
-    else:
-        sun_location = np.asarray(sun_location, dtype=float)
-        if sun_location.shape != (3,):
-            raise ValueError("sun_location must have shape (3,).")
+#     if sun_location is None:
+#         sun_location = np.array([0.0, 8.178, 0.0208], dtype=float)
+#     else:
+    #     sun_location = np.asarray(sun_location, dtype=float)
+    #     if sun_location.shape != (3,):
+    #         raise ValueError("sun_location must have shape (3,).")
 
-    # Set up plot styling
-    rcParams["font.family"] = font_family
-    rcParams["font.size"] = 22
-    if font_family == "sans-serif":
-        rcParams["font.sans-serif"] = [font_name]
-    elif font_family == "serif":
-        rcParams["font.serif"] = [font_name]
+    # # Set up plot styling
+    # rcParams["font.family"] = font_family
+    # rcParams["font.size"] = 22
+    # if font_family == "sans-serif":
+    #     rcParams["font.sans-serif"] = [font_name]
+    # elif font_family == "serif":
+    #     rcParams["font.serif"] = [font_name]
 
-    facecolor = background
-    text_color = "white" if _is_dark_color(background) else "black"
-    grid_color = "gray" if _is_dark_color(background) else "lightgray"
-    transparent = transparent if transparent is not None else _is_dark_color(background)
-    plot_facecolor = "none" if transparent else background
+    # facecolor = background
+    # text_color = "white" if _is_dark_color(background) else "black"
+    # grid_color = "gray" if _is_dark_color(background) else "lightgray"
+    # transparent = transparent if transparent is not None else _is_dark_color(background)
+    # plot_facecolor = "none" if transparent else background
 
-    # Extract X-Y coordinates from background galactic distribution
-    x = galactic_coords[:, 0]
-    y = galactic_coords[:, 1]
+    # # Extract X-Y coordinates from background galactic distribution
+    # x = galactic_coords[:, 0]
+    # y = galactic_coords[:, 1]
 
-    # Transform posterior samples to galactic coordinates
-    sn_temp = Supernovae(complex=True)  # Temporary instance for coordinate transformation
-    post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
-        posterior_ra, posterior_dec, posterior_distance
-    )
+    # # Transform posterior samples to galactic coordinates
+    # sn_temp = Supernovae(complex=True)  # Temporary instance for coordinate transformation
+    # post_x, post_y, post_z = sn_temp.equatorial_to_galactic(
+    #     posterior_ra, posterior_dec, posterior_distance
+    # )
 
-    # Apply the same 90° rotation used for highlighted points in the galactic plots
-    # so the posterior overlay uses the same visual orientation as the background.
-    # rotation_angle = np.deg2rad(-90.0)
-    # rotation_matrix = np.array([
-    #     [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
-    #     [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
-    #     [0.0, 0.0, 1.0],
-    # ])
-    # posterior_coords = np.column_stack([post_x, post_y, post_z])
-    # posterior_coords = posterior_coords @ rotation_matrix.T
-    # post_x, post_y, post_z = posterior_coords.T
+    # # Apply the same 90° rotation used for highlighted points in the galactic plots
+    # # so the posterior overlay uses the same visual orientation as the background.
+    # # rotation_angle = np.deg2rad(-90.0)
+    # # rotation_matrix = np.array([
+    # #     [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+    # #     [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+    # #     [0.0, 0.0, 1.0],
+    # # ])
+    # # posterior_coords = np.column_stack([post_x, post_y, post_z])
+    # # posterior_coords = posterior_coords @ rotation_matrix.T
+    # # post_x, post_y, post_z = posterior_coords.T
     
-    # # Convert posterior from heliocentric to galactocentric frame by adding sun location
-    # post_x += sun_location[0]
-    # post_y += sun_location[1]
-    # post_z += sun_location[2]
+    # # # Convert posterior from heliocentric to galactocentric frame by adding sun location
+    # # post_x += sun_location[0]
+    # # post_y += sun_location[1]
+    # # post_z += sun_location[2]
 
-    # Create figure with proper styling (matching plot_galactic_distribution)
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
-    ax = fig.add_subplot(111, facecolor=facecolor)
+    # # Create figure with proper styling (matching plot_galactic_distribution)
+    # figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    # fig = plt.figure(figsize=figsize, facecolor=plot_facecolor)
+    # ax = fig.add_subplot(111, facecolor=facecolor)
 
-    # Plot background galactic distribution (exactly as in plot_galactic_distribution) - rasterized to reduce file size
-    ax.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=True)
-    ax.scatter(
-        0.0,
-        0.0,
-        s=sun_marker_size,
-        c="black",
-        edgecolors="white",
-        linewidths=1.8,
-        marker="o",
-        label="Galactic Center: Sgr A*",
-    )
-    ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun", zorder=20)
+    # # Plot background galactic distribution (exactly as in plot_galactic_distribution) - rasterized to reduce file size
+    # ax.scatter(x, y, s=scatter_size, alpha=1, c="lightblue", label="Supernova", rasterized=True)
+    # ax.scatter(
+    #     0.0,
+    #     0.0,
+    #     s=sun_marker_size,
+    #     c="black",
+    #     edgecolors="white",
+    #     linewidths=1.8,
+    #     marker="o",
+    #     label="Galactic Center: Sgr A*",
+    # )
+    # ax.scatter(sun_location[0], sun_location[1], s=sun_marker_size, c="yellow", marker="*", label="Sun", zorder=20)
 
-    # Add density contours from posterior samples in X-Y plane (ONLY DIFFERENCE: add this layer)
-    from scipy.stats import gaussian_kde
-    from matplotlib.colors import to_rgba
+    # # Add density contours from posterior samples in X-Y plane (ONLY DIFFERENCE: add this layer)
+    # from scipy.stats import gaussian_kde
+    # from matplotlib.colors import to_rgba
     
-    # Build KDE from posterior X-Y coordinates for credible contours
-    xy_data = np.vstack([post_x, post_y])
-    try:
-        kde = gaussian_kde(xy_data)
+    # # Build KDE from posterior X-Y coordinates for credible contours
+    # xy_data = np.vstack([post_x, post_y])
+    # try:
+    #     kde = gaussian_kde(xy_data)
         
-        # Create grid for evaluating KDE
-        x_min, x_max = post_x.min(), post_x.max()
-        y_min, y_max = post_y.min(), post_y.max()
-        x_grid = np.linspace(x_min - 2, x_max + 2, 200)
-        y_grid = np.linspace(y_min - 2, y_max + 2, 200)
-        X_mesh, Y_mesh = np.meshgrid(x_grid, y_grid)
-        positions = np.vstack([X_mesh.ravel(), Y_mesh.ravel()])
-        density = kde(positions).reshape(X_mesh.shape)
+    #     # Create grid for evaluating KDE
+    #     x_min, x_max = post_x.min(), post_x.max()
+    #     y_min, y_max = post_y.min(), post_y.max()
+    #     x_grid = np.linspace(x_min - 2, x_max + 2, 200)
+    #     y_grid = np.linspace(y_min - 2, y_max + 2, 200)
+    #     X_mesh, Y_mesh = np.meshgrid(x_grid, y_grid)
+    #     positions = np.vstack([X_mesh.ravel(), Y_mesh.ravel()])
+    #     density = kde(positions).reshape(X_mesh.shape)
         
-        # Compute credible levels from density CDF
-        sorted_density = np.sort(density.ravel())[::-1]
-        cdf = np.cumsum(sorted_density) / np.sum(sorted_density)
+    #     # Compute credible levels from density CDF
+    #     sorted_density = np.sort(density.ravel())[::-1]
+    #     cdf = np.cumsum(sorted_density) / np.sum(sorted_density)
         
-        posterior_probs = [0.68, 0.90, 0.95]
-        contour_levels = []
-        for p in posterior_probs:
-            idx = np.searchsorted(cdf, p, side="left")
-            idx = min(idx, len(sorted_density) - 1)
-            contour_levels.append(float(sorted_density[idx]))
+    #     posterior_probs = [0.68, 0.90, 0.95]
+    #     contour_levels = []
+    #     for p in posterior_probs:
+    #         idx = np.searchsorted(cdf, p, side="left")
+    #         idx = min(idx, len(sorted_density) - 1)
+    #         contour_levels.append(float(sorted_density[idx]))
         
-        contour_levels = np.sort(contour_levels)
-        contour_top = max(contour_levels[-1] * 1.001, np.max(sorted_density) * 1.001)
-        contour_fill_levels = np.concatenate([contour_levels, [contour_top]])
+    #     contour_levels = np.sort(contour_levels)
+    #     contour_top = max(contour_levels[-1] * 1.001, np.max(sorted_density) * 1.001)
+    #     contour_fill_levels = np.concatenate([contour_levels, [contour_top]])
         
-        # Red fill colors matching celestial map (red with varying alphas: 0.40, 0.62, 0.88)
-        red_fill_colors = [
-            to_rgba("red", alpha=0.40),    # 68%
-            to_rgba("red", alpha=0.62),    # 90%
-            to_rgba("red", alpha=0.88),    # 95%
-        ]
+    #     # Red fill colors matching celestial map (red with varying alphas: 0.40, 0.62, 0.88)
+    #     red_fill_colors = [
+    #         to_rgba("red", alpha=0.40),    # 68%
+    #         to_rgba("red", alpha=0.62),    # 90%
+    #         to_rgba("red", alpha=0.88),    # 95%
+    #     ]
         
-        # Plot filled contours as overlay (no label - not in legend)
-        ax.contourf(
-            X_mesh,
-            Y_mesh,
-            density,
-            levels=contour_fill_levels,
-            colors=red_fill_colors,
-            antialiased=True,
-        )
-    except Exception as e:
-        # If KDE fails, just skip contours
-        pass
+    #     # Plot filled contours as overlay (no label - not in legend)
+    #     ax.contourf(
+    #         X_mesh,
+    #         Y_mesh,
+    #         density,
+    #         levels=contour_fill_levels,
+    #         colors=red_fill_colors,
+    #         antialiased=True,
+    #     )
+    # except Exception as e:
+    #     # If KDE fails, just skip contours
+    #     pass
 
-    # Plot true location if provided (matching celestial map marker: deepskyblue "x")
-    if true_ra is not None and true_dec is not None and true_distance is not None:
-        true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
-            np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
-        )
+    # # Plot true location if provided (matching celestial map marker: deepskyblue "x")
+    # if true_ra is not None and true_dec is not None and true_distance is not None:
+    #     true_x, true_y, true_z = sn_temp.equatorial_to_galactic(
+    #         np.array([true_ra]), np.array([true_dec]), np.array([true_distance])
+    #     )
 
-        # rotation_matrix = np.array([
-        # [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
-        # [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
-        # [0.0, 0.0, 1.0],
-        # ])
-        # true_coords = np.column_stack([true_x, true_y, true_z])
-        # true_coords = true_coords @ rotation_matrix.T
-        # true_x, true_y, true_z = true_coords.T
-        # Plot with same marker style as celestial map (deepskyblue "x")
-        ax.scatter(
-            true_x,
-            true_y,
-            s=72,
-            marker="x",
-            c="deepskyblue",
-            linewidths=1.8,
-            zorder=10,
-            label="True Location",
-        )
+    #     # rotation_matrix = np.array([
+    #     # [np.cos(rotation_angle), -np.sin(rotation_angle), 0.0],
+    #     # [np.sin(rotation_angle), np.cos(rotation_angle), 0.0],
+    #     # [0.0, 0.0, 1.0],
+    #     # ])
+    #     # true_coords = np.column_stack([true_x, true_y, true_z])
+    #     # true_coords = true_coords @ rotation_matrix.T
+    #     # true_x, true_y, true_z = true_coords.T
+    #     # Plot with same marker style as celestial map (deepskyblue "x")
+    #     ax.scatter(
+    #         true_x,
+    #         true_y,
+    #         s=72,
+    #         marker="x",
+    #         c="deepskyblue",
+    #         linewidths=1.8,
+    #         zorder=10,
+    #         label="True Location",
+    #     )
 
-    # Style axes exactly like plot_galactic_distribution
-    ax.set_xlabel("X (kpc)", color=text_color, fontsize=22)
-    ax.set_ylabel("Y (kpc)", color=text_color, fontsize=22)
+    # # Style axes exactly like plot_galactic_distribution
+    # ax.set_xlabel("X (kpc)", color=text_color, fontsize=22)
+    # ax.set_ylabel("Y (kpc)", color=text_color, fontsize=22)
     
-    # _style_2d_axes equivalent
-    ax.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
-    for spine in ax.spines.values():
-        spine.set_color(text_color)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.xaxis.set_major_locator(mticker.MultipleLocator(5))
-    ax.yaxis.set_major_locator(mticker.MultipleLocator(5))
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+    # # _style_2d_axes equivalent
+    # ax.tick_params(colors=text_color, labelsize=18, direction="inout", length=12, width=1.4)
+    # for spine in ax.spines.values():
+    #     spine.set_color(text_color)
+    # ax.spines["top"].set_visible(False)
+    # ax.spines["right"].set_visible(False)
+    # ax.xaxis.set_major_locator(mticker.MultipleLocator(5))
+    # ax.yaxis.set_major_locator(mticker.MultipleLocator(5))
+    # ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
+    # ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{val:.0f}"))
     
-    # Set limits and ticks
-    xy_radius = 33
-    kpc_limit = 26.07
-    kpc_padding = 2.07
-    tick_values = np.arange(-25, 26, 5)
-    ax.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
-    ax.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
-    ax.set_xticks(tick_values)
-    ax.set_yticks(tick_values)
+    # # Set limits and ticks
+    # xy_radius = 33
+    # kpc_limit = 26.07
+    # kpc_padding = 2.07
+    # tick_values = np.arange(-25, 26, 5)
+    # ax.set_xlim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+    # ax.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
+    # ax.set_xticks(tick_values)
+    # ax.set_yticks(tick_values)
     
-    # _apply_xy_axis_line_window equivalent
-    ax.spines["bottom"].set_bounds(-25, 25)
-    ax.spines["left"].set_bounds(-25, 25)
+    # # _apply_xy_axis_line_window equivalent
+    # ax.spines["bottom"].set_bounds(-25, 25)
+    # ax.spines["left"].set_bounds(-25, 25)
     
-    ax.set_aspect("equal")
-    ax.grid(color=grid_color, alpha=0.2)
+    # ax.set_aspect("equal")
+    # ax.grid(color=grid_color, alpha=0.2)
     
-    # Add legend (matching plot_galactic_distribution style)
-    legend_facecolor = "black" if _is_dark_color(background) else "white"
-    handles, labels = ax.get_legend_handles_labels()
-    adjusted_handles = []
-    for handle, label in zip(handles, labels):
-        if label == "Supernova":
-            adjusted_handles.append(
-                mlines.Line2D(
-                    [],
-                    [],
-                    linestyle="None",
-                    marker="o",
-                    markersize=9,
-                    markerfacecolor="lightblue",
-                    markeredgecolor="none",
-                )
-            )
-        else:
-            adjusted_handles.append(handle)
+    # # Add legend (matching plot_galactic_distribution style)
+    # legend_facecolor = "black" if _is_dark_color(background) else "white"
+    # handles, labels = ax.get_legend_handles_labels()
+    # adjusted_handles = []
+    # for handle, label in zip(handles, labels):
+    #     if label == "Supernova":
+    #         adjusted_handles.append(
+    #             mlines.Line2D(
+    #                 [],
+    #                 [],
+    #                 linestyle="None",
+    #                 marker="o",
+    #                 markersize=9,
+    #                 markerfacecolor="lightblue",
+    #                 markeredgecolor="none",
+    #             )
+    #         )
+    #     else:
+    #         adjusted_handles.append(handle)
 
-    legend = ax.legend(
-        adjusted_handles,
-        labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
-        ncol=max(1, len(labels)),
-        facecolor=legend_facecolor,
-        edgecolor="none",
-        framealpha=0.0,
-        fontsize=14,
-        labelcolor=text_color,
-    )
+    # legend = ax.legend(
+    #     adjusted_handles,
+    #     labels,
+    #     loc="lower center",
+    #     bbox_to_anchor=(0.5, 1.02),
+    #     ncol=max(1, len(labels)),
+    #     facecolor=legend_facecolor,
+    #     edgecolor="none",
+    #     framealpha=0.0,
+    #     fontsize=14,
+    #     labelcolor=text_color,
+    # )
 
-    if fname is not None:
-        # Determine format from filename extension
-        fmt = fname.split('.')[-1].lower() if '.' in fname else 'png'
-        # Use lower DPI for vector formats (SVG is vector-based, doesn't need 300 DPI)
-        save_dpi = 100 if fmt == 'svg' else dpi
-        fig.savefig(fname, dpi=save_dpi, bbox_inches="tight", transparent=transparent)
+    # if fname is not None:
+    #     # Determine format from filename extension
+    #     fmt = fname.split('.')[-1].lower() if '.' in fname else 'png'
+    #     # Use lower DPI for vector formats (SVG is vector-based, doesn't need 300 DPI)
+    #     save_dpi = 100 if fmt == 'svg' else dpi
+    #     fig.savefig(fname, dpi=save_dpi, bbox_inches="tight", transparent=transparent)
 
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+    # if show:
+    #     plt.show()
+    # else:
+    #     plt.close(fig)
 
-    plt.rcdefaults()
-    return fig
+    # plt.rcdefaults()
+    # return fig
 
 
 def plot_galactic_distribution_with_posterior_zoom(
@@ -1166,124 +1163,6 @@ def create_signal_grid_gif(
         
         if (frame_idx + 1) % 5 == 0:
             print(f"  Generated {frame_idx + 1}/{num_frames} frames")
-    
-    # Save as GIF
-    print(f"Saving GIF to {fname}...")
-    frames[0].save(
-        fname,
-        save_all=True,
-        append_images=frames[1:],
-        duration=duration,
-        loop=0
-    )
-    print(f"GIF created successfully with {num_frames} frames!")
-
-
-def create_snr_variation_gif(
-    dataset,
-    signal_index: int = 0,
-    snr_start: int = 200,
-    snr_end: int = 10,
-    num_frames: int = 20,
-    fname: str = "plots/snr_variation.gif",
-    background: str = "white",
-    font_family: str = "sans-serif",
-    font_name: str = "Avenir",
-    duration: int = 500
-) -> None:
-    """Create an animated GIF showing how a signal changes with varying SNR.
-    
-    Args:
-        dataset: Dataset object (e.g., CCSNData) with calculate_snr and aLIGO_noise methods
-        signal_index (int): Index of the signal to use from the dataset
-        snr_start (int): Starting SNR value (higher, less noise)
-        snr_end (int): Ending SNR value (lower, more noise)
-        num_frames (int): Number of frames in the animation
-        fname (str): Filename to save the GIF
-        background (str): Background color theme
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-        duration (int): Duration of each frame in milliseconds
-    """
-    print(f"Creating SNR variation GIF from SNR={snr_start} to SNR={snr_end}...")
-    
-    # Get the clean signal
-    clean_signal = dataset.signals[:, signal_index].reshape(1, -1)
-    
-    # Calculate SNR range
-    snr_values = np.linspace(snr_start, snr_end, num_frames)
-    
-    frames = []
-    
-    # Import required utilities
-    from ..utils.defaults_general import SAMPLING_FREQ, Y_LENGTH
-    
-    is_even = (Y_LENGTH % 2 == 0)
-    half_N = Y_LENGTH // 2 if is_even else (Y_LENGTH - 1) // 2
-    delta_f = 1 / (Y_LENGTH * SAMPLING_FREQ)
-    fourier_freq = np.arange(half_N + 1) * delta_f
-    
-    Sn = dataset.AdvLIGOPsd(fourier_freq)
-    
-    # Turn off interactive plotting to avoid showing intermediate plots
-    plt.ioff()
-    
-    for frame_idx, target_snr in enumerate(snr_values):
-        # Scale signal properly
-        s = clean_signal / 3.086e+22
-        s_array = np.asarray(s).flatten()
-        rho = dataset.calculate_snr(s_array, Sn)
-        
-        # Generate noise
-        n = dataset.aLIGO_noise(seed_offset=frame_idx)
-        
-        # Add noise with target SNR
-        d_noisy = s + n * (rho / target_snr) * 100
-        
-        # Scale back
-        s_scaled = s * 3.086e+22
-        d_noisy_scaled = d_noisy * 3.086e+22
-        
-        # Normalize
-        s_normalized = s_scaled / dataset.max_strain
-        d_noisy_normalized = d_noisy_scaled / dataset.max_strain
-        
-        # Use plot_candidate_signal to create the frame
-        fig = plot_candidate_signal(
-            signal=s_normalized/TEN_KPC,
-            noisy_signal=d_noisy_normalized/TEN_KPC,
-            max_value=dataset.max_strain,
-            fname=None,
-            generated=False,
-            background=background,
-            font_family=font_family,
-            font_name=font_name
-        )
-        
-        # Add SNR text annotation to the figure
-        ax = fig.gca()
-        text_color = "white" if _is_dark_color(background) else "black"
-        ax.text(0.98, 0.98, f'SNR = {target_snr:.1f}',
-                transform=ax.transAxes,
-                fontsize=16, color=text_color,
-                verticalalignment='top',
-                horizontalalignment='right')
-        
-        # Save frame to buffer
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight',
-                   facecolor=fig.get_facecolor())
-        buf.seek(0)
-        frames.append(Image.open(buf).copy())
-        buf.close()
-        
-        plt.close(fig)
-        
-        if (frame_idx + 1) % 5 == 0:
-            print(f"  Generated {frame_idx + 1}/{num_frames} frames")
-    
-    # Re-enable interactive plotting
-    plt.ion()
     
     # Save as GIF
     print(f"Saving GIF to {fname}...")

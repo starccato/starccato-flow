@@ -14,7 +14,7 @@ from ..supernovae.supernovae import Supernovae
 from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
-from ..plotting.signals import plot_detector_signal_channels, plot_candidate_signal
+from ..plotting.signals import plot_detector_signal_channels
 from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
 from ..plotting.losses import plot_loss
 
@@ -484,8 +484,8 @@ class FlowMatchingTrainer:
         transparent: bool = False, 
         fontsize_tick: int = 11, 
         fontsize_title: int = 16, 
-        figsize_detector_signals: tuple[float, float] = (15,8),
-        figsize_corner: tuple[float, float] = (15,15)
+        figsize_detector_signals: tuple[float, float] = (14.5,8),
+        figsize_corner: tuple[float, float] = (14.5,14.5),
     ) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
@@ -593,7 +593,6 @@ class FlowMatchingTrainer:
             # figsize_mm=(165, 190),
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            line_weight=1.4,
             figsize=figsize_detector_signals
         )
         # Generate posterior samples once and reuse for both plots
@@ -635,15 +634,6 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=True
-        )
-        self.plot_galactic_distribution_with_posterior(
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic.png") if fname_posterior_galactic is None else fname_posterior_galactic,
-            posterior_samples_denorm=posterior_samples_denorm,
-            true_param_denorm=true_param_denorm,
-            font_family=font_family,
-            font_name=font_name,
-            transparent=transparent,
-            background=background
         )
         # Plot zoomed version (10 kpc around sun) - transparent
         self.plot_galactic_distribution_with_posterior_zoom(
@@ -1287,75 +1277,6 @@ class FlowMatchingTrainer:
             svgz_size = os.path.getsize(svgz_fname) / 1024  # KB
             print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svgz_size/svg_size:.0f}%)")
 
-
-    def plot_galactic_distribution_with_posterior(
-        self,
-        fname: str = "plots/galactic_distribution_posterior.png",
-        posterior_samples_denorm=None,
-        true_param_denorm=None,
-        font_family: str = "Serif",
-        font_name: str = "Times New Roman",
-        transparent: bool = False,
-        background: str = "white"
-    ):
-        """Plot galactic distribution (X-Y plane) with posterior credible regions overlaid.
-        
-        This combines the background galactic supernova distribution with posterior density
-        contours computed from RA/Dec/distance samples transformed to galactic Cartesian coordinates.
-        
-        Args:
-            fname: Output filename for the plot
-            posterior_samples_denorm: Posterior samples in denormalized parameter space
-            true_param_denorm: True parameters in denormalized space
-            font_family: Font family for plots
-            font_name: Font name for plots
-            transparent: Whether to save with transparent background
-            background: Background color for plots
-        """
-        from ..plotting.analysis import plot_galactic_distribution_with_posterior
-        
-        # Extract RA, Dec, and distance indices
-        ra_idx = self._get_extracted_index("ra")
-        dec_idx = self._get_extracted_index("dec")
-        d_idx = self._get_extracted_index("d")
-        
-        if ra_idx >= 0 and dec_idx >= 0 and d_idx >= 0:
-            # Extract RA, Dec, distance from the denormalized extracted parameters
-            ra_samples = posterior_samples_denorm[:, ra_idx]
-            dec_samples = posterior_samples_denorm[:, dec_idx]
-            d_samples = posterior_samples_denorm[:, d_idx]
-            true_ra = true_param_denorm[ra_idx]
-            true_dec = true_param_denorm[dec_idx]
-            true_d = true_param_denorm[d_idx]
-        else:
-            # Fallback: assume they are at the end
-            ra_samples = posterior_samples_denorm[:, -4]
-            dec_samples = posterior_samples_denorm[:, -3]
-            d_samples = posterior_samples_denorm[:, -2]
-            true_ra = true_param_denorm[-4]
-            true_dec = true_param_denorm[-3]
-            true_d = true_param_denorm[-2]
-        
-        # Get galactic distribution coordinates
-        galactic_coords = self.supernovae.galactic_coords
-        sun_location = self.supernovae.sun_location
-        
-        plot_galactic_distribution_with_posterior(
-            galactic_coords=galactic_coords,
-            posterior_ra=ra_samples,
-            posterior_dec=dec_samples,
-            posterior_distance=d_samples,
-            true_ra=true_ra,
-            true_dec=true_dec,
-            true_distance=true_d,
-            sun_location=sun_location,
-            fname=fname,
-            background=background,
-            font_family=font_family,
-            font_name=font_name,
-            transparent=transparent,
-        )
-
     def plot_galactic_distribution_with_posterior_zoom(
         self,
         fname: str = "plots/galactic_distribution_posterior_zoom.png",
@@ -1423,20 +1344,6 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-        )
-
-    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
-        """Plot a candidate signal with noise."""
-        self.val_loader.dataset.update_snr(snr)
-        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
-        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
-        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
-        plot_candidate_signal(
-            signal=signal_denorm,
-            noisy_signal=noisy_signal_denorm,
-            max_value=self.val_loader.dataset.shared_max_strain,
-            background=background,
-            fname=fname
         )
 
     def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 300, n_steps: int = 20, 

@@ -30,15 +30,15 @@ PARAMETER_LABELS = {
 # regardless of how many parameters are included in a specific call.
 PARAMETER_COLOURS = {
     # Intrinsic (CCSN) parameters
-    'beta1_IC_b': '#1b9e77',
-    'omega_0(rad|s)': '#66a61e',
-    'A(km)': '#7570b3',
-    'Ye_c_b': '#e6ab02',
+    'beta1_IC_b': '#1F77B4',
+    'omega_0(rad|s)': '#FF7F0E',
+    'A(km)': '#2CA02C',
+    'Ye_c_b': '#D62728',
     # Sky localization (extrinsic) parameters
-    'ra': '#1f78b4',
-    'dec': '#33a02c',
-    'd': '#6a3d9a',
-    'psi': '#b2a03c',
+    'ra': '#E377C2',
+    'dec': '#7F7F7F',
+    'd': '#BCBD22',
+    'psi': '#17BECF',
 }
 
 # Default parameter ranges for plotting (in physical units after denormalization)

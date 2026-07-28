@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
 from ..src.starccato_flow.plotting import plot_corner
-from ..src.starccato_flow.plotting.signals import plot_candidate_signal
 
 from ..src.starccato_flow.utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC
 from ..src.starccato_flow.nn.flow import Flow
@@ -241,20 +240,6 @@ class FlowMatchingTrainer:
         # Call plotting function with samples and dataset for automatic label extraction
         plot_corner(samples_cpu=samples_cpu, true_params=true_params, fname=fname, 
                    dataset=self.val_loader.dataset)
-
-    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
-        """Plot a candidate signal with noise."""
-        self.val_loader.dataset.update_snr(snr)
-        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
-        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
-        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
-        plot_candidate_signal(
-            signal=signal_denorm,
-            noisy_signal=noisy_signal_denorm,
-            max_value=self.val_loader.dataset.max_strain,
-            background=background,
-            fname=fname
-        )
 
     # def plot_reconstruction_distribution(self, index=100, num_samples=1000, background="white", font_family="sans-serif", font_name="Avenir", fname=None):
     #     signal, noisy_signal, params = self.val_loader.dataset[index]

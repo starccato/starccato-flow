@@ -68,7 +68,6 @@ def get_time_axis(length: int = 256) -> np.ndarray:
 # Import plotting functions from submodules
 from .signals import (
     plot_signal_grid,
-    plot_candidate_signal,
     plot_reconstruction,
     plot_single_signal,
     plot_signal_distribution
@@ -76,8 +75,6 @@ from .signals import (
 
 from .losses import (
     plot_loss,
-    plot_individual_loss,
-    plot_training_validation_loss,
     plot_gradients
 )
 
@@ -115,14 +112,11 @@ __all__ = [
     'get_time_axis',
     # Signal plotting
     'plot_signal_grid',
-    'plot_candidate_signal',
     'plot_reconstruction',
     'plot_single_signal',
     'plot_signal_distribution',
     # Loss plotting
     'plot_loss',
-    'plot_individual_loss',
-    'plot_training_validation_loss',
     'plot_gradients',
     # Parameter plotting
     'plot_parameter_distribution',

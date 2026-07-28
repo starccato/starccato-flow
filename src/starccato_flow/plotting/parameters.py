@@ -22,7 +22,6 @@ from ..utils.defaults_plotting import (
 
 from pypalettes import load_cmap
 
-
 def plot_parameter_distribution(
     values: Union[list, np.ndarray],
     param_name: str,
@@ -356,7 +355,6 @@ def plot_pp_coverage(
     
     plt.rcdefaults()
     return fig
-
 
 
 def plot_epoch_sky_parameters(
@@ -915,138 +913,6 @@ def plot_eos_ye_posterior_distribution(
     
     # Sync y-axis limits between marginal and main
     ax_marginal.set_ylim(ax_main.get_ylim())
-    
-    plt.tight_layout()
-    if fname:
-        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=(background == "black"))
-    
-    plt.rcdefaults()
-    return fig
-
-
-def plot_ye_posterior_by_eos(
-    dataset_ye_values: np.ndarray,
-    dataset_eos_values: np.ndarray,
-    ye_posterior_samples: np.ndarray,
-    true_eos: str,
-    fname: Optional[str] = None,
-    background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman",
-    figsize: Tuple[float, float] = (40, 20),
-    alpha: float = 0.7,
-    point_size: float = 50
-) -> plt.Figure:
-    """Plot marginalized posterior distribution of Ye overlaid on dataset distribution.
-    
-    Creates a violin plot of Ye across all EOS types from the dataset, then overlays
-    the posterior samples for the true EOS in red.
-    
-    Args:
-        dataset_ye_values (np.ndarray): Ye values from the full dataset
-        dataset_eos_values (np.ndarray): EOS values from the full dataset (categorical)
-        ye_posterior_samples (np.ndarray): Posterior samples for Ye from flow matching inference
-        true_eos (str): True EOS type for the signal being analyzed
-        fname (Optional[str]): Filename to save plot
-        background (str): Background color ("white" or "black")
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-        figsize (Tuple[float, float]): Figure size in inches
-        jitter_strength (float): Amount of horizontal jitter for posterior points
-        alpha (float): Transparency of violin fill
-        point_size (float): Size of posterior sample points
-    
-    Returns:
-        plt.Figure: The figure object
-    """
-    set_plot_style(background, font_family, font_name)
-    
-    # Prepare dataset for plotting (background)
-    df_dataset = pd.DataFrame({
-        'EOS': dataset_eos_values.astype(str),
-        'Ye': dataset_ye_values,
-        'Source': 'Dataset'
-    })
-    
-    # Prepare posterior samples (overlay on true EOS)
-    df_posterior = pd.DataFrame({
-        'EOS': [str(true_eos)] * len(ye_posterior_samples),
-        'Ye': ye_posterior_samples,
-        'Source': 'Posterior'
-    })
-    
-    # Sort EOS by mean Ye for better visualization
-    eos_order = df_dataset.groupby('EOS')['Ye'].mean().sort_values().index.tolist()
-    
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    # Plot dataset as violin plot with coolwarm colors
-    sns.violinplot(
-        data=df_dataset,
-        x='EOS',
-        y='Ye',
-        order=eos_order,
-        palette='coolwarm',
-        ax=ax,
-        inner=None,
-        alpha=alpha,
-        legend=False
-    )
-    
-    # Overlay dataset points with jitter
-    sns.stripplot(
-        data=df_dataset,
-        x='EOS',
-        y='Ye',
-        order=eos_order,
-        ax=ax,
-        size=point_size / 20,
-        color='black',
-        alpha=0.2,
-        jitter=True
-    )
-    
-    # Highlight true EOS with background box
-    true_eos_idx = eos_order.index(str(true_eos))
-    ax.axvspan(true_eos_idx - 0.45, true_eos_idx + 0.45, 
-               alpha=0.15, color='red', zorder=0)
-    
-    # Overlay posterior samples in red on the true EOS
-    sns.stripplot(
-        data=df_posterior,
-        x='EOS',
-        y='Ye',
-        order=eos_order,
-        ax=ax,
-        size=point_size / 10,
-        color='red',
-        alpha=0.6,
-        jitter=True,
-        label='Posterior Samples'
-    )
-    
-    # Formatting
-    ax.set_xlabel('Equation of State (EOS)', fontsize=16)
-    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
-    ax.tick_params(labelsize=12, axis='x')
-    
-    # Rotate x-axis labels for readability
-    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-    
-    # Grid
-    ax.grid(True, alpha=0.3, linestyle='--', axis='y')
-    ax.set_axisbelow(True)
-    
-    # Add legend for posterior samples
-    ax.legend(loc='upper right', fontsize=12)
-    
-    # Add annotation showing true EOS
-    ax.text(0.02, 0.98, f'True EOS: {true_eos}',
-            transform=ax.transAxes,
-            fontsize=14,
-            verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='red', alpha=0.2))
     
     plt.tight_layout()
     if fname:

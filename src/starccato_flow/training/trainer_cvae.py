@@ -16,7 +16,7 @@ from ..utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH
 
 from . import create_train_val_split         
 from ..plotting import plot_loss
-from ..plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution, plot_signal_grid
+from ..plotting.signals import plot_reconstruction, plot_signal_distribution, plot_signal_grid
 from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down
 from ..utils.defaults_plotting import PARAMETER_LABELS
 
@@ -404,20 +404,6 @@ class ConditionalVAETrainer:
             figsize=figsize
         )
         print(f"✓ Saved signal grid to: {fname}")
-
-    def plot_candidate_signal(self, snr=100, background="white", index=0, fname="plots/candidate_signal.png"):
-        """Plot a candidate signal with noise."""
-        self.val_loader.dataset.update_snr(snr)
-        signal, noisy_signal, _ = self.val_loader.dataset.__getitem__(index)
-        signal_denorm = self.val_loader.dataset.denormalise_signals(signal) / TEN_KPC
-        noisy_signal_denorm = self.val_loader.dataset.denormalise_signals(noisy_signal) / TEN_KPC
-        plot_candidate_signal(
-            signal=signal_denorm,
-            noisy_signal=noisy_signal_denorm,
-            max_value=self.val_loader.dataset.shared_max_strain,
-            background=background,
-            fname=fname
-        )
         
     def _plot_reconstruction(self, signal_idx=0):
         """Plot reconstruction of a single signal from the validation set."""
@@ -507,7 +493,7 @@ class ConditionalVAETrainer:
             fname=fname_total,  
             font_family=font_family,
             font_name=font_name,
-            figsize=(15,8),
+            figsize=(14.5,8),
             fontsize_title=16,
             fontsize_tick=11
         )
@@ -523,7 +509,7 @@ class ConditionalVAETrainer:
             fname=fname_recon,
             font_family=font_family,
             font_name=font_name,
-            figsize=(15,8),
+            figsize=(14.5,8),
             fontsize_title=16,
             fontsize_tick=11
         )
@@ -539,7 +525,7 @@ class ConditionalVAETrainer:
             fname=fname_kld,
             font_family=font_family,
             font_name=font_name,
-            figsize=(15,8),
+            figsize=(14.5,8),
             fontsize_title=16,
             fontsize_tick=11
         )
@@ -671,7 +657,7 @@ class ConditionalVAETrainer:
 
         individual_fig_size = (figsize[0] / 2, figsize[1])
 
-        # One figure, two axes side-by-side, each 7.5cm x 7.5cm (if figsize=(15,7.5))
+        # One figure, two axes side-by-side, each 7.25cm x 7.5cm (if figsize=(14.5,7.5))
         fig, (ax_gen, ax_real) = plt.subplots(
             1, 2,
             figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)

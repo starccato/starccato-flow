@@ -1,13 +1,11 @@
 """Loss plotting functions for training visualization."""
 
-from typing import List, Optional, Union
+from typing import List, Optional
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 from . import set_plot_style
 from ..utils.defaults_plotting import (
-    SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, LATENT_SPACE_COLOUR, CM_TO_INCHES
+    SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, CM_TO_INCHES
 )
-
 
 def plot_loss(
     train_losses: List[float],
@@ -22,7 +20,7 @@ def plot_loss(
     font_name: str = "Avenir",
     fontsize_title: float = 16,
     fontsize_tick: float = 12,
-    figsize: tuple[float, float] = (25, 15)
+    figsize: tuple[float, float] = (14.5,8)
 ):
     """Plot training and validation loss curves.
     
@@ -76,108 +74,6 @@ def plot_loss(
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
     plt.rcdefaults()
-
-
-def plot_individual_loss(
-    total_losses: List[float],
-    reconstruction_losses: List[float],
-    kld_losses: List[float],
-    fname: Optional[str] = None,
-    axes: Optional[plt.Axes] = None,
-    background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman",
-    figsize: tuple[float, float] = (25, 15)
-) -> Union[plt.Figure, plt.Axes]:
-    """Plot individual components of the loss.
-    
-    Args:
-        total_losses (List[float]): Total loss values
-        reconstruction_losses (List[float]): Reconstruction loss values
-        kld_losses (List[float]): KLD loss values
-        fname (Optional[str]): Filename to save plot
-        axes (Optional[plt.Axes]): Existing axes to plot on
-        background (str): Background color theme
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-    
-    Returns:
-        Union[plt.Figure, plt.Axes]: The figure or axes object depending on input
-    """
-    set_plot_style(background, font_family, font_name)
-    
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    if axes is None:
-        fig = plt.figure(figsize=figsize)
-        axes = fig.gca()
-        return_fig = True
-    else:
-        return_fig = False
-
-    axes.plot(total_losses, label="Total Loss", color=SIGNAL_COLOUR, 
-              linewidth=3, alpha=1.0, linestyle='-')
-    axes.plot(reconstruction_losses, label="Reconstruction Loss", color=GENERATED_SIGNAL_COLOUR, 
-              linewidth=3, alpha=1.0, linestyle='--', dashes=(5, 3))
-    axes.plot(kld_losses, label="KLD Loss", color=LATENT_SPACE_COLOUR, 
-              linewidth=3.5, alpha=1.0, linestyle=':')
-    
-    axes.set_xlabel("Epoch", size=16)
-    axes.set_ylabel("Loss", size=16)
-    axes.legend(fontsize=12, framealpha=0.0)
-    axes.grid(False)
-    
-    plt.tight_layout()
-    if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
-    
-    plt.rcdefaults()
-    return fig if return_fig else axes
-
-
-def plot_training_validation_loss(
-    losses: List[float],
-    validation_losses: List[float],
-    fname: Optional[str] = None,
-    axes: Optional[plt.Axes] = None,
-    background: str = "white",
-    font_family: str = "serif",
-    font_name: str = "Times New Roman",
-    figsize: tuple[float, float] = (25, 15)
-) -> plt.Axes:
-    """Plot training and validation loss curves.
-    
-    Args:
-        losses (List[float]): Training loss values
-        validation_losses (List[float]): Validation loss values
-        fname (Optional[str]): Filename to save plot
-        axes (Optional[plt.Axes]): Existing axes to plot on
-        background (str): Background color theme
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-    
-    Returns:
-        plt.Axes: The plot axes
-    """
-    set_plot_style(background, font_family, font_name)
-    
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    if axes is None:
-        fig = plt.figure(figsize=figsize)
-        axes = fig.gca()
-
-    axes.plot(losses, label="Training Loss", color='orange')
-    axes.plot(validation_losses, label="Validation Loss", color='grey')
-    axes.set_xlabel("Epoch", size=16)
-    axes.set_ylabel("Loss", size=16)
-    axes.legend(fontsize=12)
-    
-    plt.tight_layout()
-    if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
-    
-    plt.rcdefaults()
-    return axes
-
 
 def plot_gradients(
     encoder_gradients: List[float],

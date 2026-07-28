@@ -12,10 +12,8 @@ import torch
 from . import set_plot_style, get_time_axis
 from ..utils.defaults_plotting import (
     SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, DEFAULT_FONT_FAMILY, 
-    DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER, PARAMETER_LABELS
+    DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER, PARAMETER_LABELS, CM_TO_INCHES
 )
-
-from starccato_flow.utils.defaults_plotting import CM_TO_INCHES
 
 def _map_detector_labels(labels: Sequence[str]) -> Tuple[str, ...]:
     """Map detector short codes to full names for display.
@@ -130,7 +128,7 @@ def plot_detector_signal_channels(
     figsize_mm: Tuple[float, float] = (165, 190),
     fontsize_tick: int = 12,
     fontsize_title: int = 18,
-    line_weight: float = 1.4,
+    line_weight: float = 1,
     left_margin: float = 0.05,
     figsize: Tuple[float, float] = (16.5, 20.3),
     y_axis: str = 'h'
@@ -257,80 +255,6 @@ def plot_detector_signal_channels(
     plt.rcdefaults()
     return fig, np.array(axes)
 
-
-def plot_candidate_signal(
-    signal: np.ndarray,
-    noisy_signal: np.ndarray,
-    max_value: float,
-    fname: Optional[str] = None,
-    generated: bool = False,
-    background: str = "white",
-    font_family: str = DEFAULT_FONT_FAMILY,
-    font_name: str = DEFAULT_FONT,
-    figsize: tuple[float, float] = (14.5, 14.5)
-) -> plt.Figure:
-    """Plot clean and noisy signals overlaid with consistent styling.
-    
-    Args:
-        signal (np.ndarray): Clean signal to plot
-        noisy_signal (np.ndarray): Noisy signal to plot
-        max_value (float): Maximum value for scaling
-        fname (Optional[str]): Filename to save plot
-        generated (bool): Whether signals are generated (affects color)
-        background (str): Background color theme
-        font_family (str): Font family to use
-        font_name (str): Specific font name
-    
-    Returns:
-        plt.Figure: The figure object
-    """
-    set_plot_style(background, font_family, font_name)
-    
-    clean_color = SIGNAL_COLOUR
-    noisy_color = SIGNAL_COLOUR
-    vline_color = "white" if background == "black" else "black"
-    text_color = vline_color
-
-    figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
-    fig = plt.figure(figsize=figsize)
-    d = get_time_axis()
-
-    if torch.is_tensor(signal):
-        y_clean = signal.cpu().numpy().flatten() * max_value
-    else:
-        y_clean = signal.flatten() * max_value
-    
-    if torch.is_tensor(noisy_signal):
-        y_noisy = noisy_signal.cpu().numpy().flatten() * max_value
-    else:
-        y_noisy = noisy_signal.flatten() * max_value
-
-    plt.plot(d, y_noisy, color=noisy_color, linewidth=1.5, alpha=0.5, label="Signal + Noise")
-    plt.plot(d, y_clean, color=clean_color, linewidth=2, alpha=1.0, label="Signal")
-    
-    plt.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
-    plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-    plt.xlim(min(d), max(d))
-    plt.xlabel('time (s)', size=16, color=text_color)
-    plt.ylabel(r'$d$', size=16, color=text_color)
-    plt.grid(False)
-    
-    plt.legend(loc='lower right', facecolor="none", edgecolor=text_color, 
-               labelcolor=text_color, fontsize=12, framealpha=0.0)
-
-    plt.tight_layout()
-    if fname:
-        if fname.endswith('.svg'):
-            plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', transparent=(background=="black"))
-        else:
-            plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
-        plt.show()
-        plt.rcdefaults()
-    
-    return fig
-
-
 def plot_reconstruction(
     original: torch.Tensor,
     reconstructed: torch.Tensor,
@@ -417,7 +341,6 @@ def plot_reconstruction(
     plt.show()
     plt.rcdefaults()
     return fig, ax
-
 
 def plot_single_signal(
     signal: np.ndarray,

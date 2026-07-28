@@ -382,7 +382,6 @@ def animate_latent_morphs(
     plt.rcdefaults()
     return ani
 
-
 def plot_latent_morph_up_and_down(
     model,
     signal_1: torch.Tensor,

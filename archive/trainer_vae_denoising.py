@@ -14,7 +14,7 @@ from tqdm.auto import trange
 from .vae_vanilla import VAE
 from ..src.starccato_flow.utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE
 from ..src.starccato_flow.plotting import plot_loss
-from ..src.starccato_flow.plotting.signals import plot_reconstruction, plot_candidate_signal, plot_signal_distribution
+from ..src.starccato_flow.plotting.signals import plot_reconstruction, plot_signal_distribution
 from ..src.starccato_flow.utils.defaults_plotting import PARAMETER_LABELS
 
 
