@@ -664,7 +664,7 @@ class ConditionalVAETrainer:
         sample_from_data: bool = False,
         beta_min: float = 0.0,
         beta_max: float = 0.25,
-        figsize: tuple[float, float] = (15, 10)
+        figsize: tuple[float, float] = (14.5, 10)
     ) -> np.ndarray:
 
         from ..utils.defaults_plotting import CM_TO_INCHES  # or wherever this lives

@@ -725,7 +725,7 @@ class FlowMatchingTrainer:
                 background=background,
                 font_family=font_family,
                 font_name=font_name,
-                figsize=(15, 8),
+                figsize=(14.5, 8),
                 fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png") if fname_eos_ye is None else fname_eos_ye,
             ) 
 

@@ -37,7 +37,7 @@ def plot_parameter_distribution(
     alpha: float = 0.8,
     show_stats: bool = True,
     param_range: Optional[Tuple[float, float]] = None,
-    figsize: Tuple[float, float] = (15, 15)
+    figsize: Tuple[float, float] = (14.5, 14.5)
 ) -> Union[plt.Figure, plt.Axes]:
     """Plot the distribution of a single parameter.
     
@@ -122,7 +122,7 @@ def plot_parameter_distributions(
     font_name: str = "Avenir",
     color: Optional[str] = None,
     alpha: float = 0.8,
-    figsize: Tuple[float, float] = (15, 12)
+    figsize: Tuple[float, float] = (14.5, 12)
 ) -> plt.Figure:
     """Plot distributions for multiple parameters in a 2x2 grid.
     
@@ -419,7 +419,7 @@ def plot_epoch_sky_parameters(
 
 
 def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 
-                labels=None, ranges=None, font_family="sans-serif", font_name="Avenir", figsize=(15, 15), fontsize_title=16, fontsize_tick=12):
+                labels=None, ranges=None, font_family="sans-serif", font_name="Avenir", figsize=(14.5, 14.5), fontsize_title=16, fontsize_tick=12):
     """Plot corner plot of parameter posterior distribution.
     
     Args:
@@ -681,7 +681,7 @@ def plot_eos_ye_distribution(
     font_name: str = "Times New Roman",
     alpha: float = 0.7,
     point_size: float = 50,
-    figsize: Tuple[float, float] = (15, 8)
+    figsize: Tuple[float, float] = (14.5, 8)
 ) -> plt.Figure:
     """Create a violin plot of Ye values across different EOS types.
     
@@ -760,7 +760,7 @@ def plot_eos_ye_posterior_distribution(
     background: str = "white",
     font_family: str = "serif",
     font_name: str = "Times New Roman",
-    figsize: Tuple[float, float] = (15, 8),
+    figsize: Tuple[float, float] = (14.5, 8),
     alpha: float = 0.7,
     point_size: float = 50
 ) -> plt.Figure:

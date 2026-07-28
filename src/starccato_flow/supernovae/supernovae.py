@@ -371,7 +371,7 @@ class Supernovae:
         sun_marker_size: float = 100,
         show: bool = False,
         dpi: int = 300,
-        figsize: tuple = (15, 15),
+        figsize: tuple = (14.5, 14.5),
     ):
         """Plot galactic supernova locations in 3D and projected views.
 

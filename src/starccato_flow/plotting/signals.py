@@ -267,7 +267,7 @@ def plot_candidate_signal(
     background: str = "white",
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
-    figsize: tuple[float, float] = (15, 15)
+    figsize: tuple[float, float] = (14.5, 14.5)
 ) -> plt.Figure:
     """Plot clean and noisy signals overlaid with consistent styling.
     

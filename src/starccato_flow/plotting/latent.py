@@ -395,7 +395,7 @@ def plot_latent_morph_up_and_down(
     font_family="sans-serif",
     font_name="Avenir",
     fname="plots/latent_morph.svg",
-    figsize: Tuple[float, float] = (15, 23)
+    figsize: Tuple[float, float] = (14.5, 23)
 ):
     """Plot a 2-panel figure showing signal interpolation and latent space path."""
     model.eval()

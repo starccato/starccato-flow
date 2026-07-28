@@ -63,7 +63,7 @@ def _is_dark_color(color_str: str) -> bool:
     # Default to light color (text should be black)
     return False
 
-def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (15, 10)):
+def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (14.5, 10)):
     """Plot surface density of supernovae in the galactic plane."""
 
     plt.rcParams["font.family"] = font_family
@@ -135,7 +135,7 @@ def plot_galactic_distribution(
     sun_marker_size: float = 100,
     show: bool = False,
     dpi: int = 300,
-    figsize: tuple = (15, 15),
+    figsize: tuple = (14.5, 14.5),
     rasterize_scatter: bool = True,
     line_weight: float = 1,
     fontsize_tick: int = 11,
