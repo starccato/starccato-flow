@@ -259,12 +259,23 @@ def plot_galactic_distribution(
 
     def _legend_with_supernova_marker(axes: plt.Axes) -> None:
         handles, labels = axes.get_legend_handles_labels()
+        handle_map = dict(zip(labels, handles))
+
+        preferred_order = [
+            "Supernova",
+            "Sampled Supernova",
+            "Galactic Center: Sgr A*",
+            "Sun",
+        ]
+        ordered_labels = [label for label in preferred_order if label in handle_map]
+        ordered_labels += [label for label in labels if label not in ordered_labels]
+
         adjusted_handles = []
-        for handle, label in zip(handles, labels):
+        for label in ordered_labels:
             if label == "Supernova":
                 adjusted_handles.append(
                     mlines.Line2D(
-                        [], 
+                        [],
                         [],
                         linestyle="None",
                         marker="o",
@@ -281,23 +292,24 @@ def plot_galactic_distribution(
                         linestyle="None",
                         marker="o",
                         markersize=9,
-                        markerfacecolor="darkblue",
+                        markerfacecolor="orange",
                         markeredgecolor="none",
                     )
                 )
             else:
-                adjusted_handles.append(handle)
+                adjusted_handles.append(handle_map[label])
 
+        legend_ncol = 2 if len(ordered_labels) == 4 else max(1, len(ordered_labels))
         axes.legend(
             adjusted_handles,
-            labels,
+            ordered_labels,
             loc="upper center",
-            bbox_to_anchor=(0.5, -0.1),
-            ncol=max(1, len(labels)),
+            bbox_to_anchor=(0.5, 0.98),
+            ncol=legend_ncol,
             facecolor=legend_facecolor,
             edgecolor="none",
             labelcolor=text_color,
-            fontsize=fontsize_tick-2,
+            fontsize=fontsize_tick,
             frameon=False,
         )
 
@@ -333,7 +345,7 @@ def plot_galactic_distribution(
             hx,
             hy,
             s=max(sun_marker_size * 0.1, 10),
-            c="darkblue",
+            c="orange",
             edgecolors="none",
             marker="o",
             label="Sampled Supernova",
