@@ -936,21 +936,42 @@ def plot_galactic_supernovae_polar_hemispheres(
                     label="68%",
                 ),
             ]
-            fig.legend(
-                handles=posterior_legend_handles,
-                loc="lower left" if format == "thesis" else "center",
-                bbox_to_anchor=(0.02, 0.012) if format == "thesis" else (0.5, 0.81),
-                ncol=1,
-                frameon=False,
-                fontsize=fontsize_constellation,
-                labelcolor=text_color,
-                handlelength=1.2,
-                handletextpad=0.5,
-                columnspacing=0.8,
-                borderaxespad=0.0,
-                title="Credible Intervals",
-                title_fontsize=fontsize_main,
-            )
+            if format == "thesis":
+                # Use a blank-handle entry for "Credible Intervals:" instead of the legend's
+                # `title=` row - a separate title row adds height above the axes and was
+                # getting clipped against the figure edge. This keeps everything on one line.
+                inline_title_handle = Patch(facecolor="none", edgecolor="none", label="Credible Intervals:")
+                ci_legend = ax_l.legend(
+                    handles=[inline_title_handle] + posterior_legend_handles,
+                    loc="lower center",
+                    bbox_to_anchor=(0.5, 1.02),   # 2% above the axes
+                    ncol=4,
+                    frameon=False,
+                    fontsize=fontsize_main,
+                    labelcolor=text_color,
+                    handlelength=1.2,
+                    handletextpad=0.5,
+                    columnspacing=0.8,
+                    borderaxespad=0.2,            # small padding
+                )
+                # Make the leading label read like a title even though it's inline.
+                ci_legend.get_texts()[0].set_fontsize(fontsize_main)
+            else:
+                fig.legend(
+                    handles=posterior_legend_handles,
+                    loc="center",
+                    bbox_to_anchor=(0.5, 0.81),
+                    ncol=1,
+                    frameon=False,
+                    fontsize=fontsize_constellation,
+                    labelcolor=text_color,
+                    handlelength=1.2,
+                    handletextpad=0.5,
+                    columnspacing=0.8,
+                    borderaxespad=0.0,
+                    title="Credible Intervals",
+                    title_fontsize=fontsize_main,
+                )
 
         # Marker at posterior peak.
         n_plot = np.ma.array(h_pn_smooth.T, mask=~post_inside_circle)
@@ -1047,13 +1068,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Red accretion disk (outer ring).
     bh_disk_outer = Circle(
-        (true_gc_x, true_gc_y), 0.015, color=text_color, alpha=0.8, zorder=8
+        (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
     )
     bh_ax.add_patch(bh_disk_outer)
 
     # Black hole interior (event horizon) - blends into the background so it reads as a void.
     bh_interior = Circle(
-        (true_gc_x, true_gc_y), 0.010, color=background, alpha=0.95, zorder=9
+        (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
     )
     bh_ax.add_patch(bh_interior)
 
@@ -1085,7 +1106,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             betel_x - 0.035,
             betel_y + 0.02,
             "Betelgeuse",
-            color="#fde68a",
+            color="#fde68a" if background == "black" else "#78350f",
             fontsize=fontsize_constellation,
             ha="right",
             va="center",
@@ -1786,8 +1807,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         marker="o",
         linestyle="None",
         markersize=11,
-        markerfacecolor=background,
-        markeredgecolor=text_color,
+        markerfacecolor="black",
+        markeredgecolor="white",
         markeredgewidth=1.3,
         label="Galactic Center: Sgr A*",
     )
@@ -1829,21 +1850,21 @@ def plot_galactic_supernovae_polar_hemispheres(
             markersize=10,
             markerfacecolor=text_color,
             markeredgecolor=text_color,
+            markeredgewidth=0.0,
             label="Detectors",
         )
     
     if format == "thesis":
         ax_r.legend(
-            loc="lower right",
-            bbox_to_anchor=(0.98, 0.012),
-            bbox_transform=fig.transFigure,
-            ncol=1,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.02),   # 2% below the axes
+            ncol=3,
             frameon=False,
             labelcolor=text_color,
             fontsize=fontsize_main,
             handletextpad=0.5,
             columnspacing=1.0,
-            borderaxespad=0.0,
+            borderaxespad=0.2,
         )
     else:
         ax_r.legend(
