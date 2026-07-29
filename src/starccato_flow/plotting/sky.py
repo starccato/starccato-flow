@@ -288,6 +288,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_ra_override: float | None = None,
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
+    constellations: bool = True,
     show_all_constellation_labels: bool = False,
     background: str = "black",
     font_family: str = "sans-serif",
@@ -297,7 +298,8 @@ def plot_galactic_supernovae_polar_hemispheres(
     transparent: bool = False,
     format: str = "poster",
     n_background_supernovae: int = 20000,
-    coastline: bool = True,
+    galaxy: bool = True,
+    coastline: bool = False,
     figsize: tuple[float, float] | None = None,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
@@ -475,63 +477,72 @@ def plot_galactic_supernovae_polar_hemispheres(
     h_n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
     h_s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
 
-    blue_probs = [0.995, 0.80, 0.50, 0.25]
-    combined_vals = np.concatenate([
-        h_n_smooth.T[inside_circle],
-        h_s_smooth.T[inside_circle],
-    ])
-    combined_vals = combined_vals[combined_vals > 0]
-    if combined_vals.size == 0:
-        thr_shared = [1.0 for _ in blue_probs]
-    else:
-        vals = np.sort(combined_vals)[::-1]
-        cdf = np.cumsum(vals) / np.sum(vals)
-        thr_shared = []
-        for p in blue_probs:
-            idx = np.searchsorted(cdf, p, side="left")
-            idx = min(idx, vals.size - 1)
-            thr_shared.append(float(vals[idx]))
+    if galaxy:
+        blue_probs = [0.995, 0.80, 0.50, 0.25]
+        combined_vals = np.concatenate([
+            h_n_smooth.T[inside_circle],
+            h_s_smooth.T[inside_circle],
+        ])
+        combined_vals = combined_vals[combined_vals > 0]
+        if combined_vals.size == 0:
+            thr_shared = [1.0 for _ in blue_probs]
+        else:
+            vals = np.sort(combined_vals)[::-1]
+            cdf = np.cumsum(vals) / np.sum(vals)
+            thr_shared = []
+            for p in blue_probs:
+                idx = np.searchsorted(cdf, p, side="left")
+                idx = min(idx, vals.size - 1)
+                thr_shared.append(float(vals[idx]))
 
-    levels_shared = np.sort(np.array(thr_shared, dtype=float))
-    top_shared = max(levels_shared[-1] * 1.001, np.max(combined_vals) * 1.001)
-    fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
+        levels_shared = np.sort(np.array(thr_shared, dtype=float))
+        top_shared = max(levels_shared[-1] * 1.001, np.max(combined_vals) * 1.001)
+        fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
 
-    blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
-    # Contourf colors are mapped outer->inner because levels are ascending.
-    fill_colors = [
-        to_rgba(blue_bases[0], alpha=0.20),
-        to_rgba(blue_bases[1], alpha=0.40),
-        to_rgba(blue_bases[2], alpha=0.62),
-        to_rgba(blue_bases[3], alpha=0.88),
-    ]
-    
-    # Create smooth transitions by interpolating colors in RGBA space
-    n_per_segment = 4  # Create 4 intermediate colors between each pair
-    smooth_colors = []
-    
-    for i in range(len(fill_colors) - 1):
-        color_a = np.array(fill_colors[i])
-        color_b = np.array(fill_colors[i + 1])
+        blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
+        # Contourf colors are mapped outer->inner because levels are ascending.
+        fill_colors = [
+            to_rgba(blue_bases[0], alpha=0.20),
+            to_rgba(blue_bases[1], alpha=0.40),
+            to_rgba(blue_bases[2], alpha=0.62),
+            to_rgba(blue_bases[3], alpha=0.88),
+        ]
         
-        # Interpolate between current and next color
-        for j in range(n_per_segment):
-            alpha = j / n_per_segment
-            interp_color = color_a * (1 - alpha) + color_b * alpha
-            smooth_colors.append(tuple(interp_color))
-    
-    # Add the last color
-    smooth_colors.append(fill_colors[-1])
-    
-    # Create levels to match the number of colors
-    smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
+        # Create smooth transitions by interpolating colors in RGBA space
+        n_per_segment = 4  # Create 4 intermediate colors between each pair
+        smooth_colors = []
+        
+        for i in range(len(fill_colors) - 1):
+            color_a = np.array(fill_colors[i])
+            color_b = np.array(fill_colors[i + 1])
+            
+            # Interpolate between current and next color
+            for j in range(n_per_segment):
+                alpha = j / n_per_segment
+                interp_color = color_a * (1 - alpha) + color_b * alpha
+                smooth_colors.append(tuple(interp_color))
+        
+        # Add the last color
+        smooth_colors.append(fill_colors[-1])
+        
+        # Create levels to match the number of colors
+        smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
 
-    ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
-    
+        ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
+        ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
+
     for r_lat in lat_radii:
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
     ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8)
-    ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8)
+    ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+
+    for r_lat in lat_radii:
+        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
+    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
+    ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
     if background == "black" and format == "poster":
         ax_l.text(
@@ -557,12 +568,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         alpha=0.95,
     )
 
-    ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
-    for r_lat in lat_radii:
-        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
-    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8)
-    ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8)
     # Add "Southern Sky" label directly above 0h RA (top of hemisphere)
     if background == "black" and format == "poster":
         ax_r.text(
@@ -588,35 +593,36 @@ def plot_galactic_supernovae_polar_hemispheres(
         alpha=0.95,
     )
 
-    # Add curved "MILKY WAY" text below south pole, following the arc
-    milky_way_text = "MILKY WAY"
-    n_chars = len(milky_way_text)
-    # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
-    angle_start = 240  # degrees in standard angle (bottom-left)
-    angle_end = 300    # degrees in standard angle (bottom-right)
-    angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
-    radius = 0.72  # position along the arc (raised from south pole)
+    if galaxy:
+        # Add curved "MILKY WAY" text below south pole, following the arc
+        milky_way_text = "MILKY WAY"
+        n_chars = len(milky_way_text)
+        # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
+        angle_start = 240  # degrees in standard angle (bottom-left)
+        angle_end = 300    # degrees in standard angle (bottom-right)
+        angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
+        radius = 0.72  # position along the arc (raised from south pole)
     
-    for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
-        x = radius * np.cos(angle)
-        y = radius * np.sin(angle)
-        # Rotate text to follow the curve (tangent to circle)
-        rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
-        ax_r.text(
-            x,
-            y,
-            char,
-            color=text_color,
-            fontsize=fontsize_title if format == "poster" else fontsize_main,
-            ha="center",
-            va="center",
-            rotation=rotation,
-            rotation_mode="anchor",
-            alpha=1.0,
-            fontweight="bold",
-            zorder=5,
-            clip_on=False,
-        )
+        for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
+            x = radius * np.cos(angle)
+            y = radius * np.sin(angle)
+            # Rotate text to follow the curve (tangent to circle)
+            rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
+            ax_r.text(
+                x,
+                y,
+                char,
+                color=text_color,
+                fontsize=fontsize_title if format == "poster" else fontsize_main,
+                ha="center",
+                va="center",
+                rotation=rotation,
+                rotation_mode="anchor",
+                alpha=1.0,
+                fontweight="bold",
+                zorder=5,
+                clip_on=False,
+            )
 
     # RA/Dec ticks for orientation in each hemisphere panel.
     ra_tick_deg = np.arange(0, 360, 30)
@@ -655,7 +661,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             ha="center",
             va="center",
             alpha=0.75,
-            zorder=6,
+            zorder=9,
         )
         ax_r.text(
             x_lbl_s,
@@ -666,7 +672,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             ha="center",
             va="center",
             alpha=0.75,
-            zorder=6,
+            zorder=9,
         )
 
     dec_abs_ticks = [80, 60, 40, 20]
@@ -685,7 +691,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             color=text_color,
             alpha=0.45,
             lw=0.75,
-            zorder=6,
+            zorder=9,
         )
         ax_l.text(
             x0 + 0.020,
@@ -696,7 +702,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             ha="left",
             va="center",
             alpha=0.75,
-            zorder=6,
+            zorder=9,
         )
 
         # South: negative Dec labels.
@@ -1069,7 +1075,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Black hole visualization at the true galactic center.
     bh_ax = ax_l if true_gc_panel == "north" else ax_r
 
-    # Red accretion disk (outer ring).
+    # accretion disk (outer ring).
     bh_disk_outer = Circle(
         (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
     )
@@ -1885,13 +1891,16 @@ def plot_galactic_supernovae_polar_hemispheres(
     if coastline:
         coast_n, coast_s = _coastline_segments()
 
+        print(len(coast_n))
+        print(coast_n[0].shape)
+
         ax_l.add_collection(
             LineCollection(
                 coast_n,
                 colors="#808080",
-                linewidths=0.5,
+                linewidths=0.3,
                 alpha=0.8,
-                zorder=3,
+                zorder=3
             )
         )
 
@@ -1899,9 +1908,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             LineCollection(
                 coast_s,
                 colors="#808080",
-                linewidths=0.5,
+                linewidths=0.3,
                 alpha=0.8,
-                zorder=3,
+                zorder=3
             )
         )
 
@@ -1957,9 +1966,9 @@ def _coastline_segments():
     """
 
     filename = shpreader.natural_earth(
-        resolution="110m",
+        resolution="50m",
         category="physical",
-        name="coastline",
+        name="coastline"
     )
 
     reader = shpreader.Reader(filename)
@@ -1982,29 +1991,36 @@ def _coastline_segments():
 
             coords = np.asarray(line.coords)
 
-            lon = coords[:, 0]
-            lat = coords[:, 1]
+            current_north = []
+            current_south = []
 
-            for i in range(len(coords) - 1):
+            for lon, lat in coords:
 
-                p1 = _project_to_hemisphere(
-                    np.deg2rad(lon[i]),
-                    np.deg2rad(lat[i]),
+                hemi, x, y = _project_to_hemisphere(
+                    np.deg2rad(lon),
+                    np.deg2rad(lat),
                 )
 
-                p2 = _project_to_hemisphere(
-                    np.deg2rad(lon[i + 1]),
-                    np.deg2rad(lat[i + 1]),
-                )
+                if hemi == "north":
+                    if current_south:
+                        if len(current_south) > 1:
+                            south_segments.append(np.asarray(current_south))
+                        current_south = []
 
-                if p1[0] != p2[0]:
-                    continue
+                    current_north.append((x, y))
 
-                seg = [[p1[1], p1[2]], [p2[1], p2[2]]]
-
-                if p1[0] == "north":
-                    north_segments.append(seg)
                 else:
-                    south_segments.append(seg)
+                    if current_north:
+                        if len(current_north) > 1:
+                            north_segments.append(np.asarray(current_north))
+                        current_north = []
 
-    return np.asarray(north_segments), np.asarray(south_segments)
+                    current_south.append((x, y))
+
+            if len(current_north) > 1:
+                north_segments.append(np.asarray(current_north))
+
+            if len(current_south) > 1:
+                south_segments.append(np.asarray(current_south))
+
+    return north_segments, south_segments
