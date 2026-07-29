@@ -348,10 +348,10 @@ def plot_galactic_supernovae_polar_hemispheres(
             "fontsize_main": 11,
             "fontsize_label": 11,
             "fontsize_tick": 11,
-            "fontsize_small": 9,
-            "fontsize_tiny": 9,
-            "fontsize_constellation": 9,
-            "fontsize_object": 9,
+            "fontsize_small": 7,
+            "fontsize_tiny": 7,
+            "fontsize_constellation": 7,
+            "fontsize_object": 7,
         }
     }
     
@@ -530,17 +530,18 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8)
     ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8)
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
-    ax_l.text(
-        0.0,
-        1.12,
-        "Northern Sky",
-        color=text_color,
-        fontsize=fontsize_title,
-        ha="center",
-        va="bottom",
-        fontweight="bold",
-        alpha=0.9,
-    )
+    if background == "black" and format == "poster":
+        ax_l.text(
+            0.0,
+            1.12,
+            "Northern Sky",
+            color=text_color,
+            fontsize=fontsize_title,
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            alpha=0.9,
+        )
     ax_l.text(
         0.0,
         0.0,
@@ -560,17 +561,18 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8)
     ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8)
     # Add "Southern Sky" label directly above 0h RA (top of hemisphere)
-    ax_r.text(
-        0.0,
-        1.12,
-        "Southern Sky",
-        color=text_color,
-        fontsize=fontsize_title,
-        ha="center",
-        va="bottom",
-        fontweight="bold",
-        alpha=0.9,
-    )
+    if background == "black" and format == "poster":
+        ax_r.text(
+            0.0,
+            1.12,
+            "Southern Sky",
+            color=text_color,
+            fontsize=fontsize_title,
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            alpha=0.9,
+        )
     ax_r.text(
         0.0,
         0.0,
@@ -602,7 +604,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             y,
             char,
             color=text_color,
-            fontsize=fontsize_title,
+            fontsize=fontsize_title if format == "poster" else fontsize_main,
             ha="center",
             va="center",
             rotation=rotation,
@@ -1721,16 +1723,17 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Plot detector markers when example mode is enabled.
     if example and detector_markers:
         # Define L-shaped marker (vertical arm on left, horizontal base at bottom)
+        t = 0.18      # arm thickness
+        L = 0.40      # half-length
+
         l_marker_verts = np.array([
-            [-0.15, -0.35],  # Bottom left
-            [0.35, -0.35],   # Bottom right (horizontal base, longer)
-            [0.35, -0.2],    # Inner right
-            [-0.05, -0.2],   # Inner, step left
-            [-0.05, 0.35],   # Top of vertical arm (tall)
-            [-0.2, 0.35],    # Top left
-            [-0.2, -0.2],    # Inner left
-            [-0.15, -0.2],   # Inner bottom left
-            [-0.15, -0.35],  # Close
+            [-L, -L],
+            [ L, -L],
+            [ L, -L+t],
+            [-L+t, -L+t],
+            [-L+t,  L],
+            [-L,    L],
+            [-L,   -L],
         ])
         
         def rotate_marker_verts(verts, angle_rad):
@@ -1754,11 +1757,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             det_ax.scatter(
                 [det_x],
                 [det_y],
-                s=200,
+                s=200 if format == "poster" else 50,
                 marker=l_marker,
                 c=det_color,
-                edgecolors=text_color,
-                linewidths=1.2,
+                edgecolors="none",   # or edgecolors=det_color
+                linewidths=0,
                 alpha=0.9,
                 zorder=10,
             )
@@ -1804,16 +1807,17 @@ def plot_galactic_supernovae_polar_hemispheres(
     
     if example and detector_markers:
         # Create base L marker for legend
+        t = 0.18      # arm thickness
+        L = 0.40      # half-length
+
         l_marker_verts_legend = np.array([
-            [-0.15, -0.35],  # Bottom left
-            [0.35, -0.35],   # Bottom right (horizontal base, longer)
-            [0.35, -0.2],    # Inner right
-            [-0.05, -0.2],   # Inner, step left
-            [-0.05, 0.35],   # Top of vertical arm (tall)
-            [-0.2, 0.35],    # Top left
-            [-0.2, -0.2],    # Inner left
-            [-0.15, -0.2],   # Inner bottom left
-            [-0.15, -0.35],  # Close
+            [-L, -L],
+            [ L, -L],
+            [ L, -L+t],
+            [-L+t, -L+t],
+            [-L+t,  L],
+            [-L,    L],
+            [-L,   -L],
         ])
         l_marker_legend = MarkerStyle(Path(l_marker_verts_legend))
         
@@ -1825,7 +1829,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             markersize=10,
             markerfacecolor=text_color,
             markeredgecolor=text_color,
-            markeredgewidth=1.0,
             label="Detectors",
         )
     
