@@ -276,6 +276,8 @@ def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[s
     return centers
 
 
+import cartopy.io.shapereader as shpreader
+from shapely.geometry import LineString, MultiLineString
 
 
 def plot_galactic_supernovae_polar_hemispheres(
@@ -295,6 +297,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     transparent: bool = False,
     format: str = "poster",
     n_background_supernovae: int = 20000,
+    coastline: bool = True,
     figsize: tuple[float, float] | None = None,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
@@ -424,8 +427,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Portrait layout: North stacked on top of South, with a small gap between
         # them for the "Credible Intervals" legend and room at the bottom for the
         # main legend.
-        ax_l = fig.add_axes([0.06, 0.525, 0.9, 0.425], facecolor=fig_facecolor)
-        ax_r = fig.add_axes([0.06, 0.05, 0.9, 0.425], facecolor=fig_facecolor)
+        ax_l = fig.add_axes([0.0, 0.525, 1.0, 0.425], facecolor=fig_facecolor)
+        ax_r = fig.add_axes([0.0, 0.05, 1.0, 0.425], facecolor=fig_facecolor)
     else:
         ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
         ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
@@ -1876,6 +1879,33 @@ def plot_galactic_supernovae_polar_hemispheres(
             borderaxespad=0.0,
         )
 
+    # -------------------------------------------------
+    # Earth coastlines
+    # -------------------------------------------------
+    if coastline:
+        coast_n, coast_s = _coastline_segments()
+
+        ax_l.add_collection(
+            LineCollection(
+                coast_n,
+                colors="#808080",
+                linewidths=0.5,
+                alpha=0.8,
+                zorder=3,
+            )
+        )
+
+        ax_r.add_collection(
+            LineCollection(
+                coast_s,
+                colors="#808080",
+                linewidths=0.5,
+                alpha=0.8,
+                zorder=3,
+            )
+        )
+
+
     # Determine format from filename extension
     file_format = None
     if fname.lower().endswith('.svg'):
@@ -1918,3 +1948,63 @@ def plot_galactic_supernovae_polar_hemispheres(
     plt.show()
 
     plt.rcdefaults()
+
+
+@lru_cache(maxsize=1)
+def _coastline_segments():
+    """
+    Return projected coastline line segments for the north and south hemispheres.
+    """
+
+    filename = shpreader.natural_earth(
+        resolution="110m",
+        category="physical",
+        name="coastline",
+    )
+
+    reader = shpreader.Reader(filename)
+
+    north_segments = []
+    south_segments = []
+
+    for record in reader.records():
+
+        geom = record.geometry
+
+        if isinstance(geom, LineString):
+            lines = [geom]
+        elif isinstance(geom, MultiLineString):
+            lines = geom.geoms
+        else:
+            continue
+
+        for line in lines:
+
+            coords = np.asarray(line.coords)
+
+            lon = coords[:, 0]
+            lat = coords[:, 1]
+
+            for i in range(len(coords) - 1):
+
+                p1 = _project_to_hemisphere(
+                    np.deg2rad(lon[i]),
+                    np.deg2rad(lat[i]),
+                )
+
+                p2 = _project_to_hemisphere(
+                    np.deg2rad(lon[i + 1]),
+                    np.deg2rad(lat[i + 1]),
+                )
+
+                if p1[0] != p2[0]:
+                    continue
+
+                seg = [[p1[1], p1[2]], [p2[1], p2[2]]]
+
+                if p1[0] == "north":
+                    north_segments.append(seg)
+                else:
+                    south_segments.append(seg)
+
+    return np.asarray(north_segments), np.asarray(south_segments)
