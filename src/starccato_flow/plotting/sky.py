@@ -771,12 +771,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Handle example mode: use first supernova as true location and prepare detector markers.
     detector_markers = []
-    if example:
-        # Use first supernova as true location if not overridden
-        if true_ra_override is None or true_dec_override is None:
-            true_ra_override = float(ra_supernovae[0])
-            true_dec_override = float(dec_supernovae[0])
-        
+    if example:        
         # Prepare detector markers (RA in degrees, Dec in degrees, converted to radians)
         detector_markers = [
             ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), text_color),
