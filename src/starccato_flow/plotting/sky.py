@@ -739,35 +739,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 ax_r.add_collection(
                     LineCollection(seg_s, colors="#e2e8f0", linewidths=0.5, alpha=0.6, zorder=4)
                 )
-            
-
-
-            if show_all_constellation_labels:
-                centers = _constellation_centers_icrs_deg()
-                # Show all 88 IAU constellations
-                for short_name in sorted(centers.keys()):
-                    ra_c_deg, dec_c_deg = centers[short_name]
-                    ra_c_deg = float(_apply_astropy_ra_rotation_deg(ra_c_deg, astropy_rotation_offset_deg))
-                    panel, cx, cy = _project_to_hemisphere(np.deg2rad(ra_c_deg), np.deg2rad(dec_c_deg))
-                    
-                    # Skip labels near the poles to avoid crowding
-                    if cx * cx + cy * cy > 0.97 * 0.97:
-                        continue
-                    
-                    lbl_ax = ax_l if panel == "north" else ax_r
-                    
-                    # Use smaller fontsize for all constellation labels
-                    lbl_ax.text(
-                        cx,
-                        cy,
-                        short_name,
-                        color="#e2e8f0",
-                        fontsize=fontsize_tiny,
-                        ha="center",
-                        va="center",
-                        alpha=0.6,
-                        zorder=6,
-                    )
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
@@ -999,32 +970,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             gc_y = float(ycenters[iy])
         else:
             gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
-    else:
-        # Fallback: legacy red blob behavior when no posterior samples are provided.
-        if red_blob_mode == "true_center":
-            gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
-        elif red_blob_mode == "density_peak":
-            n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
-            s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
-            n_max = float(np.max(n_plot.filled(-np.inf)))
-            s_max = float(np.max(s_plot.filled(-np.inf)))
-            if n_max >= s_max and np.isfinite(n_max):
-                iy, ix = np.unravel_index(np.argmax(n_plot.filled(-np.inf)), n_plot.shape)
-                gc_panel = "north"
-                gc_x = float(xcenters[ix])
-                gc_y = float(ycenters[iy])
-            elif np.isfinite(s_max):
-                iy, ix = np.unravel_index(np.argmax(s_plot.filled(-np.inf)), s_plot.shape)
-                gc_panel = "south"
-                gc_x = float(xcenters[ix])
-                gc_y = float(ycenters[iy])
-            else:
-                gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
-        else:
-            star_idx = len(ra_supernovae) // 2
-            blob_ra = ra_supernovae[star_idx]
-            blob_dec = dec_supernovae[star_idx]
-            gc_panel, gc_x, gc_y = _project_to_hemisphere(blob_ra, blob_dec)
 
     # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
     betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg(
@@ -1037,40 +982,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
     else:
         betel_panel, betel_x, betel_y = None, np.nan, np.nan
-
-    if not use_posterior_samples and red_blob_mode is not None:
-        blob_sigma = 0.12
-        blob_radius = 3.0 * blob_sigma
-        dist2_gc = (xxc - gc_x) ** 2 + (yyc - gc_y) ** 2
-        gc_blob = np.exp(-0.5 * dist2_gc / (blob_sigma**2))
-        gc_blob[dist2_gc > blob_radius**2] = 0.0
-
-        gc_mask = inside_circle & (gc_blob > 0.0)
-        gc_thr = _hpd_thresholds(gc_blob, gc_mask, blue_probs)
-        gc_levels = np.sort(np.array(gc_thr, dtype=float))
-        gc_top = max(gc_levels[-1] * 1.001, np.max(gc_blob[gc_mask]) * 1.001)
-        gc_fill_levels = np.concatenate([gc_levels, [gc_top]])
-        gc_blob_plot = np.ma.array(gc_blob, mask=~inside_circle)
-        if gc_panel == "north":
-            ax_l.contourf(
-                xcenters,
-                ycenters,
-                gc_blob_plot,
-                levels=gc_fill_levels,
-                colors=red_fill_colors,
-                antialiased=True,
-                rasterized=False,
-            )
-        else:
-            ax_r.contourf(
-                xcenters,
-                ycenters,
-                gc_blob_plot,
-                levels=gc_fill_levels,
-                colors=red_fill_colors,
-                antialiased=True,
-                rasterized=False,
-            )
 
     # Black hole visualization at the true galactic center.
     bh_ax = ax_l if true_gc_panel == "north" else ax_r
