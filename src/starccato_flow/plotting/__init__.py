@@ -98,7 +98,6 @@ from .analysis import (
     plot_reconstruction_distribution,
     p_p_plot,
     create_signal_grid_gif,
-    create_snr_variation_gif,
     plot_sky_localisation
 )
 
@@ -134,7 +133,6 @@ __all__ = [
     'p_p_plot',
     'plot_corner',
     'create_signal_grid_gif',
-    'create_snr_variation_gif',
     'plot_sky_localisation',
     # Sky
     'plot_galactic_supernovae_polar_hemispheres',

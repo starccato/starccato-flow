@@ -287,15 +287,13 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     show_all_constellation_labels: bool = False,
-    show: bool = True,
-    dpi: int = 300,
     background: str = "black",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
     red_blob_mode: str = "middle_star",
     example: bool = False,
     transparent: bool = False,
-    mode: str = "print",
+    format: str = "poster",
     n_background_supernovae: int = 20000,
     figsize: tuple[float, float] | None = None,
 ) -> None:
@@ -323,7 +321,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
         example: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
             and highlight the first supernova as the true location.
-        mode: Plot mode - "print" for A1 poster (33.07x23.39") or "thesis" for smaller size (12x6.8")
+        format: Layout format - "poster" for the A1 landscape poster (two hemispheres
+            side by side), or "thesis" for a 14.5 x 19 cm portrait figure with the
+            two hemispheres stacked vertically (North on top, South on bottom).
         n_background_supernovae: Number of closest supernovae to use for background distribution.
             If not enough supernovae are available, uses all. Default 50000.
     """
@@ -331,7 +331,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Figsize in mm (converted to inches for matplotlib)
     mm_to_inch = 1 / 25.4
     mode_config = {
-        "print": {
+        "poster": {
             "figsize_mm": (841, 594),  # A1 landscape
             "fontsize_title": 28,
             "fontsize_main": 22,
@@ -343,25 +343,26 @@ def plot_galactic_supernovae_polar_hemispheres(
             "fontsize_object": 16,
         },
         "thesis": {
-            "figsize_mm": (305, 173),
-            "fontsize_main": 10.0,
-            "fontsize_label": 9,
-            "fontsize_tick": 8,
-            "fontsize_small": 5.0,
-            "fontsize_tiny": 5.5,
-            "fontsize_constellation": 6.5,
-            "fontsize_object": 6.0,
+            "figsize_mm": (145, 190),  # 14.5 x 19 cm portrait
+            "fontsize_title": 16,
+            "fontsize_main": 11,
+            "fontsize_label": 11,
+            "fontsize_tick": 11,
+            "fontsize_small": 9,
+            "fontsize_tiny": 9,
+            "fontsize_constellation": 9,
+            "fontsize_object": 9,
         }
     }
     
-    if mode not in mode_config:
-        raise ValueError(f"mode must be 'print' or 'thesis', got {mode}")
+    if format not in mode_config:
+        raise ValueError(f"format must be 'poster' or 'thesis', got {format}")
     
-    config = mode_config[mode]
+    config = mode_config[format]
     figsize_mm = config["figsize_mm"]
     figsize_inches = (figsize_mm[0] * mm_to_inch, figsize_mm[1] * mm_to_inch)
     if figsize is not None:
-        figsize_inches = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+        figsize_inches = (figsize[0] * mm_to_inch, figsize[1] * mm_to_inch)
     figsize = figsize_inches
     fontsize_title = config["fontsize_title"]
     fontsize_main = config["fontsize_main"]
@@ -414,11 +415,20 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Build the galactic streak directly from Supernovae RA/Dec.
     ra_rot_supernovae = ra_supernovae
 
-    fig_facecolor = None if transparent else "black"
+    fig_facecolor = None if transparent else background
+    text_color = "black" if background == "white" else "white"
     fig = plt.figure(figsize=figsize, facecolor=fig_facecolor)
     # Keep a small canvas margin so boundary lines and circles are not clipped at image edges.
-    ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
-    ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
+    # ax_l always holds the Northern-Sky panel, ax_r always holds the Southern-Sky panel.
+    if format == "thesis":
+        # Portrait layout: North stacked on top of South, with a small gap between
+        # them for the "Credible Intervals" legend and room at the bottom for the
+        # main legend.
+        ax_l = fig.add_axes([0.06, 0.55, 0.90, 0.42], facecolor=fig_facecolor)
+        ax_r = fig.add_axes([0.06, 0.08, 0.90, 0.42], facecolor=fig_facecolor)
+    else:
+        ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
+        ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
 
     north_mask = dec_supernovae >= 0
     ra_n = ra_rot_supernovae[north_mask]
@@ -515,16 +525,16 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
     
     for r_lat in lat_radii:
-        ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
-    ax_l.plot(np.cos(theta), np.sin(theta), color="white", lw=1.5)
-    ax_l.axhline(0, color="white", alpha=0.18, lw=0.8)
-    ax_l.axvline(0, color="white", alpha=0.18, lw=0.8)
+        ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
+    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
+    ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8)
+    ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8)
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
     ax_l.text(
         0.0,
         1.12,
         "Northern Sky",
-        color="white",
+        color=text_color,
         fontsize=fontsize_title,
         ha="center",
         va="bottom",
@@ -535,7 +545,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         0.0,
         0.0,
         "North\nPole",
-        color="white",
+        color=text_color,
         fontsize=fontsize_tick,
         ha="center",
         va="center",
@@ -545,16 +555,16 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
     for r_lat in lat_radii:
-        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color="white", alpha=0.13, lw=0.75)
-    ax_r.plot(np.cos(theta), np.sin(theta), color="white", lw=1.5)
-    ax_r.axhline(0, color="white", alpha=0.18, lw=0.8)
-    ax_r.axvline(0, color="white", alpha=0.18, lw=0.8)
+        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
+    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
+    ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8)
+    ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8)
     # Add "Southern Sky" label directly above 0h RA (top of hemisphere)
     ax_r.text(
         0.0,
         1.12,
         "Southern Sky",
-        color="white",
+        color=text_color,
         fontsize=fontsize_title,
         ha="center",
         va="bottom",
@@ -565,7 +575,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         0.0,
         0.0,
         "South\nPole",
-        color="white",
+        color=text_color,
         fontsize=fontsize_tick,
         ha="center",
         va="center",
@@ -591,8 +601,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             x,
             y,
             char,
-            color="white",
-            fontsize=28,
+            color=text_color,
+            fontsize=fontsize_title,
             ha="center",
             va="center",
             rotation=rotation,
@@ -618,8 +628,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         y_in_s = 1.00 * np.cos(ang)
         x_out_s = -1.045 * np.sin(ang)
         y_out_s = 1.045 * np.cos(ang)
-        ax_l.plot([x_in_n, x_out_n], [y_in_n, y_out_n], color="white", alpha=0.45, lw=0.75, zorder=6)
-        ax_r.plot([x_in_s, x_out_s], [y_in_s, y_out_s], color="white", alpha=0.45, lw=0.75, zorder=6)
+        ax_l.plot([x_in_n, x_out_n], [y_in_n, y_out_n], color=text_color, alpha=0.45, lw=0.75, zorder=6)
+        ax_r.plot([x_in_s, x_out_s], [y_in_s, y_out_s], color=text_color, alpha=0.45, lw=0.75, zorder=6)
 
     for ra_deg in ra_label_deg:
         ang = np.deg2rad(float(ra_deg))
@@ -635,7 +645,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             x_lbl_n,
             y_lbl_n,
             label,
-            color="white",
+            color=text_color,
             fontsize=fontsize_small,
             ha="center",
             va="center",
@@ -646,7 +656,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             x_lbl_s,
             y_lbl_s,
             label,
-            color="white",
+            color=text_color,
             fontsize=fontsize_small,
             ha="center",
             va="center",
@@ -667,7 +677,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_l.plot(
             [x0 - 0.012, x0 + 0.012],
             [y0, y0],
-            color="white",
+            color=text_color,
             alpha=0.45,
             lw=0.75,
             zorder=6,
@@ -676,7 +686,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             x0 + 0.020,
             y0,
             f"+{dec_abs}°",
-            color="white",
+            color=text_color,
             fontsize=fontsize_small,
             ha="left",
             va="center",
@@ -688,7 +698,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.plot(
             [x0 - 0.012, x0 + 0.012],
             [y0, y0],
-            color="white",
+            color=text_color,
             alpha=0.45,
             lw=0.75,
             zorder=6,
@@ -697,7 +707,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             x0 + 0.020,
             y0,
             f"-{dec_abs}°",
-            color="white",
+            color=text_color,
             fontsize=fontsize_small,
             ha="left",
             va="center",
@@ -750,9 +760,14 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
-    # Make circles touch at center seam while keeping extra margin on outer edges.
-    ax_l.set_xlim(-1.03, 1.02)
-    ax_r.set_xlim(-1.02, 1.03)
+    if format == "thesis":
+        # Panels are stacked, not side by side, so there is no shared seam to keep flush.
+        ax_l.set_xlim(-1.05, 1.05)
+        ax_r.set_xlim(-1.05, 1.05)
+    else:
+        # Make circles touch at center seam while keeping extra margin on outer edges.
+        ax_l.set_xlim(-1.03, 1.02)
+        ax_r.set_xlim(-1.02, 1.03)
 
     for ax in (ax_l, ax_r):
         ax.set_aspect("equal", adjustable="box")
@@ -782,9 +797,9 @@ def plot_galactic_supernovae_polar_hemispheres(
         
         # Prepare detector markers (RA in degrees, Dec in degrees, converted to radians)
         detector_markers = [
-            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), "white"),
-            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), "white"),
-            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), "white"),
+            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), text_color),
+            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), text_color),
+            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), text_color),
         ]
 
     # Use the true galactic center for black hole visualization.
@@ -801,7 +816,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
 
     # Choose red sky-location density: posterior contour map if provided, otherwise legacy blob.
-    # red_bases = ["#dc2626", "#f87171", "#fecaca"]
     red_bases = [GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR]
     red_fill_colors = [
         to_rgba(red_bases[0], alpha=0.40),
@@ -922,13 +936,15 @@ def plot_galactic_supernovae_polar_hemispheres(
             ]
             fig.legend(
                 handles=posterior_legend_handles,
-                loc="center",
-                bbox_to_anchor=(0.5, 0.81),
+                loc="lower left" if format == "thesis" else "center",
+                bbox_to_anchor=(0.02, 0.012) if format == "thesis" else (0.5, 0.81),
+                ncol=1,
                 frameon=False,
                 fontsize=fontsize_constellation,
-                labelcolor="white",
+                labelcolor=text_color,
                 handlelength=1.2,
                 handletextpad=0.5,
+                columnspacing=0.8,
                 borderaxespad=0.0,
                 title="Credible Intervals",
                 title_fontsize=fontsize_main,
@@ -1029,13 +1045,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Red accretion disk (outer ring).
     bh_disk_outer = Circle(
-        (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
+        (true_gc_x, true_gc_y), 0.015, color=text_color, alpha=0.8, zorder=8
     )
     bh_ax.add_patch(bh_disk_outer)
 
-    # Black hole interior (event horizon).
+    # Black hole interior (event horizon) - blends into the background so it reads as a void.
     bh_interior = Circle(
-        (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
+        (true_gc_x, true_gc_y), 0.010, color=background, alpha=0.95, zorder=9
     )
     bh_ax.add_patch(bh_interior)
 
@@ -1126,6 +1142,11 @@ def plot_galactic_supernovae_polar_hemispheres(
                 lw=1.0,
                 zorder=8,
             )
+        elif format == "thesis":
+            # Panels are stacked (not touching), so there is no shared edge to draw
+            # a continuous line across. Skip this cross-hemisphere connector rather
+            # than draw a stray partial segment to nowhere.
+            continue
         else:
             # Stars on different hemispheres: connect through the seam
             # North is on ax_l (left panel), South is on ax_r (right panel)
@@ -1367,7 +1388,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             lx,
             ly + y_offset,
             display_name,
-            color=label_color,
+            color=label_color if background == "black" else "#1e293b",
             fontsize=fontsize_constellation,
             ha="left",
             va="center",
@@ -1382,7 +1403,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             gx - 0.03,
             gy - 0.03,
             "Southern Cross",
-            color="#c4b5fd",
+            color="#c4b5fd" if background == "black" else "#1e293b",
             fontsize=fontsize_constellation,
             ha="right",
             va="top",
@@ -1596,44 +1617,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=8,
         )
 
-    # # Plot famous galactic CCSN remnants with special styling
-    # galactic_ccsn_remnants = [
-    #     ("Crab Nebula", "#ff6b6b", "o", 12),        # Red circle, larger
-    #     ("Cassiopeia A", "#ffa94d", "o", 12),        # Orange circle, larger
-    # ]
-    # 
-    # for remnant_name, color, marker, size in galactic_ccsn_remnants:
-    #     resolved = _resolve_named_star_icrs_deg(remnant_name, rotation_offset_deg=astropy_rotation_offset_deg)
-    #     if resolved is None:
-    #         continue
-    #     rem_ra_deg, rem_dec_deg = resolved
-    #     panel, rx, ry = _project_to_hemisphere(
-    #         np.deg2rad(rem_ra_deg),
-    #         np.deg2rad(rem_dec_deg),
-    #     )
-    #     rem_ax = ax_l if panel == "north" else ax_r
-    #     rem_ax.scatter(
-    #         [rx],
-    #         [ry],
-    #         s=size,
-    #         c=color,
-    #         edgecolors="white",
-    #         linewidths=1.5,
-    #         alpha=0.95,
-    #         zorder=9,
-    #         marker="o",
-    #     )
-    #     # Add subtle label
-    #     rem_ax.text(
-    #         rx + 0.08,
-    #         ry + 0.05,
-    #         remnant_name,
-    #         color=color,
-    #         fontsize=fontsize_constellation,
-    #         alpha=0.7,
-    #         zorder=9,
-    #     )
-
     # Plot a random sample of n supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
         n_sample = min(20000, len(ra_rot_supernovae))
@@ -1774,7 +1757,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 s=200,
                 marker=l_marker,
                 c=det_color,
-                edgecolors="white",
+                edgecolors=text_color,
                 linewidths=1.2,
                 alpha=0.9,
                 zorder=10,
@@ -1786,7 +1769,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 det_x + label_offset_x,
                 det_y + label_offset_y,
                 det_name,
-                color="white",
+                color=text_color,
                 fontsize=fontsize_constellation,
                 ha="left",
                 va="center",
@@ -1800,8 +1783,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         marker="o",
         linestyle="None",
         markersize=11,
-        markerfacecolor="black",
-        markeredgecolor="white",
+        markerfacecolor=background,
+        markeredgecolor=text_color,
         markeredgewidth=1.3,
         label="Galactic Center: Sgr A*",
     )
@@ -1840,20 +1823,34 @@ def plot_galactic_supernovae_polar_hemispheres(
             marker=l_marker_legend,
             linestyle="None",
             markersize=10,
-            markerfacecolor="white",
-            markeredgecolor="white",
+            markerfacecolor=text_color,
+            markeredgecolor=text_color,
             markeredgewidth=1.0,
             label="Detectors",
         )
     
-    ax_r.legend(
-        loc="lower right",
-        bbox_to_anchor=(0.98, -0.08),
-        frameon=False,
-        labelcolor="white",
-        fontsize=fontsize_main,
-        borderaxespad=0.0,
-    )
+    if format == "thesis":
+        ax_r.legend(
+            loc="lower right",
+            bbox_to_anchor=(0.98, 0.012),
+            bbox_transform=fig.transFigure,
+            ncol=1,
+            frameon=False,
+            labelcolor=text_color,
+            fontsize=fontsize_main,
+            handletextpad=0.5,
+            columnspacing=1.0,
+            borderaxespad=0.0,
+        )
+    else:
+        ax_r.legend(
+            loc="lower right",
+            bbox_to_anchor=(0.98, -0.08),
+            frameon=False,
+            labelcolor=text_color,
+            fontsize=fontsize_main,
+            borderaxespad=0.0,
+        )
 
     # Determine format from filename extension
     file_format = None
@@ -1862,7 +1859,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     
     save_kwargs = {
         "dpi": 100 if file_format == 'svg' else 300,
-        "facecolor": "black" if not transparent else None,
+        "facecolor": background if not transparent else None,
         "edgecolor": "none",
         "pad_inches": 0,
         "transparent": transparent,
@@ -1897,4 +1894,3 @@ def plot_galactic_supernovae_polar_hemispheres(
     plt.show()
 
     plt.rcdefaults()
-
