@@ -424,8 +424,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Portrait layout: North stacked on top of South, with a small gap between
         # them for the "Credible Intervals" legend and room at the bottom for the
         # main legend.
-        ax_l = fig.add_axes([0.06, 0.55, 0.90, 0.42], facecolor=fig_facecolor)
-        ax_r = fig.add_axes([0.06, 0.08, 0.90, 0.42], facecolor=fig_facecolor)
+        ax_l = fig.add_axes([0.06, 0.525, 0.9, 0.425], facecolor=fig_facecolor)
+        ax_r = fig.add_axes([0.06, 0.05, 0.9, 0.425], facecolor=fig_facecolor)
     else:
         ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
         ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
