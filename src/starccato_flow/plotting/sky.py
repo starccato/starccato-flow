@@ -119,9 +119,47 @@ def _project_to_hemisphere(
     yy = rr * np.cos(ra_use)
     return "south", float(xx), float(yy)
 
+@lru_cache(maxsize=1)
+def _constellation_stick_segments():
+    filename = os.path.join(SKY_MAP_ROOT, "constellations.txt")
+    hip_ids = _read_constellation_hip_ids(filename)
+    print(len(hip_ids))
 
-from functools import lru_cache
-import numpy as np
+    hip_lookup = _hip_lookup_table()   # <-- was missing before
+
+    north_lines = []
+    south_lines = []
+    with open(filename, "r") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split()
+            n_segments = int(parts[1])
+            hips = list(map(int, parts[2:]))
+
+            for i in range(n_segments):
+                hip1 = hips[2*i]
+                hip2 = hips[2*i + 1]
+
+                if hip1 not in hip_lookup or hip2 not in hip_lookup:
+                    continue  # star not resolved in catalog - skip this segment
+
+                ra1, dec1 = hip_lookup[hip1]
+                ra2, dec2 = hip_lookup[hip2]
+
+                p1 = _project_to_hemisphere(np.deg2rad(ra1), np.deg2rad(dec1))
+                p2 = _project_to_hemisphere(np.deg2rad(ra2), np.deg2rad(dec2))
+
+                if p1[0] != p2[0]:
+                    continue
+
+                segment = np.array([[p1[1], p1[2]], [p2[1], p2[2]]])
+                if p1[0] == "north":
+                    north_lines.append(segment)
+                else:
+                    south_lines.append(segment)
+
+    return north_lines, south_lines
 
 @lru_cache(maxsize=1)
 def _constellation_border_segments():
@@ -241,6 +279,74 @@ def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[s
 
 import cartopy.io.shapereader as shpreader
 from shapely.geometry import LineString, MultiLineString
+
+
+def _read_constellation_hip_ids(filename):
+
+    hip_ids = set()
+
+    with open(filename, "r") as f:
+        for line in f:
+
+            if line.startswith("#") or not line.strip():
+                continue
+
+            parts = line.split()
+
+            n_segments = int(parts[1])
+
+            ids = list(map(int, parts[2:]))
+
+            for i in range(2 * n_segments):
+                hip_ids.add(ids[i])
+
+    return sorted(hip_ids)
+
+@lru_cache(maxsize=1)
+def _hip_lookup_table() -> dict[int, tuple[float, float]]:
+    """Build a {HIP id: (ra_deg, dec_deg)} lookup from the Hipparcos catalog.
+
+    Downloads the full Hipparcos main catalogue (Vizier I/239/hip_main) via
+    astroquery the first time it's needed, caches it to disk under
+    SKY_MAP_ROOT, and reuses that cache on subsequent calls/runs.
+    """
+    cache_path = os.path.join(SKY_MAP_ROOT, "hip_lookup_cache.pkl")
+    if os.path.exists(cache_path):
+        import pickle
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+
+    try:
+        from astroquery.vizier import Vizier
+    except ImportError as exc:
+        raise ImportError(
+            "astroquery is required to resolve constellation stick-figure star "
+            "positions (constellations=True). Install it with "
+            "`pip install astroquery`, or call with constellations=False."
+        ) from exc
+
+    vizier = Vizier(columns=["HIP", "_RAJ2000", "_DEJ2000"])
+    vizier.ROW_LIMIT = -1
+    table = vizier.get_catalogs("I/239/hip_main")[0]
+
+    ra_col = "_RAJ2000" if "_RAJ2000" in table.colnames else "RAJ2000"
+    dec_col = "_DEJ2000" if "_DEJ2000" in table.colnames else "DEJ2000"
+
+    hip_lookup: dict[int, tuple[float, float]] = {}
+    for row in table:
+        try:
+            hip_lookup[int(row["HIP"])] = (float(row[ra_col]), float(row[dec_col]))
+        except (ValueError, TypeError):
+            continue  # masked/missing entries
+
+    try:
+        import pickle
+        with open(cache_path, "wb") as f:
+            pickle.dump(hip_lookup, f)
+    except OSError:
+        pass  # caching is best-effort
+
+    return hip_lookup
 
 
 def plot_galactic_supernovae_polar_hemispheres(
@@ -703,7 +809,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                     capstyle="round"
                 )
             )
-
             ax_r.add_collection(
                 LineCollection(
                     south_lines,
@@ -717,6 +822,31 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
+
+    if galaxy and constellations:
+        north_lines, south_lines = _constellation_stick_segments()
+        ax_l.add_collection(
+            LineCollection(
+                north_lines,
+                colors="#e2e8f0",
+                linewidths=0.5,
+                alpha=1.0,
+                zorder=4,
+                joinstyle="round",
+                capstyle="round"
+            )
+        )
+        ax_r.add_collection(
+            LineCollection(
+                south_lines,
+                colors="#e2e8f0",
+                linewidths=0.5,
+                alpha=1.0,
+                zorder=4,
+                joinstyle="round",
+                capstyle="round"
+            )
+        )
 
     if format == "thesis":
         # Panels are stacked, not side by side, so there is no shared seam to keep flush.
@@ -1521,7 +1651,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # Plot a random sample of n supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
-        n_sample = min(20000, len(ra_rot_supernovae))
+        n_sample = min(n_background_supernovae, len(ra_rot_supernovae))
         sample_indices = np.random.choice(len(ra_rot_supernovae), size=n_sample, replace=False)
         
         sampled_ra = ra_rot_supernovae[sample_indices]
