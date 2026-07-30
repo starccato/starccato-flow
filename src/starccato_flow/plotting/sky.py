@@ -13,8 +13,6 @@ from matplotlib.markers import MarkerStyle
 from matplotlib.patches import Circle, Patch
 from matplotlib.path import Path
 
-from ..utils.defaults_plotting import GENERATED_SIGNAL_COLOUR, SIGNAL_COLOUR
-
 from . import set_plot_style
 
 from ..utils.defaults_plotting import (
@@ -24,6 +22,8 @@ from ..utils.defaults_plotting import (
     SIGNAL_LIM_LOWER,
     CM_TO_INCHES
 )
+
+from ..utils.defaults_general import SKY_MAP_ROOT
 
 try:
     import astropy.units as u
@@ -41,6 +41,7 @@ IMPORTANT_CONSTELLATIONS = {
     "Cru": "Southern Cross",
 }
 
+import os
 
 
 def _apply_astropy_ra_rotation_deg(
@@ -119,132 +120,94 @@ def _project_to_hemisphere(
     return "south", float(xx), float(yy)
 
 
-def _constellation_border_segments(
-    astropy_rotation_offset_deg: float = 0.0,
-    n_ra: int = 720,
-    n_dec: int = 360,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return projected north/south line segments tracing constellation borders."""
-    if not _ASTROPY_AVAILABLE:
-        return np.empty((0, 2, 2)), np.empty((0, 2, 2))
+from functools import lru_cache
+import numpy as np
 
-    # Sample the sky and classify each point by constellation.
-    ra_deg = np.linspace(0.0, 360.0, n_ra, endpoint=False)
-    dec_deg = np.linspace(-89.5, 89.5, n_dec)
-    ra_mesh, dec_mesh = np.meshgrid(ra_deg, dec_deg)
+@lru_cache(maxsize=1)
+def _constellation_border_segments():
 
-    sky = SkyCoord(ra=ra_mesh.ravel() * u.deg, dec=dec_mesh.ravel() * u.deg, frame="icrs")
-    const_names = np.asarray(sky.get_constellation(short_name=True)).reshape(dec_mesh.shape)
+    border_file = os.path.join(SKY_MAP_ROOT, "lines_in_18.txt")
 
-    _, inv = np.unique(const_names, return_inverse=True)
-    const_id = inv.reshape(const_names.shape)
+    north_lines = []
+    south_lines = []
 
-    # Edge masks where neighboring cells differ in constellation id.
-    dh = const_id[:, 1:] != const_id[:, :-1]
-    dv = const_id[1:, :] != const_id[:-1, :]
+    current_border = None
+    current_points = []
 
-    ra_mid_h = 0.5 * (ra_deg[1:] + ra_deg[:-1])
-    dec_mid_v = 0.5 * (dec_deg[1:] + dec_deg[:-1])
+    def flush():
 
-    ra_h = np.broadcast_to(ra_mid_h, dh.shape)[dh]
-    dec_h = np.broadcast_to(dec_deg[:, None], dh.shape)[dh]
-    ra_v = np.broadcast_to(ra_deg, dv.shape)[dv]
-    dec_v = np.broadcast_to(dec_mid_v[:, None], dv.shape)[dv]
+        if len(current_points) < 2:
+            return
 
-    # Segment lengths based on local angular spacing, then projected per midpoint.
-    d_ra = 360.0 / n_ra
-    d_dec = 179.0 / (n_dec - 1)
+        north = []
+        south = []
 
-    ra_h0 = ra_h
-    dec_h0 = dec_h - 0.5 * d_dec
-    ra_h1 = ra_h
-    dec_h1 = dec_h + 0.5 * d_dec
+        for ra_hr, dec_deg in current_points:
 
-    ra_v0 = ra_v - 0.5 * d_ra
-    dec_v0 = dec_v
-    ra_v1 = ra_v + 0.5 * d_ra
-    dec_v1 = dec_v
+            hemi, x, y = _project_to_hemisphere(
+                np.deg2rad(ra_hr * 15.0),
+                np.deg2rad(dec_deg),
+            )
 
-    ra0 = np.concatenate([ra_h0, ra_v0])
-    dec0 = np.concatenate([dec_h0, dec_v0])
-    ra1 = np.concatenate([ra_h1, ra_v1])
-    dec1 = np.concatenate([dec_h1, dec_v1])
+            if hemi == "north":
+                north.append((x, y))
+            else:
+                south.append((x, y))
 
-    # Wrap RA and clamp Dec to valid ranges.
-    ra0 = np.mod(ra0, 360.0)
-    ra1 = np.mod(ra1, 360.0)
-    dec0 = np.clip(dec0, -89.9, 89.9)
-    dec1 = np.clip(dec1, -89.9, 89.9)
+        if len(north) >= 2:
+            north_lines.append(np.asarray(north))
 
-    # Avoid very long wrap-around segments near the RA seam.
-    dra_abs = np.abs(ra1 - ra0)
-    seam_cross = np.minimum(dra_abs, 360.0 - dra_abs) > 5.0
-    keep = ~seam_cross
+        if len(south) >= 2:
+            south_lines.append(np.asarray(south))
 
-    ra0 = ra0[keep]
-    dec0 = dec0[keep]
-    ra1 = ra1[keep]
-    dec1 = dec1[keep]
+    prev_ra = None
+    prev_dec = None
 
-    if ra0.size == 0:
-        return np.empty((0, 2, 2)), np.empty((0, 2, 2))
+    with open(border_file) as f:
 
-    ra0 = _apply_astropy_ra_rotation_deg(ra0, astropy_rotation_offset_deg)
-    ra1 = _apply_astropy_ra_rotation_deg(ra1, astropy_rotation_offset_deg)
+        for line in f:
 
-    ra0_rad = np.deg2rad(ra0)
-    dec0_rad = np.deg2rad(dec0)
-    ra1_rad = np.deg2rad(ra1)
-    dec1_rad = np.deg2rad(dec1)
+            if not line.strip():
+                continue
 
-    ra0_use = ra0_rad
-    ra1_use = ra1_rad
+            ra_hr, dec_deg, border = line.split()
 
-    p0_north = dec0_rad >= 0.0
-    p1_north = dec1_rad >= 0.0
-    north = p0_north & p1_north
-    south = (~p0_north) & (~p1_north)
+            ra_hr = float(ra_hr)
+            dec_deg = float(dec_deg)
 
-    def _proj(ra_use_val: np.ndarray, dec_val: np.ndarray, south_hemi: bool) -> tuple[np.ndarray, np.ndarray]:
-        if south_hemi:
-            rr = (np.pi / 2 + dec_val) / (np.pi / 2)
-            x_val = -rr * np.sin(ra_use_val)
-            y_val = rr * np.cos(ra_use_val)
-        else:
-            rr = (np.pi / 2 - dec_val) / (np.pi / 2)
-            x_val = rr * np.sin(ra_use_val)
-            y_val = rr * np.cos(ra_use_val)
-        return x_val, y_val
+            start_new = False
 
-    x0n, y0n = _proj(ra0_use[north], dec0_rad[north], south_hemi=False)
-    x1n, y1n = _proj(ra1_use[north], dec1_rad[north], south_hemi=False)
-    x0s, y0s = _proj(ra0_use[south], dec0_rad[south], south_hemi=True)
-    x1s, y1s = _proj(ra1_use[south], dec1_rad[south], south_hemi=True)
+            if current_border is None:
+                start_new = True
 
-    seg_n = np.stack([np.column_stack([x0n, y0n]), np.column_stack([x1n, y1n])], axis=1) if x0n.size else np.empty((0, 2, 2))
-    seg_s = np.stack([np.column_stack([x0s, y0s]), np.column_stack([x1s, y1s])], axis=1) if x0s.size else np.empty((0, 2, 2))
+            elif border != current_border:
+                start_new = True
 
-    # Deduplicate overlapping segments so lines do not appear stacked.
-    def _dedupe_segments(seg: np.ndarray) -> np.ndarray:
-        if seg.size == 0:
-            return seg
-        a = np.round(seg[:, 0, :], 5)
-        b = np.round(seg[:, 1, :], 5)
-        flip = (a[:, 0] > b[:, 0]) | ((a[:, 0] == b[:, 0]) & (a[:, 1] > b[:, 1]))
-        p = np.where(flip[:, None], b, a)
-        q = np.where(flip[:, None], a, b)
-        key = np.hstack([p, q])
-        _, idx = np.unique(key, axis=0, return_index=True)
-        return seg[np.sort(idx)]
+            else:
+                # Detect discontinuities within the same border
+                dra = abs(ra_hr - prev_ra)
+                dra = min(dra, 24.0 - dra)      # wrap at 24 h
 
-    seg_n = _dedupe_segments(seg_n)
-    seg_s = _dedupe_segments(seg_s)
+                ddec = abs(dec_deg - prev_dec)
 
-    return seg_n, seg_s
+                if dra > 0.15 or ddec > 1.1:
+                    start_new = True
 
+            if start_new:
 
+                flush()
 
+                current_points = []
+                current_border = border
 
+            current_points.append((ra_hr, dec_deg))
+
+            prev_ra = ra_hr
+            prev_dec = dec_deg
+
+    flush()
+
+    return north_lines, south_lines
 
 @lru_cache(maxsize=8)
 def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[str, tuple[float, float]]:
@@ -289,16 +252,14 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     constellations: bool = True,
-    show_all_constellation_labels: bool = False,
+    galaxy: bool = True,
     background: str = "black",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
-    red_blob_mode: str = "middle_star",
-    example: bool = False,
+    show_detectors: bool = True,
     transparent: bool = False,
     format: str = "poster",
     n_background_supernovae: int = 20000,
-    galaxy: bool = True,
     coastline: bool = False,
     figsize: tuple[float, float] | None = None,
 ) -> None:
@@ -324,7 +285,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         font_name: Specific font name.
         red_blob_mode: Red contour center mode. One of
             ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
-        example: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
+        show_detectors: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
             and highlight the first supernova as the true location.
         format: Layout format - "poster" for the A1 landscape poster (two hemispheres
             side by side), or "thesis" for a 14.5 x 19 cm portrait figure with the
@@ -566,6 +527,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         va="center",
         multialignment="center",
         alpha=0.95,
+        zorder=10
     )
 
     # Add "Southern Sky" label directly above 0h RA (top of hemisphere)
@@ -591,6 +553,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         va="center",
         multialignment="center",
         alpha=0.95,
+        zorder=10
     )
 
     if galaxy:
@@ -728,17 +691,30 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     if show_constellation_borders:
         if _ASTROPY_AVAILABLE:
-            seg_n, seg_s = _constellation_border_segments(
-                astropy_rotation_offset_deg=astropy_rotation_offset_deg
+            north_lines, south_lines = _constellation_border_segments()
+            ax_l.add_collection(
+                LineCollection(
+                    north_lines,
+                    colors="#e2e8f0",
+                    linewidths=0.5,
+                    alpha=1.0,
+                    zorder=4,
+                    joinstyle="round",
+                    capstyle="round"
+                )
             )
-            if seg_n.size:
-                ax_l.add_collection(
-                    LineCollection(seg_n, colors="#e2e8f0", linewidths=0.5, alpha=0.6, zorder=4)
+
+            ax_r.add_collection(
+                LineCollection(
+                    south_lines,
+                    colors="#e2e8f0",
+                    linewidths=0.5,
+                    alpha=1.0,
+                    zorder=4,
+                    joinstyle="round",
+                    capstyle="round"
                 )
-            if seg_s.size:
-                ax_r.add_collection(
-                    LineCollection(seg_s, colors="#e2e8f0", linewidths=0.5, alpha=0.6, zorder=4)
-                )
+            )
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
@@ -759,28 +735,29 @@ def plot_galactic_supernovae_polar_hemispheres(
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-    # Keep Galactic Center fixed to the physical galactic center direction.
-    gc_ra, gc_dec = ccsn.get_galactic_center_direction()
-    
-    # Print galactic center coordinates
-    print(f"\n{'='*60}")
-    print(f"Galactic Center Direction:")
-    print(f"  RA:  {gc_ra:.6f} rad = {np.degrees(gc_ra):.2f}°")
-    print(f"  Dec: {gc_dec:.6f} rad = {np.degrees(gc_dec):.2f}°")
-    print(f"{'='*60}\n")
+    if galaxy:
+        # Keep Galactic Center fixed to the physical galactic center direction.
+        gc_ra, gc_dec = ccsn.get_galactic_center_direction()
+        
+        # Print galactic center coordinates
+        print(f"\n{'='*60}")
+        print(f"Galactic Center Direction:")
+        print(f"  RA:  {gc_ra:.6f} rad = {np.degrees(gc_ra):.2f}°")
+        print(f"  Dec: {gc_dec:.6f} rad = {np.degrees(gc_dec):.2f}°")
+        print(f"{'='*60}\n")
 
     # Handle example mode: use first supernova as true location and prepare detector markers.
     detector_markers = []
-    if example:        
-        # Prepare detector markers (RA in degrees, Dec in degrees, converted to radians)
+    if show_detectors:
         detector_markers = [
             ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), text_color),
             ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), text_color),
             ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), text_color),
         ]
 
-    # Use the true galactic center for black hole visualization.
-    true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)
+    if galaxy:
+        # Use the true galactic center for black hole visualization.
+        true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)
 
     # Optional true event location marker (independent of Galactic Center).
     true_loc_panel = None
@@ -792,15 +769,14 @@ def plot_galactic_supernovae_polar_hemispheres(
             float(true_dec_override),
         )
 
-    # Choose red sky-location density: posterior contour map if provided, otherwise legacy blob.
-    red_bases = [GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR]
-    red_fill_colors = [
-        to_rgba(red_bases[0], alpha=0.40),
-        to_rgba(red_bases[1], alpha=0.62),
-        to_rgba(red_bases[2], alpha=0.88),
-    ]
-
     if use_posterior_samples:
+        # Choose red sky-location density: posterior contour map if provided, otherwise legacy blob.
+        red_bases = [GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR]
+        red_fill_colors = [
+            to_rgba(red_bases[0], alpha=0.40),
+            to_rgba(red_bases[1], alpha=0.62),
+            to_rgba(red_bases[2], alpha=0.88),
+        ]
         ra_rot_posterior = ra_posterior
         post_north = dec_posterior >= 0
         post_south = dec_posterior <= 0
@@ -966,32 +942,34 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
 
-    # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
-    betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg(
-        rotation_offset_deg=astropy_rotation_offset_deg
-    )
-    if np.isfinite(betelgeuse_ra_deg) and np.isfinite(betelgeuse_dec_deg):
-        betel_panel, betel_x, betel_y = _project_to_hemisphere(
-            np.deg2rad(betelgeuse_ra_deg),
-            np.deg2rad(betelgeuse_dec_deg),
+    if constellations:
+        # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
+        betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg(
+            rotation_offset_deg=astropy_rotation_offset_deg
         )
-    else:
-        betel_panel, betel_x, betel_y = None, np.nan, np.nan
+        if np.isfinite(betelgeuse_ra_deg) and np.isfinite(betelgeuse_dec_deg):
+            betel_panel, betel_x, betel_y = _project_to_hemisphere(
+                np.deg2rad(betelgeuse_ra_deg),
+                np.deg2rad(betelgeuse_dec_deg),
+            )
+        else:
+            betel_panel, betel_x, betel_y = None, np.nan, np.nan
 
-    # Black hole visualization at the true galactic center.
-    bh_ax = ax_l if true_gc_panel == "north" else ax_r
+    if galaxy:
+        # Black hole visualization at the true galactic center.
+        bh_ax = ax_l if true_gc_panel == "north" else ax_r
 
-    # accretion disk (outer ring).
-    bh_disk_outer = Circle(
-        (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
-    )
-    bh_ax.add_patch(bh_disk_outer)
+        # accretion disk (outer ring).
+        bh_disk_outer = Circle(
+            (true_gc_x, true_gc_y), 0.015, color="white", alpha=0.8, zorder=8
+        )
+        bh_ax.add_patch(bh_disk_outer)
 
-    # Black hole interior (event horizon) - blends into the background so it reads as a void.
-    bh_interior = Circle(
-        (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
-    )
-    bh_ax.add_patch(bh_interior)
+        # Black hole interior (event horizon) - blends into the background so it reads as a void.
+        bh_interior = Circle(
+            (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
+        )
+        bh_ax.add_patch(bh_interior)
 
     # Plot true event sky location as an X marker when provided.
     if true_loc_panel is not None:
@@ -1006,554 +984,540 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=10,
         )
 
-    if betel_panel is not None:
-        betel_ax = ax_l if betel_panel == "north" else ax_r
-        betel_ax.scatter(
-            [betel_x],
-            [betel_y],
-            s=52,
-            c="#fbbf24",
-            edgecolors="#78350f",
-            linewidths=0.9,
-            zorder=8,
-        )
-        betel_ax.text(
-            betel_x - 0.035,
-            betel_y + 0.02,
+    if constellations and betel_panel is not None:
+            betel_ax = ax_l if betel_panel == "north" else ax_r
+            betel_ax.scatter(
+                [betel_x],
+                [betel_y],
+                s=52,
+                c="#fbbf24",
+                edgecolors="#78350f",
+                linewidths=0.9,
+                zorder=8,
+            )
+            betel_ax.text(
+                betel_x - 0.035,
+                betel_y + 0.02,
+                "Betelgeuse",
+                color="#fde68a" if background == "black" else "#78350f",
+                fontsize=fontsize_constellation,
+                ha="right",
+                va="center",
+                zorder=8,
+            )
+
+    if constellations:
+        # Orion stick figure using Astropy-resolved named stars only.
+        orion_star_names = [
             "Betelgeuse",
-            color="#fde68a" if background == "black" else "#78350f",
-            fontsize=fontsize_constellation,
-            ha="right",
-            va="center",
-            zorder=8,
-        )
+            "Bellatrix",
+            "Meissa",
+            "Mintaka",
+            "Alnilam",
+            "Alnitak",
+            "Saiph",
+            "Rigel",
+        ]
+        orion_edges = [
+            ("Betelgeuse", "Bellatrix"),
+            ("Betelgeuse", "Meissa"),
+            ("Bellatrix", "Meissa"),
+            ("Bellatrix", "Mintaka"),
+            ("Betelgeuse", "Alnitak"),
+            ("Mintaka", "Alnilam"),
+            ("Alnilam", "Alnitak"),
+            ("Alnitak", "Saiph"),
+            ("Mintaka", "Rigel"),
+            ("Saiph", "Rigel"),
+        ]
 
-    # Orion stick figure using Astropy-resolved named stars only.
-    orion_star_names = [
-        "Betelgeuse",
-        "Bellatrix",
-        "Meissa",
-        "Mintaka",
-        "Alnilam",
-        "Alnitak",
-        "Saiph",
-        "Rigel",
-    ]
-    orion_edges = [
-        ("Betelgeuse", "Bellatrix"),
-        ("Betelgeuse", "Meissa"),
-        ("Bellatrix", "Meissa"),
-        ("Bellatrix", "Mintaka"),
-        ("Betelgeuse", "Alnitak"),
-        ("Mintaka", "Alnilam"),
-        ("Alnilam", "Alnitak"),
-        ("Alnitak", "Saiph"),
-        ("Mintaka", "Rigel"),
-        ("Saiph", "Rigel"),
-    ]
+        orion_proj: dict[str, tuple[str, float, float]] = {}
+        for star_name in orion_star_names:
+            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
+            if resolved is None:
+                continue
+            star_ra_deg, star_dec_deg = resolved
+            orion_proj[star_name] = _project_to_hemisphere(
+                np.deg2rad(star_ra_deg),
+                np.deg2rad(star_dec_deg),
+            )
 
-    orion_proj: dict[str, tuple[str, float, float]] = {}
-    for star_name in orion_star_names:
-        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-        if resolved is None:
-            continue
-        star_ra_deg, star_dec_deg = resolved
-        orion_proj[star_name] = _project_to_hemisphere(
-            np.deg2rad(star_ra_deg),
-            np.deg2rad(star_dec_deg),
-        )
+        for a_name, b_name in orion_edges:
+            if a_name not in orion_proj or b_name not in orion_proj:
+                continue
+            a_panel, axx, ayy = orion_proj[a_name]
+            b_panel, bxx, byy = orion_proj[b_name]
+            
+            if a_panel == b_panel:
+                # Both stars on same hemisphere: simple connection
+                orion_ax = ax_l if a_panel == "north" else ax_r
+                orion_ax.plot(
+                    [axx, bxx],
+                    [ayy, byy],
+                    color="#e5e7eb",
+                    alpha=0.85,
+                    lw=1.0,
+                    zorder=8,
+                )
+            elif format == "thesis":
+                # Panels are stacked (not touching), so there is no shared edge to draw
+                # a continuous line across. Skip this cross-hemisphere connector rather
+                # than draw a stray partial segment to nowhere.
+                continue
+            else:
+                # Stars on different hemispheres: connect through the seam
+                # North is on ax_l (left panel), South is on ax_r (right panel)
+                # Seam at x=1.00 on left (north), x=-1.00 on right (south)
+                seam_y = 0.5 * (ayy + byy)
+                
+                # Draw on north hemisphere from star to right edge seam
+                if a_panel == "north":
+                    ax_l.plot(
+                        [axx, 1.00],
+                        [ayy, seam_y],
+                        color="#e5e7eb",
+                        alpha=0.85,
+                        lw=1.0,
+                        zorder=8,
+                    )
+                    # Draw on south hemisphere from left edge seam to star
+                    ax_r.plot(
+                        [-1.00, bxx],
+                        [seam_y, byy],
+                        color="#e5e7eb",
+                        alpha=0.85,
+                        lw=1.0,
+                        zorder=8,
+                    )
+                else:
+                    # A is south, B is north: reverse
+                    ax_r.plot(
+                        [axx, -1.00],
+                        [ayy, seam_y],
+                        color="#e5e7eb",
+                        alpha=0.85,
+                        lw=1.0,
+                        zorder=8,
+                    )
+                    ax_l.plot(
+                        [1.00, bxx],
+                        [seam_y, byy],
+                        color="#e5e7eb",
+                        alpha=0.85,
+                        lw=1.0,
+                        zorder=8,
+                    )
 
-    for a_name, b_name in orion_edges:
-        if a_name not in orion_proj or b_name not in orion_proj:
-            continue
-        a_panel, axx, ayy = orion_proj[a_name]
-        b_panel, bxx, byy = orion_proj[b_name]
-        
-        if a_panel == b_panel:
-            # Both stars on same hemisphere: simple connection
-            orion_ax = ax_l if a_panel == "north" else ax_r
-            orion_ax.plot(
+        for star_name, (panel, sx, sy) in orion_proj.items():
+            orion_ax = ax_l if panel == "north" else ax_r
+            orion_ax.scatter(
+                [sx],
+                [sy],
+                s=9,
+                c="#f8fafc",
+                edgecolors="none",
+                alpha=0.95,
+                zorder=9,
+            )
+
+        # Taurus stick figure (head + horns) using Astropy-resolved named stars.
+        taurus_star_names = [
+            "Aldebaran",
+            "Elnath",
+            "Zeta Tauri",
+            "Gamma Tauri",
+            "Delta Tauri",
+            "Epsilon Tauri",
+        ]
+        taurus_edges = [
+            ("Aldebaran", "Epsilon Tauri"),
+            ("Epsilon Tauri", "Gamma Tauri"),
+            ("Gamma Tauri", "Delta Tauri"),
+            ("Aldebaran", "Delta Tauri"),
+            ("Gamma Tauri", "Elnath"),
+            ("Delta Tauri", "Zeta Tauri"),
+        ]
+
+        taurus_proj: dict[str, tuple[str, float, float]] = {}
+        for star_name in taurus_star_names:
+            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
+            if resolved is None:
+                continue
+            star_ra_deg, star_dec_deg = resolved
+            taurus_proj[star_name] = _project_to_hemisphere(
+                np.deg2rad(star_ra_deg),
+                np.deg2rad(star_dec_deg),
+            )
+
+        for a_name, b_name in taurus_edges:
+            if a_name not in taurus_proj or b_name not in taurus_proj:
+                continue
+            a_panel, axx, ayy = taurus_proj[a_name]
+            b_panel, bxx, byy = taurus_proj[b_name]
+            if a_panel != b_panel:
+                continue
+            taur_ax = ax_l if a_panel == "north" else ax_r
+            taur_ax.plot(
                 [axx, bxx],
                 [ayy, byy],
-                color="#e5e7eb",
-                alpha=0.85,
-                lw=1.0,
+                color="#fca5a5",
+                alpha=0.9,
+                lw=1.05,
                 zorder=8,
             )
-        elif format == "thesis":
-            # Panels are stacked (not touching), so there is no shared edge to draw
-            # a continuous line across. Skip this cross-hemisphere connector rather
-            # than draw a stray partial segment to nowhere.
-            continue
-        else:
-            # Stars on different hemispheres: connect through the seam
-            # North is on ax_l (left panel), South is on ax_r (right panel)
-            # Seam at x=1.00 on left (north), x=-1.00 on right (south)
-            seam_y = 0.5 * (ayy + byy)
-            
-            # Draw on north hemisphere from star to right edge seam
-            if a_panel == "north":
-                ax_l.plot(
-                    [axx, 1.00],
-                    [ayy, seam_y],
-                    color="#e5e7eb",
-                    alpha=0.85,
-                    lw=1.0,
-                    zorder=8,
-                )
-                # Draw on south hemisphere from left edge seam to star
-                ax_r.plot(
-                    [-1.00, bxx],
-                    [seam_y, byy],
-                    color="#e5e7eb",
-                    alpha=0.85,
-                    lw=1.0,
-                    zorder=8,
-                )
-            else:
-                # A is south, B is north: reverse
-                ax_r.plot(
-                    [axx, -1.00],
-                    [ayy, seam_y],
-                    color="#e5e7eb",
-                    alpha=0.85,
-                    lw=1.0,
-                    zorder=8,
-                )
-                ax_l.plot(
-                    [1.00, bxx],
-                    [seam_y, byy],
-                    color="#e5e7eb",
-                    alpha=0.85,
-                    lw=1.0,
-                    zorder=8,
-                )
 
-    for star_name, (panel, sx, sy) in orion_proj.items():
-        orion_ax = ax_l if panel == "north" else ax_r
-        orion_ax.scatter(
-            [sx],
-            [sy],
-            s=9,
-            c="#f8fafc",
-            edgecolors="none",
-            alpha=0.95,
-            zorder=9,
-        )
-
-    # Taurus stick figure (head + horns) using Astropy-resolved named stars.
-    taurus_star_names = [
-        "Aldebaran",
-        "Elnath",
-        "Zeta Tauri",
-        "Gamma Tauri",
-        "Delta Tauri",
-        "Epsilon Tauri",
-    ]
-    taurus_edges = [
-        ("Aldebaran", "Epsilon Tauri"),
-        ("Epsilon Tauri", "Gamma Tauri"),
-        ("Gamma Tauri", "Delta Tauri"),
-        ("Aldebaran", "Delta Tauri"),
-        ("Gamma Tauri", "Elnath"),
-        ("Delta Tauri", "Zeta Tauri"),
-    ]
-
-    taurus_proj: dict[str, tuple[str, float, float]] = {}
-    for star_name in taurus_star_names:
-        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-        if resolved is None:
-            continue
-        star_ra_deg, star_dec_deg = resolved
-        taurus_proj[star_name] = _project_to_hemisphere(
-            np.deg2rad(star_ra_deg),
-            np.deg2rad(star_dec_deg),
-        )
-
-    for a_name, b_name in taurus_edges:
-        if a_name not in taurus_proj or b_name not in taurus_proj:
-            continue
-        a_panel, axx, ayy = taurus_proj[a_name]
-        b_panel, bxx, byy = taurus_proj[b_name]
-        if a_panel != b_panel:
-            continue
-        taur_ax = ax_l if a_panel == "north" else ax_r
-        taur_ax.plot(
-            [axx, bxx],
-            [ayy, byy],
-            color="#fca5a5",
-            alpha=0.9,
-            lw=1.05,
-            zorder=8,
-        )
-
-    for star_name, (panel, sx, sy) in taurus_proj.items():
-        taur_ax = ax_l if panel == "north" else ax_r
-        taur_ax.scatter(
-            [sx],
-            [sy],
-            s=16,
-            c="#fecaca",
-            edgecolors="none",
-            alpha=0.95,
-            zorder=9,
-        )
-
-    if "Aldebaran" in taurus_proj:
-        panel, tx, ty = taurus_proj["Aldebaran"]
-        taur_lbl_ax = ax_l if panel == "north" else ax_r
-        # taur_lbl_ax.text(
-        #     tx + 0.03,
-        #     ty + 0.016,
-        #     "Taurus",
-        #     color="#fecaca",
-        #     fontsize=fontsize_tiny,
-        #     ha="left",
-        #     va="center",
-        #     zorder=10,
-        # )
-
-    # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
-    scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
-    scx_edges = [
-        ("Gacrux", "Acrux"),
-        ("Mimosa", "Imai"),
-        ("Acrux", "Mimosa"),
-        ("Acrux", "Imai"),
-        ("Gacrux", "Mimosa"),
-    ]
-    pointer_names = ["Alpha Centauri", "Beta Centauri"]
-    extra_names = ["Achernar", "Pleiades", "Antares"]
-
-    south_proj: dict[str, tuple[str, float, float]] = {}
-    for star_name in scx_star_names + pointer_names + extra_names:
-        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-        if resolved is None:
-            continue
-        star_ra_deg, star_dec_deg = resolved
-        south_proj[star_name] = _project_to_hemisphere(
-            np.deg2rad(star_ra_deg),
-            np.deg2rad(star_dec_deg),
-        )
-
-    for a_name, b_name in scx_edges:
-        if a_name not in south_proj or b_name not in south_proj:
-            continue
-        a_panel, axx, ayy = south_proj[a_name]
-        b_panel, bxx, byy = south_proj[b_name]
-        if a_panel != b_panel:
-            continue
-        scx_ax = ax_l if a_panel == "north" else ax_r
-        scx_ax.plot(
-            [axx, bxx],
-            [ayy, byy],
-            color="#86efac",
-            alpha=0.92,
-            lw=1.05,
-            zorder=8,
-        )
-
-    if "Alpha Centauri" in south_proj and "Beta Centauri" in south_proj:
-        pa_panel, pax, pay = south_proj["Alpha Centauri"]
-        pb_panel, pbx, pby = south_proj["Beta Centauri"]
-        if pa_panel == pb_panel:
-            ptr_ax = ax_l if pa_panel == "north" else ax_r
-            ptr_ax.plot(
-                [pax, pbx],
-                [pay, pby],
-                color="#fcd34d",
+        for star_name, (panel, sx, sy) in taurus_proj.items():
+            taur_ax = ax_l if panel == "north" else ax_r
+            taur_ax.scatter(
+                [sx],
+                [sy],
+                s=16,
+                c="#fecaca",
+                edgecolors="none",
                 alpha=0.95,
-                lw=1.2,
+                zorder=9,
+            )
+
+        if "Aldebaran" in taurus_proj:
+            panel, tx, ty = taurus_proj["Aldebaran"]
+            taur_lbl_ax = ax_l if panel == "north" else ax_r
+            # taur_lbl_ax.text(
+            #     tx + 0.03,
+            #     ty + 0.016,
+            #     "Taurus",
+            #     color="#fecaca",
+            #     fontsize=fontsize_tiny,
+            #     ha="left",
+            #     va="center",
+            #     zorder=10,
+            # )
+
+        # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
+        scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
+        scx_edges = [
+            ("Gacrux", "Acrux"),
+            ("Mimosa", "Imai"),
+            ("Acrux", "Mimosa"),
+            ("Acrux", "Imai"),
+            ("Gacrux", "Mimosa"),
+        ]
+        pointer_names = ["Alpha Centauri", "Beta Centauri"]
+        extra_names = ["Achernar", "Pleiades", "Antares"]
+
+        south_proj: dict[str, tuple[str, float, float]] = {}
+        for star_name in scx_star_names + pointer_names + extra_names:
+            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
+            if resolved is None:
+                continue
+            star_ra_deg, star_dec_deg = resolved
+            south_proj[star_name] = _project_to_hemisphere(
+                np.deg2rad(star_ra_deg),
+                np.deg2rad(star_dec_deg),
+            )
+
+        for a_name, b_name in scx_edges:
+            if a_name not in south_proj or b_name not in south_proj:
+                continue
+            a_panel, axx, ayy = south_proj[a_name]
+            b_panel, bxx, byy = south_proj[b_name]
+            if a_panel != b_panel:
+                continue
+            scx_ax = ax_l if a_panel == "north" else ax_r
+            scx_ax.plot(
+                [axx, bxx],
+                [ayy, byy],
+                color="#86efac",
+                alpha=0.92,
+                lw=1.05,
                 zorder=8,
             )
 
-            # not sure why a dashed line is important?
-            # if "Acrux" in south_proj and south_proj["Acrux"][0] == pa_panel:
-            #     _, acx, acy = south_proj["Acrux"]
-            #     midx = 0.5 * (pax + pbx)
-            #     midy = 0.5 * (pay + pby)
-                # ptr_ax.plot(
-                #     [midx, acx],
-                #     [midy, acy],
-                #     color="#fbbf24",
-                #     alpha=0.75,
-                #     lw=0.95,
-                #     ls="--",
-                #     zorder=7,
-                # )
+        if "Alpha Centauri" in south_proj and "Beta Centauri" in south_proj:
+            pa_panel, pax, pay = south_proj["Alpha Centauri"]
+            pb_panel, pbx, pby = south_proj["Beta Centauri"]
+            if pa_panel == pb_panel:
+                ptr_ax = ax_l if pa_panel == "north" else ax_r
+                ptr_ax.plot(
+                    [pax, pbx],
+                    [pay, pby],
+                    color="#fcd34d",
+                    alpha=0.95,
+                    lw=1.2,
+                    zorder=8,
+                )
 
-    marker_styles = {
-        "Acrux": ("#c4b5fd", 20),
-        "Mimosa": ("#c4b5fd", 18),
-        "Gacrux": ("#c4b5fd", 18),
-        "Imai": ("#c4b5fd", 16),
-        "Epsilon Crucis": ("#c4b5fd", 14),
-        "Alpha Centauri": ("#fde68a", 20),
-        "Beta Centauri": ("#fde68a", 20),
-        "Achernar": ("#a5f3fc", 24),
-        "Pleiades": ("#c4b5fd", 24),
-        "Antares": ("#fca5a5", 24),
-    }
-    for star_name, (panel, sx, sy) in south_proj.items():
-        color, size = marker_styles.get(star_name, ("#f8fafc", 14))
-        mark_ax = ax_l if panel == "north" else ax_r
-        mark_ax.scatter(
-            [sx],
-            [sy],
-            s=size,
-            c=color,
-            edgecolors="none",
-            alpha=0.96,
-            zorder=9,
-        )
+        marker_styles = {
+            "Acrux": ("#c4b5fd", 20),
+            "Mimosa": ("#c4b5fd", 18),
+            "Gacrux": ("#c4b5fd", 18),
+            "Imai": ("#c4b5fd", 16),
+            "Epsilon Crucis": ("#c4b5fd", 14),
+            "Alpha Centauri": ("#fde68a", 20),
+            "Beta Centauri": ("#fde68a", 20),
+            "Achernar": ("#a5f3fc", 24),
+            "Pleiades": ("#c4b5fd", 24),
+            "Antares": ("#fca5a5", 24),
+        }
+        for star_name, (panel, sx, sy) in south_proj.items():
+            color, size = marker_styles.get(star_name, ("#f8fafc", 14))
+            mark_ax = ax_l if panel == "north" else ax_r
+            mark_ax.scatter(
+                [sx],
+                [sy],
+                s=size,
+                c=color,
+                edgecolors="none",
+                alpha=0.96,
+                zorder=9,
+            )
 
-    display_name_overrides = {
-        "Pleiades": "Matariki",
-        "Acrux": "The Pointers",
-    }
-    for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5")):
-        if label_name not in south_proj:
-            continue
-        panel, lx, ly = south_proj[label_name]
-        lbl_ax = ax_l if panel == "north" else ax_r
-        y_offset = 0.018
-        if label_name == "Achernar":
-            y_offset = 0.030
-        display_name = display_name_overrides.get(label_name, label_name)
-        if label_name == "Acrux":
-            y_offset = 0.070
-        lbl_ax.text(
-            lx,
-            ly + y_offset,
-            display_name,
-            color=label_color if background == "black" else "#1e293b",
-            fontsize=fontsize_constellation,
-            ha="left",
-            va="center",
-            zorder=10,
-        )
+        display_name_overrides = {
+            "Pleiades": "Matariki",
+            "Acrux": "The Pointers",
+            }
+        for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5")):
+            if label_name not in south_proj:
+                continue
+            panel, lx, ly = south_proj[label_name]
+            lbl_ax = ax_l if panel == "north" else ax_r
+            y_offset = 0.018
+            if label_name == "Achernar":
+                y_offset = 0.030
+            display_name = display_name_overrides.get(label_name, label_name)
+            if label_name == "Acrux":
+                y_offset = 0.070
+            lbl_ax.text(
+                lx,
+                ly + y_offset,
+                display_name,
+                color=label_color if background == "black" else "#1e293b",
+                fontsize=fontsize_constellation,
+                ha="left",
+                va="center",
+                zorder=10,
+            )
 
-    # Add Southern Cross label
-    if "Gacrux" in south_proj:
-        panel, gx, gy = south_proj["Gacrux"]
-        scx_label_ax = ax_l if panel == "north" else ax_r
-        scx_label_ax.text(
-            gx - 0.03,
-            gy - 0.03,
-            "Southern Cross",
-            color="#c4b5fd" if background == "black" else "#1e293b",
-            fontsize=fontsize_constellation,
-            ha="right",
-            va="top",
-            zorder=10,
-        )
+        # Add Southern Cross label
+        if "Gacrux" in south_proj:
+            panel, gx, gy = south_proj["Gacrux"]
+            scx_label_ax = ax_l if panel == "north" else ax_r
+            scx_label_ax.text(
+                gx - 0.03,
+                gy - 0.03,
+                "Southern Cross",
+                color="#c4b5fd" if background == "black" else "#1e293b",
+                fontsize=fontsize_constellation,
+                ha="right",
+                va="top",
+                zorder=10,
+            )
 
-    # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
-    # Brightest star from each of the 88 IAU constellations.
-    extra_visible_star_names = [
-        # Andromeda (3 main stars)
-        "Alpheratz",        "Mirach",           "Almach",
-        # Antlia (2 main stars)
-        "Alpha Antliae",    "Epsilon Antliae",
-        # Apus (2 main stars)
-        "Alpha Apodis",     "Beta Apodis",
-        # Aquarius (3 main stars)
-        "Sadalmelik",       "Sadachbia",        "Sadalsuud",
-        # Aquila (4 main stars)
-        "Altair",           "Alshain",          "Tarazed",           "Beta Aquilae",
-        # Ara (3 main stars)
-        "Alpha Arae",       "Beta Arae",        "Gamma Arae",
-        # Aries (3 main stars)
-        "Hamal",            "Sheratan",         "Mesarthim",
-        # Auriga (4 main stars)
-        "Capella",          "Theta Aurigae",    "Iota Aurigae",      "Beta Aurigae",
-        # Boötes (5 main stars)
-        "Arcturus",         "Muphrid",          "Izar",              "Pulcherrima",      "Seginus",
-        # Caelum (2 main stars)
-        "Alpha Caeli",      "Gamma Caeli",
-        # Camelopardalis (2 main stars)
-        "Beta Camelopardalis",  "Alpha Camelopardalis",
-        # Cancer (3 main stars)
-        "Altarf",           "Acubens",          "Tzelakot",
-        # Canes Venatici (3 main stars)
-        "Cor Caroli",       "Chara",            "Beta Canum Venaticorum",
-        # Canis Major (4 main stars)
-        "Sirius",           "Canopus",          "Adara",             "Wezen",
-        # Canis Minor (2 main stars)
-        "Procyon",          "Gomeisa",
-        # Capella (2 main stars)
-        "Deneb Algedi",     "Maaz",
-        # Carina (3 main stars)
-        "Canopus",          "Avior",            "Miaplacidus",
-        # Cassiopeia (5 main stars - the W pattern)
-        "Schedar",          "Caph",             "Gamma Cassiopeiae", "Ruchbah",          "Segin",
-        # Centaurus (3 main stars)
-        "Rigil Kentaurus",  "Hadar",            "Muhlifain",
-        # Cepheus (3 main stars)
-        "Alderamin",        "Alfirk",           "Errai",
-        # Cetus (3 main stars)
-        "Menkar",           "Diphda",           "Beta Ceti",
-        # Chamaeleon (2 main stars)
-        "Alpha Chamaeleontis",  "Gamma Chamaeleontis",
-        # Circinus (2 main stars)
-        "Alpha Circini",    "Beta Circini",
-        # Columba (2 main stars)
-        "Phact",            "Wazn",
-        # Coma Berenices (2 main stars)
-        "Diadem",           "Beta Comae Berenices",
-        # Corona Australis (3 main stars)
-        "Alpha Coronae Australis",  "Beta Coronae Australis",  "Gamma Coronae Australis",
-        # Corona Borealis (4 main stars - the arc)
-        "Alphecca",         "Nusakan",          "Theta Coronae Borealis",  "Gamma Coronae Borealis",
-        # Corvus (4 main stars - the diamond)
-        "Gienah",           "Brachium",         "Kraz",              "Algorab",
-        # Crater (3 main stars)
-        "Delta Crateris",   "Alkes",            "Labrum",
-        # Crux (4 main stars - Southern Cross)
-        "Acrux",            "Gacrux",           "Iota Crucis",       "Delta Crucis",
-        # Cygnus (5 main stars - Northern Cross)
-        "Deneb",            "Sadr",             "Delta Cygni",       "Albireo",          "Epsilon Cygni",
-        # Delphinus (4 main stars)
-        "Sualocin",         "Rotanev",          "Gamma Delphini",    "Delta Delphini",
-        # Dorado (2 main stars)
-        "Alpha Doradus",    "Beta Doradus",
-        # Draco (3 main stars)
-        "Eltanin",          "Rastaban",         "Altais",
-        # Equuleus (2 main stars)
-        "Kitalpha",         "Gamma Equulei",
-        # Eridanus (4 main stars)
-        "Achernar",         "Cursa",            "Zanim",             "Azha",
-        # Fornax (2 main stars)
-        "Fornacis",         "Alpha Fornacis",
-        # Gemini (5 main stars - Castor & Pollux twins)
-        "Castor",           "Pollux",           "Alhena",            "Wasat",            "Kappa Geminorum",
-        # Grus (3 main stars)
-        "Alnair",           "Beta Gruis",       "Gamma Gruis",
-        # Hercules (4 main stars)
-        "Rasalgethi",       "Kornephoros",      "Sarin",             "Tau Herculis",
-        # Horologium (2 main stars)
-        "Alpha Horologi",   "Beta Horologi",
-        # Hydra (4 main stars - largest constellation)
-        "Alphard",          "Gamma Hydrae",     "Pi Hydrae",         "Epsilon Hydrae",
-        # Hydrus (3 main stars)
-        "Alpha Hydri",      "Beta Hydri",       "Gamma Hydri",
-        # Indus (2 main stars)
-        "Alpha Indi",       "Beta Indi",
-        # Lacerta (2 main stars)
-        "Alpha Lacertae",   "Beta Lacertae",
-        # Leo (5 main stars - the sickle)
-        "Regulus",          "Denebola",         "Algieba",           "Zosma",            "Chertan",
-        # Leo Minor (2 main stars)
-        "Praecipua",        "Beta Leonis Minoris",
-        # Lepus (3 main stars)
-        "Arneb",            "Nihal",            "Gamma Leporis",
-        # Libra (4 main stars)
-        "Zubeneschamali",   "Zubenelgenubi",    "Brachium",          "Zuben Elakrab",
-        # Lupus (3 main stars)
-        "Alpha Lupi",       "Beta Lupi",        "Gamma Lupi",
-        # Lynx (2 main stars)
-        "Alsciaukat",       "Alpha Lynxis",
-        # Lyra (5 main stars)
-        "Vega",             "Epsilon Lyrae",    "Zeta Lyrae",        "Delta Lyrae",      "Gamma Lyrae",
-        # Mensa (2 main stars)
-        "Alpha Mensae",     "Beta Mensae",
-        # Microscopium (2 main stars)
-        "Epsilon Microscopii",  "Alpha Microscopii",
-        # Monoceros (3 main stars)
-        "Alpha Monocerotis",    "Beta Monocerotis",  "Gamma Monocerotis",
-        # Musca (3 main stars)
-        "Alpha Muscae",     "Beta Muscae",      "Gamma Muscae",
-        # Norma (3 main stars)
-        "Gamma Normae",     "Epsilon Normae",   "Alpha Normae",
-        # Octans (2 main stars)
-        "Polaris Australis",    "Beta Octantis",
-        # Ophiuchus (5 main stars)
-        "Rasalhague",       "Sabik",            "Cebalrai",          "Yedprior",         "Yed Posterior",
-        # Orion (6 main stars - one of the most recognizable)
-        "Rigel",            "Betelgeuse",       "Bellatrix",         "Saiph",            "Alnitak",       "Alnilam",
-        # Pavo (3 main stars)
-        "Peacock",          "Delta Pavonis",    "Gamma Pavonis",
-        # Pegasus (4 main stars - part of the Great Square)
-        "Enif",             "Scheat",           "Algenib",           "Markab",
-        # Perseus (4 main stars)
-        "Mirfak",           "Algenib",          "Atik",              "Epsilon Persei",
-        # Phoenix (3 main stars)
-        "Ankaa",            "Chert",            "Psi Phoenicis",
-        # Pictor (2 main stars)
-        "Alpha Pictoris",   "Beta Pictoris",
-        # Pisces (3 main stars)
-        "Alrescha",         "Fum al Samakah",   "Omega Piscium",
-        # Piscis Austrinus (2 main stars)
-        "Fomalhaut",        "Delta Piscis Austrini",
-        # Puppis (3 main stars)
-        "Naos",             "Pi Puppis",        "Zeta Puppis",
-        # Pyxis (2 main stars)
-        "Alpha Pyxidis",    "Beta Pyxidis",
-        # Reticulum (2 main stars)
-        "Alpha Reticuli",   "Beta Reticuli",
-        # Sagitta (3 main stars - small but distinct)
-        "Sham",             "Almach",           "Delta Sagittae",
-        # Sagittarius (4 main stars - the teapot asterism)
-        "Kaus Australis",   "Kaus Media",       "Kaus Borealis",     "Ascella",
-        # Scorpius (4 main stars - scorpion tail curve)
-        "Antares",          "Shaula",           "Lesath",            "Acrab",
-        # Sculptor (2 main stars)
-        "Alpha Sculptoris", "Beta Sculptoris",
-        # Scutum (2 main stars)
-        "Alpha Scuti",      "Delta Scuti",
-        # Serpens (3 main stars)
-        "Unukalhai",        "Eta Serpentis",    "Gamma Serpentis",
-        # Sextans (2 main stars)
-        "Alpha Sextantis",  "Beta Sextantis",
-        # Taurus (5 main stars - Pleiades visible)
-        "Aldebaran",        "Nath",             "Alcyone",           "Electra",          "Maia",
-        # Telescopium (2 main stars)
-        "Alpha Telescopii", "Zeta Telescopii",
-        # Triangulum (3 main stars)
-        "Mothallah",        "Dulcamara",        "Caph",
-        # Triangulum Australe (3 main stars)
-        "Atria",            "Beta Trianguli Australis",  "Gamma Trianguli Australis",
-        # Tucana (3 main stars)
-        "Alpha Tucanae",    "Beta Tucanae",     "Gamma Tucanae",
-        # Ursa Major (7 main stars - Big Dipper)
-        "Dubhe",            "Merak",            "Phecda",            "Megrez",           "Alioth",       "Mizar",        "Alkaid",
-        # Ursa Minor (5 main stars - Little Bear, Polaris)
-        "Polaris",          "Kochab",           "Pherkad",           "Yildun",           "Epsilon Ursae Minoris",
-        # Vela (3 main stars)
-        "Gamma Velorum",    "Lambda Velorum",   "Delta Velorum",
-        # Virgo (4 main stars)
-        "Spica",            "Zavijava",         "Porrima",           "Vindemiatrix",
-        # Volans (2 main stars)
-        "Alpha Volantis",   "Beta Volantis",
-        # Vulpecula (2 main stars)
-        "Anser",            "Alpha Vulpeculae",
-    ]
-    excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
-    seen_extra_stars: set[str] = set()
-    for star_name in extra_visible_star_names:
-        if star_name in seen_extra_stars:
-            continue
-        seen_extra_stars.add(star_name)
-        if star_name in excluded_named_stars:
-            continue
-        resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-        if resolved is None:
-            continue
-        star_ra_deg, star_dec_deg = resolved
-        panel, sx, sy = _project_to_hemisphere(
-            np.deg2rad(star_ra_deg),
-            np.deg2rad(star_dec_deg),
-        )
-        star_ax = ax_l if panel == "north" else ax_r
-        star_ax.scatter(
-            [sx],
-            [sy],
-            s=5,
-            c="#f8fafc",
-            edgecolors="none",
-            alpha=0.78,
-            zorder=8,
-        )
+        # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
+        # Brightest star from each of the 88 IAU constellations.
+        extra_visible_star_names = [
+            # Andromeda (3 main stars)
+            "Alpheratz",        "Mirach",           "Almach",
+            # Antlia (2 main stars)
+            "Alpha Antliae",    "Epsilon Antliae",
+            # Apus (2 main stars)
+            "Alpha Apodis",     "Beta Apodis",
+            # Aquarius (3 main stars)
+            "Sadalmelik",       "Sadachbia",        "Sadalsuud",
+            # Aquila (4 main stars)
+            "Altair",           "Alshain",          "Tarazed",           "Beta Aquilae",
+            # Ara (3 main stars)
+            "Alpha Arae",       "Beta Arae",        "Gamma Arae",
+            # Aries (3 main stars)
+            "Hamal",            "Sheratan",         "Mesarthim",
+            # Auriga (4 main stars)
+            "Capella",          "Theta Aurigae",    "Iota Aurigae",      "Beta Aurigae",
+            # Boötes (5 main stars)
+            "Arcturus",         "Muphrid",          "Izar",              "Pulcherrima",      "Seginus",
+            # Caelum (2 main stars)
+            "Alpha Caeli",      "Gamma Caeli",
+            # Camelopardalis (2 main stars)
+            "Beta Camelopardalis",  "Alpha Camelopardalis",
+            # Cancer (3 main stars)
+            "Altarf",           "Acubens",          "Tzelakot",
+            # Canes Venatici (3 main stars)
+            "Cor Caroli",       "Chara",            "Beta Canum Venaticorum",
+            # Canis Major (4 main stars)
+            "Sirius",           "Canopus",          "Adara",             "Wezen",
+            # Canis Minor (2 main stars)
+            "Procyon",          "Gomeisa",
+            # Capella (2 main stars)
+            "Deneb Algedi",     "Maaz",
+            # Carina (3 main stars)
+            "Canopus",          "Avior",            "Miaplacidus",
+            # Cassiopeia (5 main stars - the W pattern)
+            "Schedar",          "Caph",             "Gamma Cassiopeiae", "Ruchbah",          "Segin",
+            # Centaurus (3 main stars)
+            "Rigil Kentaurus",  "Hadar",            "Muhlifain",
+            # Cepheus (3 main stars)
+            "Alderamin",        "Alfirk",           "Errai",
+            # Cetus (3 main stars)
+            "Menkar",           "Diphda",           "Beta Ceti",
+            # Chamaeleon (2 main stars)
+            "Alpha Chamaeleontis",  "Gamma Chamaeleontis",
+            # Circinus (2 main stars)
+            "Alpha Circini",    "Beta Circini",
+            # Columba (2 main stars)
+            "Phact",            "Wazn",
+            # Coma Berenices (2 main stars)
+            "Diadem",           "Beta Comae Berenices",
+            # Corona Australis (3 main stars)
+            "Alpha Coronae Australis",  "Beta Coronae Australis",  "Gamma Coronae Australis",
+            # Corona Borealis (4 main stars - the arc)
+            "Alphecca",         "Nusakan",          "Theta Coronae Borealis",  "Gamma Coronae Borealis",
+            # Corvus (4 main stars - the diamond)
+            "Gienah",           "Brachium",         "Kraz",              "Algorab",
+            # Crater (3 main stars)
+            "Delta Crateris",   "Alkes",            "Labrum",
+            # Crux (4 main stars - Southern Cross)
+            "Acrux",            "Gacrux",           "Iota Crucis",       "Delta Crucis",
+            # Cygnus (5 main stars - Northern Cross)
+            "Deneb",            "Sadr",             "Delta Cygni",       "Albireo",          "Epsilon Cygni",
+            # Delphinus (4 main stars)
+            "Sualocin",         "Rotanev",          "Gamma Delphini",    "Delta Delphini",
+            # Dorado (2 main stars)
+            "Alpha Doradus",    "Beta Doradus",
+            # Draco (3 main stars)
+            "Eltanin",          "Rastaban",         "Altais",
+            # Equuleus (2 main stars)
+            "Kitalpha",         "Gamma Equulei",
+            # Eridanus (4 main stars)
+            "Achernar",         "Cursa",            "Zanim",             "Azha",
+            # Fornax (2 main stars)
+            "Fornacis",         "Alpha Fornacis",
+            # Gemini (5 main stars - Castor & Pollux twins)
+            "Castor",           "Pollux",           "Alhena",            "Wasat",            "Kappa Geminorum",
+            # Grus (3 main stars)
+            "Alnair",           "Beta Gruis",       "Gamma Gruis",
+            # Hercules (4 main stars)
+            "Rasalgethi",       "Kornephoros",      "Sarin",             "Tau Herculis",
+            # Horologium (2 main stars)
+            "Alpha Horologi",   "Beta Horologi",
+            # Hydra (4 main stars - largest constellation)
+            "Alphard",          "Gamma Hydrae",     "Pi Hydrae",         "Epsilon Hydrae",
+            # Hydrus (3 main stars)
+            "Alpha Hydri",      "Beta Hydri",       "Gamma Hydri",
+            # Indus (2 main stars)
+            "Alpha Indi",       "Beta Indi",
+            # Lacerta (2 main stars)
+            "Alpha Lacertae",   "Beta Lacertae",
+            # Leo (5 main stars - the sickle)
+            "Regulus",          "Denebola",         "Algieba",           "Zosma",            "Chertan",
+            # Leo Minor (2 main stars)
+            "Praecipua",        "Beta Leonis Minoris",
+            # Lepus (3 main stars)
+            "Arneb",            "Nihal",            "Gamma Leporis",
+            # Libra (4 main stars)
+            "Zubeneschamali",   "Zubenelgenubi",    "Brachium",          "Zuben Elakrab",
+            # Lupus (3 main stars)
+            "Alpha Lupi",       "Beta Lupi",        "Gamma Lupi",
+            # Lynx (2 main stars)
+            "Alsciaukat",       "Alpha Lynxis",
+            # Lyra (5 main stars)
+            "Vega",             "Epsilon Lyrae",    "Zeta Lyrae",        "Delta Lyrae",      "Gamma Lyrae",
+            # Mensa (2 main stars)
+            "Alpha Mensae",     "Beta Mensae",
+            # Microscopium (2 main stars)
+            "Epsilon Microscopii",  "Alpha Microscopii",
+            # Monoceros (3 main stars)
+            "Alpha Monocerotis",    "Beta Monocerotis",  "Gamma Monocerotis",
+            # Musca (3 main stars)
+            "Alpha Muscae",     "Beta Muscae",      "Gamma Muscae",
+            # Norma (3 main stars)
+            "Gamma Normae",     "Epsilon Normae",   "Alpha Normae",
+            # Octans (2 main stars)
+            "Polaris Australis",    "Beta Octantis",
+            # Ophiuchus (5 main stars)
+            "Rasalhague",       "Sabik",            "Cebalrai",          "Yedprior",         "Yed Posterior",
+            # Orion (6 main stars - one of the most recognizable)
+            "Rigel",            "Betelgeuse",       "Bellatrix",         "Saiph",            "Alnitak",       "Alnilam",
+            # Pavo (3 main stars)
+            "Peacock",          "Delta Pavonis",    "Gamma Pavonis",
+            # Pegasus (4 main stars - part of the Great Square)
+            "Enif",             "Scheat",           "Algenib",           "Markab",
+            # Perseus (4 main stars)
+            "Mirfak",           "Algenib",          "Atik",              "Epsilon Persei",
+            # Phoenix (3 main stars)
+            "Ankaa",            "Chert",            "Psi Phoenicis",
+            # Pictor (2 main stars)
+            "Alpha Pictoris",   "Beta Pictoris",
+            # Pisces (3 main stars)
+            "Alrescha",         "Fum al Samakah",   "Omega Piscium",
+            # Piscis Austrinus (2 main stars)
+            "Fomalhaut",        "Delta Piscis Austrini",
+            # Puppis (3 main stars)
+            "Naos",             "Pi Puppis",        "Zeta Puppis",
+            # Pyxis (2 main stars)
+            "Alpha Pyxidis",    "Beta Pyxidis",
+            # Reticulum (2 main stars)
+            "Alpha Reticuli",   "Beta Reticuli",
+            # Sagitta (3 main stars - small but distinct)
+            "Sham",             "Almach",           "Delta Sagittae",
+            # Sagittarius (4 main stars - the teapot asterism)
+            "Kaus Australis",   "Kaus Media",       "Kaus Borealis",     "Ascella",
+            # Scorpius (4 main stars - scorpion tail curve)
+            "Antares",          "Shaula",           "Lesath",            "Acrab",
+            # Sculptor (2 main stars)
+            "Alpha Sculptoris", "Beta Sculptoris",
+            # Scutum (2 main stars)
+            "Alpha Scuti",      "Delta Scuti",
+            # Serpens (3 main stars)
+            "Unukalhai",        "Eta Serpentis",    "Gamma Serpentis",
+            # Sextans (2 main stars)
+            "Alpha Sextantis",  "Beta Sextantis",
+            # Taurus (5 main stars - Pleiades visible)
+            "Aldebaran",        "Nath",             "Alcyone",           "Electra",          "Maia",
+            # Telescopium (2 main stars)
+            "Alpha Telescopii", "Zeta Telescopii",
+            # Triangulum (3 main stars)
+            "Mothallah",        "Dulcamara",        "Caph",
+            # Triangulum Australe (3 main stars)
+            "Atria",            "Beta Trianguli Australis",  "Gamma Trianguli Australis",
+            # Tucana (3 main stars)
+            "Alpha Tucanae",    "Beta Tucanae",     "Gamma Tucanae",
+            # Ursa Major (7 main stars - Big Dipper)
+            "Dubhe",            "Merak",            "Phecda",            "Megrez",           "Alioth",       "Mizar",        "Alkaid",
+            # Ursa Minor (5 main stars - Little Bear, Polaris)
+            "Polaris",          "Kochab",           "Pherkad",           "Yildun",           "Epsilon Ursae Minoris",
+            # Vela (3 main stars)
+            "Gamma Velorum",    "Lambda Velorum",   "Delta Velorum",
+            # Virgo (4 main stars)
+            "Spica",            "Zavijava",         "Porrima",           "Vindemiatrix",
+            # Volans (2 main stars)
+            "Alpha Volantis",   "Beta Volantis",
+            # Vulpecula (2 main stars)
+            "Anser",            "Alpha Vulpeculae",
+        ]
+        excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
+        seen_extra_stars: set[str] = set()
+        for star_name in extra_visible_star_names:
+            if star_name in seen_extra_stars:
+                continue
+            seen_extra_stars.add(star_name)
+            if star_name in excluded_named_stars:
+                continue
+            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
+            if resolved is None:
+                continue
+            star_ra_deg, star_dec_deg = resolved
+            panel, sx, sy = _project_to_hemisphere(
+                np.deg2rad(star_ra_deg),
+                np.deg2rad(star_dec_deg),
+            )
+            star_ax = ax_l if panel == "north" else ax_r
+            star_ax.scatter(
+                [sx],
+                [sy],
+                s=5,
+                c="#f8fafc",
+                edgecolors="none",
+                alpha=0.78,
+                zorder=8,
+            )
 
     # Plot a random sample of n supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
@@ -1657,7 +1621,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
 
     # Plot detector markers when example mode is enabled.
-    if example and detector_markers:
+    if show_detectors and detector_markers:
         # Define L-shaped marker (vertical arm on left, horizontal base at bottom)
         t = 0.18      # arm thickness
         L = 0.40      # half-length
@@ -1688,6 +1652,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             # Add π/2 to align the vertical arm of the L to point outward radially
             plot_angle = np.arctan2(det_x, det_y) + np.pi / 2
             rotated_verts = rotate_marker_verts(l_marker_verts, plot_angle)
+
+            print(Path)
+            print(type(Path))
             l_marker = MarkerStyle(Path(rotated_verts))
             
             det_ax.scatter(
@@ -1716,17 +1683,18 @@ def plot_galactic_supernovae_polar_hemispheres(
                 zorder=10,
             )
 
-    ax_r.plot(
-        [],
-        [],
-        marker="o",
-        linestyle="None",
-        markersize=11,
-        markerfacecolor="black",
-        markeredgecolor="white",
-        markeredgewidth=1.3,
-        label="Galactic Center: Sgr A*",
-    )
+    if galaxy:
+        ax_r.plot(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+            markersize=11,
+            markerfacecolor="black",
+            markeredgecolor="white",
+            markeredgewidth=1.3,
+            label="Galactic Center: Sgr A*",
+        )
 
     if true_loc_panel is not None:
         ax_r.plot(
@@ -1741,7 +1709,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             label="True Supernova Location",
         )
     
-    if example and detector_markers:
+    if show_detectors and detector_markers:
         # Create base L marker for legend
         t = 0.18      # arm thickness
         L = 0.40      # half-length
@@ -1805,8 +1773,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                 coast_n,
                 colors="#808080",
                 linewidths=0.3,
-                alpha=0.8,
-                zorder=3
+                alpha=1.0,
+                zorder=1
             )
         )
 
@@ -1815,8 +1783,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                 coast_s,
                 colors="#808080",
                 linewidths=0.3,
-                alpha=0.8,
-                zorder=3
+                alpha=1.0,
+                zorder=1
             )
         )
 

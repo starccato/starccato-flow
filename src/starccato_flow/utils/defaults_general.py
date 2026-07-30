@@ -54,5 +54,6 @@ AVIRGO_ASD_FILE = os.path.join(_data_root, "noise_asd", "advirgo.txt")
 
 SUPERNOVAE_CSV = os.path.join(_data_root, "supernovae", "exploded_supernovae_t100_sf5.csv")
 
+SKY_MAP_ROOT = os.path.join(_data_root, "sky_map")
 
 
