@@ -594,16 +594,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
 
     for r_lat in lat_radii:
-        ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
-    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    # ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
-    # ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+        ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
+        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
 
-    for r_lat in lat_radii:
-        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
+    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
     ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    # ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
-    # ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
 
     meridian_angles_deg = [0, 45, 90, 135]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
@@ -613,12 +608,12 @@ def plot_galactic_supernovae_polar_hemispheres(
         # North panel: full diameter from angle to angle+180, through the center.
         x1_n, y1_n = np.sin(ang), np.cos(ang)
         x2_n, y2_n = -np.sin(ang), -np.cos(ang)
-        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.18, lw=0.8, zorder=10)
+        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.2, lw=0.75, zorder=10)
 
         # South panel (mirrored x, per the rest of the file's convention).
         x1_s, y1_s = -np.sin(ang), np.cos(ang)
         x2_s, y2_s = np.sin(ang), -np.cos(ang)
-        ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.18, lw=0.8, zorder=10)
+        ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.2, lw=0.75, zorder=10)
 
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
     if background == "black" and format == "poster":
@@ -723,14 +718,14 @@ def plot_galactic_supernovae_polar_hemispheres(
         y0 = r_tick * uy
 
         # North: positive Dec labels.
-        ax_l.plot(
-            [x0 - 0.012, x0 + 0.012],
-            [y0, y0],
-            color=text_color,
-            alpha=0.45,
-            lw=0.75,
-            zorder=9,
-        )
+        # ax_l.plot(
+        #     [x0 - 0.012, x0 + 0.012],
+        #     [y0, y0],
+        #     color=text_color,
+        #     alpha=0.2,
+        #     lw=0.75,
+        #     zorder=9,
+        # )
         ax_l.text(
             x0 + 0.020,
             y0,
@@ -744,14 +739,14 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
 
         # South: negative Dec labels.
-        ax_r.plot(
-            [x0 - 0.012, x0 + 0.012],
-            [y0, y0],
-            color=text_color,
-            alpha=0.45,
-            lw=0.75,
-            zorder=6,
-        )
+        # ax_r.plot(
+        #     [x0 - 0.012, x0 + 0.012],
+        #     [y0, y0],
+        #     color=text_color,
+        #     alpha=0.2,
+        #     lw=0.75,
+        #     zorder=6,
+        # )
         ax_r.text(
             x0 + 0.020,
             y0,
@@ -1713,7 +1708,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             markerfacecolor=text_color,
             markeredgecolor=text_color,
             markeredgewidth=0.0,
-            label="Ground-based Detectors",
+            label="Gravitational Wave Detectors",
         )
     
     if format == "thesis":
