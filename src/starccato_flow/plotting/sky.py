@@ -620,14 +620,29 @@ def plot_galactic_supernovae_polar_hemispheres(
     for r_lat in lat_radii:
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
     ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
-    ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    # ax_l.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    # ax_l.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
 
     for r_lat in lat_radii:
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.13, lw=0.75)
     ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
-    ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    # ax_r.axhline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+    # ax_r.axvline(0, color=text_color, alpha=0.18, lw=0.8, zorder=10)
+
+    meridian_angles_deg = [0, 45, 90, 135]  # replace with e.g. np.arange(0, 360, 30) for more spokes
+
+    for ang_deg in meridian_angles_deg:
+        ang = np.deg2rad(ang_deg)
+
+        # North panel: full diameter from angle to angle+180, through the center.
+        x1_n, y1_n = np.sin(ang), np.cos(ang)
+        x2_n, y2_n = -np.sin(ang), -np.cos(ang)
+        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.18, lw=0.8, zorder=10)
+
+        # South panel (mirrored x, per the rest of the file's convention).
+        x1_s, y1_s = -np.sin(ang), np.cos(ang)
+        x2_s, y2_s = np.sin(ang), -np.cos(ang)
+        ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.18, lw=0.8, zorder=10)
 
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
     if background == "black" and format == "poster":
@@ -712,56 +727,64 @@ def plot_galactic_supernovae_polar_hemispheres(
                 clip_on=False,
             )
 
-    # RA/Dec ticks for orientation in each hemisphere panel.
-    ra_tick_deg = np.arange(0, 360, 30)
+    # RA degree labels, curved tangent to each hemisphere panel, centered on the pole.
     ra_label_deg = np.arange(0, 360, 60)
-    for ra_deg in ra_tick_deg:
-        ang = np.deg2rad(float(ra_deg))
-        # North pole: RA increases counter-clockwise (keep sin positive)
-        x_in_n = 1.00 * np.sin(ang)
-        y_in_n = 1.00 * np.cos(ang)
-        x_out_n = 1.045 * np.sin(ang)
-        y_out_n = 1.045 * np.cos(ang)
-        # South pole: RA increases clockwise (flip sin)
-        x_in_s = -1.00 * np.sin(ang)
-        y_in_s = 1.00 * np.cos(ang)
-        x_out_s = -1.045 * np.sin(ang)
-        y_out_s = 1.045 * np.cos(ang)
-        ax_l.plot([x_in_n, x_out_n], [y_in_n, y_out_n], color=text_color, alpha=0.45, lw=0.75, zorder=6)
-        ax_r.plot([x_in_s, x_out_s], [y_in_s, y_out_s], color=text_color, alpha=0.45, lw=0.75, zorder=6)
-
+    ra_label_radius = 1.02
     for ra_deg in ra_label_deg:
-        ang = np.deg2rad(float(ra_deg))
-        # North pole: RA increases counter-clockwise (keep sin positive)
-        x_lbl_n = 1.085 * np.sin(ang)
-        y_lbl_n = 1.085 * np.cos(ang)
-        # South pole: RA increases clockwise (flip sin)
-        x_lbl_s = -1.085 * np.sin(ang)
-        y_lbl_s = 1.085 * np.cos(ang)
-        ra_hours = int((ra_deg // 15) % 24)
-        label = f"{ra_hours}h"
-        ax_l.text(
-            x_lbl_n,
-            y_lbl_n,
-            label,
-            color=text_color,
-            fontsize=fontsize_small,
-            ha="center",
-            va="center",
-            alpha=0.75,
-            zorder=9,
-        )
-        ax_r.text(
-            x_lbl_s,
-            y_lbl_s,
-            label,
-            color=text_color,
-            fontsize=fontsize_small,
-            ha="center",
-            va="center",
-            alpha=0.75,
-            zorder=9,
-        )
+        label = f"{int(ra_deg)}\u00b0"
+        _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+        _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+
+    # # RA/Dec ticks for orientation in each hemisphere panel.
+    # ra_tick_deg = np.arange(0, 360, 30)
+    # ra_label_deg = np.arange(0, 360, 60)
+    # for ra_deg in ra_tick_deg:
+    #     ang = np.deg2rad(float(ra_deg))
+    #     # North pole: RA increases counter-clockwise (keep sin positive)
+    #     x_in_n = 1.00 * np.sin(ang)
+    #     y_in_n = 1.00 * np.cos(ang)
+    #     x_out_n = 1.015 * np.sin(ang)   # was 1.03
+    #     y_out_n = 1.015 * np.cos(ang)   # was 1.03
+    #     # South pole: RA increases clockwise (flip sin)
+    #     x_in_s = -1.00 * np.sin(ang)
+    #     y_in_s = 1.00 * np.cos(ang)
+    #     x_out_s = -1.015 * np.sin(ang)  # was 1.03
+    #     y_out_s = 1.015 * np.cos(ang)   # was 1.03
+    #     ax_l.plot([x_in_n, x_out_n], [y_in_n, y_out_n], color=text_color, alpha=0.45, lw=0.75, zorder=6)
+    #     ax_r.plot([x_in_s, x_out_s], [y_in_s, y_out_s], color=text_color, alpha=0.45, lw=0.75, zorder=6)
+
+    # for ra_deg in ra_label_deg:
+    #     ang = np.deg2rad(float(ra_deg))
+    #     # North pole: RA increases counter-clockwise (keep sin positive)
+    #     x_lbl_n = 1.06 * np.sin(ang)
+    #     y_lbl_n = 1.06 * np.cos(ang)
+    #     # South pole: RA increases clockwise (flip sin)
+    #     x_lbl_s = -1.06 * np.sin(ang)
+    #     y_lbl_s = 1.06 * np.cos(ang)
+    #     ra_hours = int((ra_deg // 15) % 24)
+    #     label = f"{ra_hours}h"
+    #     ax_l.text(
+    #         x_lbl_n,
+    #         y_lbl_n,
+    #         label,
+    #         color=text_color,
+    #         fontsize=fontsize_small,
+    #         ha="center",
+    #         va="center",
+    #         alpha=0.75,
+    #         zorder=9,
+    #     )
+    #     ax_r.text(
+    #         x_lbl_s,
+    #         y_lbl_s,
+    #         label,
+    #         color=text_color,
+    #         fontsize=fontsize_small,
+    #         ha="center",
+    #         va="center",
+    #         alpha=0.75,
+    #         zorder=9,
+    #     )
 
     dec_abs_ticks = [80, 60, 40, 20]
     # Place Dec ticks on the 0h/24h RA meridian.
@@ -820,11 +843,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             ax_l.add_collection(
                 LineCollection(
                     north_lines,
-                    colors="#e2e8f0",
+                    colors="#e2e8f0" if background == "black" else "#1e293b",
                     linewidths=0.5,
-                    alpha=1.0,
+                    alpha=0.5,
                     zorder=4,
-                    linestyle="--",
+                    linestyle=(0, (5, 5)),
                     joinstyle="round",
                     capstyle="round"
                 )
@@ -832,11 +855,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             ax_r.add_collection(
                 LineCollection(
                     south_lines,
-                    colors="#e2e8f0",
+                    colors="#e2e8f0" if background == "black" else "#1e293b",
                     linewidths=0.5,
-                    alpha=1.0,
+                    alpha=0.5,
                     zorder=4,
-                    linestyle="--",
+                    linestyle=(0, (5, 5)),
                     joinstyle="round",
                     capstyle="round"
                 )
@@ -849,8 +872,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_l.add_collection(
             LineCollection(
                 north_lines,
-                colors="#e2e8f0",
-                linewidths=0.5,
+                colors="#89b5ee",
+                linewidths=0.75,
                 alpha=1.0,
                 zorder=4,
                 joinstyle="round",
@@ -860,8 +883,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.add_collection(
             LineCollection(
                 south_lines,
-                colors="#e2e8f0",
-                linewidths=0.5,
+                colors="#89b5ee",
+                linewidths=0.75,
                 alpha=1.0,
                 zorder=4,
                 joinstyle="round",
@@ -1193,79 +1216,71 @@ def plot_galactic_supernovae_polar_hemispheres(
                 np.deg2rad(star_dec_deg),
             )
 
-        # --- diagnostic: compare the two Betelgeuse sources ---
-        hip_lookup_diag = _hip_lookup_table()
-        print("SkyCoord.from_name Betelgeuse (ra_deg, dec_deg):",
-              _resolve_named_star_icrs_deg("Betelgeuse", rotation_offset_deg=astropy_rotation_offset_deg))
-        print("Hipparcos HIP 27989 Betelgeuse (ra_deg, dec_deg):",
-              hip_lookup_diag.get(27989))
-        # -------------------------------------------------------
-
-        for a_name, b_name in orion_edges:
-            if a_name not in orion_proj or b_name not in orion_proj:
-                continue
-            a_panel, axx, ayy = orion_proj[a_name]
-            b_panel, bxx, byy = orion_proj[b_name]
+        # for a_name, b_name in orion_edges:
+        #     if a_name not in orion_proj or b_name not in orion_proj:
+        #         continue
+        #     a_panel, axx, ayy = orion_proj[a_name]
+        #     b_panel, bxx, byy = orion_proj[b_name]
             
-            if a_panel == b_panel:
-                # Both stars on same hemisphere: simple connection
-                orion_ax = ax_l if a_panel == "north" else ax_r
-                orion_ax.plot(
-                    [axx, bxx],
-                    [ayy, byy],
-                    color="#e5e7eb",
-                    alpha=0.85,
-                    lw=1.0,
-                    zorder=8,
-                )
-            elif format == "thesis":
-                # Panels are stacked (not touching), so there is no shared edge to draw
-                # a continuous line across. Skip this cross-hemisphere connector rather
-                # than draw a stray partial segment to nowhere.
-                continue
-            else:
-                # Stars on different hemispheres: connect through the seam
-                # North is on ax_l (left panel), South is on ax_r (right panel)
-                # Seam at x=1.00 on left (north), x=-1.00 on right (south)
-                seam_y = 0.5 * (ayy + byy)
+        #     if a_panel == b_panel:
+        #         # Both stars on same hemisphere: simple connection
+        #         orion_ax = ax_l if a_panel == "north" else ax_r
+        #         orion_ax.plot(
+        #             [axx, bxx],
+        #             [ayy, byy],
+        #             color="#e5e7eb",
+        #             alpha=0.85,
+        #             lw=1.0,
+        #             zorder=8,
+        #         )
+        #     elif format == "thesis":
+        #         # Panels are stacked (not touching), so there is no shared edge to draw
+        #         # a continuous line across. Skip this cross-hemisphere connector rather
+        #         # than draw a stray partial segment to nowhere.
+        #         continue
+        #     else:
+        #         # Stars on different hemispheres: connect through the seam
+        #         # North is on ax_l (left panel), South is on ax_r (right panel)
+        #         # Seam at x=1.00 on left (north), x=-1.00 on right (south)
+        #         seam_y = 0.5 * (ayy + byy)
                 
-                # Draw on north hemisphere from star to right edge seam
-                if a_panel == "north":
-                    ax_l.plot(
-                        [axx, 1.00],
-                        [ayy, seam_y],
-                        color="#e5e7eb",
-                        alpha=0.85,
-                        lw=1.0,
-                        zorder=8,
-                    )
-                    # Draw on south hemisphere from left edge seam to star
-                    ax_r.plot(
-                        [-1.00, bxx],
-                        [seam_y, byy],
-                        color="#e5e7eb",
-                        alpha=0.85,
-                        lw=1.0,
-                        zorder=8,
-                    )
-                else:
-                    # A is south, B is north: reverse
-                    ax_r.plot(
-                        [axx, -1.00],
-                        [ayy, seam_y],
-                        color="#e5e7eb",
-                        alpha=0.85,
-                        lw=1.0,
-                        zorder=8,
-                    )
-                    ax_l.plot(
-                        [1.00, bxx],
-                        [seam_y, byy],
-                        color="#e5e7eb",
-                        alpha=0.85,
-                        lw=1.0,
-                        zorder=8,
-                    )
+        #         # Draw on north hemisphere from star to right edge seam
+        #         if a_panel == "north":
+        #             ax_l.plot(
+        #                 [axx, 1.00],
+        #                 [ayy, seam_y],
+        #                 color="#e5e7eb",
+        #                 alpha=0.85,
+        #                 lw=1.0,
+        #                 zorder=8,
+        #             )
+        #             # Draw on south hemisphere from left edge seam to star
+        #             ax_r.plot(
+        #                 [-1.00, bxx],
+        #                 [seam_y, byy],
+        #                 color="#e5e7eb",
+        #                 alpha=0.85,
+        #                 lw=1.0,
+        #                 zorder=8,
+        #             )
+        #         else:
+        #             # A is south, B is north: reverse
+        #             ax_r.plot(
+        #                 [axx, -1.00],
+        #                 [ayy, seam_y],
+        #                 color="#e5e7eb",
+        #                 alpha=0.85,
+        #                 lw=1.0,
+        #                 zorder=8,
+        #             )
+        #             ax_l.plot(
+        #                 [1.00, bxx],
+        #                 [seam_y, byy],
+        #                 color="#e5e7eb",
+        #                 alpha=0.85,
+        #                 lw=1.0,
+        #                 zorder=8,
+        #             )
 
         for star_name, (panel, sx, sy) in orion_proj.items():
             orion_ax = ax_l if panel == "north" else ax_r
@@ -1306,23 +1321,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             taurus_proj[star_name] = _project_to_hemisphere(
                 np.deg2rad(star_ra_deg),
                 np.deg2rad(star_dec_deg),
-            )
-
-        for a_name, b_name in taurus_edges:
-            if a_name not in taurus_proj or b_name not in taurus_proj:
-                continue
-            a_panel, axx, ayy = taurus_proj[a_name]
-            b_panel, bxx, byy = taurus_proj[b_name]
-            if a_panel != b_panel:
-                continue
-            taur_ax = ax_l if a_panel == "north" else ax_r
-            taur_ax.plot(
-                [axx, bxx],
-                [ayy, byy],
-                color="#fca5a5",
-                alpha=0.9,
-                lw=1.05,
-                zorder=8,
             )
 
         for star_name, (panel, sx, sy) in taurus_proj.items():
@@ -1373,37 +1371,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 np.deg2rad(star_ra_deg),
                 np.deg2rad(star_dec_deg),
             )
-
-        for a_name, b_name in scx_edges:
-            if a_name not in south_proj or b_name not in south_proj:
-                continue
-            a_panel, axx, ayy = south_proj[a_name]
-            b_panel, bxx, byy = south_proj[b_name]
-            if a_panel != b_panel:
-                continue
-            scx_ax = ax_l if a_panel == "north" else ax_r
-            scx_ax.plot(
-                [axx, bxx],
-                [ayy, byy],
-                color="#86efac",
-                alpha=0.92,
-                lw=1.05,
-                zorder=8,
-            )
-
-        if "Alpha Centauri" in south_proj and "Beta Centauri" in south_proj:
-            pa_panel, pax, pay = south_proj["Alpha Centauri"]
-            pb_panel, pbx, pby = south_proj["Beta Centauri"]
-            if pa_panel == pb_panel:
-                ptr_ax = ax_l if pa_panel == "north" else ax_r
-                ptr_ax.plot(
-                    [pax, pbx],
-                    [pay, pby],
-                    color="#fcd34d",
-                    alpha=0.95,
-                    lw=1.2,
-                    zorder=8,
-                )
 
         marker_styles = {
             "Acrux": ("#c4b5fd", 20),
@@ -2057,3 +2024,78 @@ def _coastline_segments():
                 south_segments.append(np.asarray(current_south))
 
     return north_segments, south_segments
+
+def _draw_curved_ra_label(
+    ax,
+    panel: str,
+    center_ang_deg: float,
+    radius: float,
+    text: str,
+    color: str,
+    fontsize: float,
+    alpha: float,
+    char_spacing_deg: float | None = None,
+    zorder: int = 9,
+) -> None:
+    """Draw `text` as individual characters curved tangent to the hemisphere
+    circle, centered on `center_ang_deg` (same RA-angle convention used
+    elsewhere: 0 deg = top, increasing clockwise for north / mirrored for
+    south) at the given `radius` from the pole.
+
+    Rotation is derived from the true direction of travel as RA increases
+    (which differs between north and south due to south's mirrored x),
+    not from radial position alone. The flip decision (upside-down
+    avoidance) is made once per label from its center angle and applied
+    consistently to both rotation AND character draw order, so a flipped
+    label reads correctly rather than rotation-correct-but-reversed.
+    """
+    if char_spacing_deg is None:
+        char_spacing_deg = fontsize * 0.2
+
+    def _pos(ang_deg):
+        ang = np.deg2rad(ang_deg)
+        if panel == "north":
+            return radius * np.sin(ang), radius * np.cos(ang)
+        else:
+            return -radius * np.sin(ang), radius * np.cos(ang)
+
+    def _travel_angle_deg(ang_deg):
+        # Direction of increasing RA (d/dang of position), which is what
+        # "reads correctly" means - not the radial/position angle.
+        ang = np.deg2rad(ang_deg)
+        if panel == "north":
+            dx, dy = np.cos(ang), -np.sin(ang)
+        else:
+            dx, dy = -np.cos(ang), -np.sin(ang)
+        return np.degrees(np.arctan2(dy, dx))
+
+    # Decide the flip once for the whole label, from its center, so
+    # rotation and character order stay in agreement.
+    base_rot = _travel_angle_deg(center_ang_deg)
+    norm = ((base_rot + 180.0) % 360.0) - 180.0
+    flipped = norm > 90.0 or norm <= -90.0
+
+    n = len(text)
+    offsets = (np.arange(n) - (n - 1) / 2.0) * char_spacing_deg
+    if flipped:
+        offsets = offsets[::-1]
+
+    for char, off in zip(text, offsets):
+        ang_deg = center_ang_deg + off
+        x, y = _pos(ang_deg)
+        rot = _travel_angle_deg(ang_deg)
+        if flipped:
+            rot += 180.0
+        rot = ((rot + 180.0) % 360.0) - 180.0
+
+        ax.text(
+            x, y, char,
+            color=color,
+            fontsize=fontsize,
+            ha="center",
+            va="center",
+            rotation=rot,
+            rotation_mode="anchor",
+            alpha=alpha,
+            zorder=zorder,
+        )
