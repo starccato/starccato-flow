@@ -125,7 +125,53 @@ def _constellation_stick_segments():
     hip_ids = _read_constellation_hip_ids(filename)
     print(len(hip_ids))
 
-    hip_lookup = _hip_lookup_table()   # <-- was missing before
+    hip_lookup = _hip_lookup_table()
+
+
+    # --- diagnostic: audit every constellation entry in the file ---
+    n_ok = 0
+    n_bad = 0
+    with open(filename, "r") as f_diag:
+        for lineno, line in enumerate(f_diag, start=1):
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split()
+            name = parts[0]
+            try:
+                n_seg = int(parts[1])
+            except ValueError:
+                print(f"Line {lineno} ({name}): parts[1]={parts[1]!r} is not an int!")
+                n_bad += 1
+                continue
+            hips = parts[2:]
+            expected = 2 * n_seg
+            missing_hips = [h for h in hips if int(h) not in hip_lookup]
+            if len(hips) != expected:
+                print(f"Line {lineno} ({name}): n_segments={n_seg} but got {len(hips)} HIP tokens (expected {expected})")
+                n_bad += 1
+            elif missing_hips:
+                print(f"Line {lineno} ({name}): {len(missing_hips)}/{len(hips)} HIP ids not found in catalog: {missing_hips[:8]}{'...' if len(missing_hips) > 8 else ''}")
+                n_bad += 1
+            else:
+                n_ok += 1
+    print(f"Constellation file audit: {n_ok} OK, {n_bad} with problems (out of {n_ok + n_bad} total)")
+    # -----------------------------------------------------------------
+
+    # --- diagnostic: inspect Orion's raw segment list ---
+    with open(filename, "r") as f_diag:
+        for line in f_diag:
+            if line.startswith("Ori "):  # adjust to your file's actual Orion label
+                parts = line.split()
+                n_seg = int(parts[1])
+                hips = list(map(int, parts[2:]))
+                print(f"Orion: n_segments={n_seg}, n_hip_tokens={len(hips)} (expect {2*n_seg})")
+                for i in range(n_seg):
+                    h1, h2 = hips[2*i], hips[2*i+1]
+                    c1 = hip_lookup.get(h1)
+                    c2 = hip_lookup.get(h2)
+                    print(f"  segment {i}: HIP {h1} {c1}  <->  HIP {h2} {c2}")
+                break
+    # -----------------------------------------------------
 
     north_lines = []
     south_lines = []
@@ -160,89 +206,62 @@ def _constellation_stick_segments():
                     south_lines.append(segment)
 
     return north_lines, south_lines
+from astropy.coordinates import SkyCoord, FK4
+import astropy.units as u
 
 @lru_cache(maxsize=1)
 def _constellation_border_segments():
-
     border_file = os.path.join(SKY_MAP_ROOT, "lines_in_18.txt")
 
-    north_lines = []
-    south_lines = []
+    # --- read raw points first ---
+    borders, ra_hrs, dec_degs = [], [], []
+    with open(border_file) as f:
+        for line in f:
+            if not line.strip():
+                continue
+            ra_hr, dec_deg, border = line.split()
+            borders.append(border)
+            ra_hrs.append(float(ra_hr))
+            dec_degs.append(float(dec_deg))
 
+    ra_hrs = np.asarray(ra_hrs)
+    dec_degs = np.asarray(dec_degs)
+
+    # --- precess B1875 (original Delporte epoch) -> J2000 to match Hipparcos ---
+    coords_b1875 = SkyCoord(
+        ra=ra_hrs * 15.0 * u.deg,
+        dec=dec_degs * u.deg,
+        frame=FK4(equinox="B1875"),
+    )
+    coords_j2000 = coords_b1875.transform_to("icrs")
+    ra_deg_j2000 = coords_j2000.ra.deg
+    dec_deg_j2000 = coords_j2000.dec.deg
+
+    north_lines, south_lines = [], []
     current_border = None
     current_points = []
 
     def flush():
-
         if len(current_points) < 2:
             return
-
-        north = []
-        south = []
-
-        for ra_hr, dec_deg in current_points:
-
-            hemi, x, y = _project_to_hemisphere(
-                np.deg2rad(ra_hr * 15.0),
-                np.deg2rad(dec_deg),
-            )
-
-            if hemi == "north":
-                north.append((x, y))
-            else:
-                south.append((x, y))
-
+        north, south = [], []
+        for ra_deg, dec_deg in current_points:
+            hemi, x, y = _project_to_hemisphere(np.deg2rad(ra_deg), np.deg2rad(dec_deg))
+            (north if hemi == "north" else south).append((x, y))
         if len(north) >= 2:
             north_lines.append(np.asarray(north))
-
         if len(south) >= 2:
             south_lines.append(np.asarray(south))
 
-    prev_ra = None
-    prev_dec = None
-
-    with open(border_file) as f:
-
-        for line in f:
-
-            if not line.strip():
-                continue
-
-            ra_hr, dec_deg, border = line.split()
-
-            ra_hr = float(ra_hr)
-            dec_deg = float(dec_deg)
-
-            start_new = False
-
-            if current_border is None:
-                start_new = True
-
-            elif border != current_border:
-                start_new = True
-
-            else:
-                # Detect discontinuities within the same border
-                dra = abs(ra_hr - prev_ra)
-                dra = min(dra, 24.0 - dra)      # wrap at 24 h
-
-                ddec = abs(dec_deg - prev_dec)
-
-                if dra > 0.15 or ddec > 1.1:
-                    start_new = True
-
-            if start_new:
-
-                flush()
-
-                current_points = []
-                current_border = border
-
-            current_points.append((ra_hr, dec_deg))
-
-            prev_ra = ra_hr
-            prev_dec = dec_deg
-
+    # Only split into a new polyline on a genuine constellation-name change
+    # (see previous message - the old dra/ddec jump heuristic over-fragmented
+    # long straight edges and has been dropped here too).
+    for border, ra_deg, dec_deg in zip(borders, ra_deg_j2000, dec_deg_j2000):
+        if current_border is None or border != current_border:
+            flush()
+            current_points = []
+            current_border = border
+        current_points.append((ra_deg, dec_deg))
     flush()
 
     return north_lines, south_lines
@@ -805,6 +824,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                     linewidths=0.5,
                     alpha=1.0,
                     zorder=4,
+                    linestyle="--",
                     joinstyle="round",
                     capstyle="round"
                 )
@@ -816,6 +836,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                     linewidths=0.5,
                     alpha=1.0,
                     zorder=4,
+                    linestyle="--",
                     joinstyle="round",
                     capstyle="round"
                 )
@@ -1171,6 +1192,14 @@ def plot_galactic_supernovae_polar_hemispheres(
                 np.deg2rad(star_ra_deg),
                 np.deg2rad(star_dec_deg),
             )
+
+        # --- diagnostic: compare the two Betelgeuse sources ---
+        hip_lookup_diag = _hip_lookup_table()
+        print("SkyCoord.from_name Betelgeuse (ra_deg, dec_deg):",
+              _resolve_named_star_icrs_deg("Betelgeuse", rotation_offset_deg=astropy_rotation_offset_deg))
+        print("Hipparcos HIP 27989 Betelgeuse (ra_deg, dec_deg):",
+              hip_lookup_diag.get(27989))
+        # -------------------------------------------------------
 
         for a_name, b_name in orion_edges:
             if a_name not in orion_proj or b_name not in orion_proj:
