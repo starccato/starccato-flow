@@ -121,7 +121,7 @@ def _project_to_hemisphere(
 
 @lru_cache(maxsize=1)
 def _constellation_stick_segments():
-    filename = os.path.join(SKY_MAP_ROOT, "constellations.txt")
+    filename = os.path.join(SKY_MAP_ROOT, "constellations_rey.txt")
     hip_ids = _read_constellation_hip_ids(filename)
     print(len(hip_ids))
 
