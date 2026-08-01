@@ -597,8 +597,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
 
-    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
-    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
+    # border circle for each hemisphere
+    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1)
+    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1)
+    ax_l.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1)
+    ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1)
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
@@ -698,35 +701,53 @@ def plot_galactic_supernovae_polar_hemispheres(
                 clip_on=False,
             )
 
+    if galaxy:
+        from astropy.coordinates import SkyCoord
+        import astropy.units as u
+
+        south_curve = []
+        north_curve = []
+
+        # Sample the Galactic equator
+        l = np.linspace(0, 360, 720) * u.deg
+        b = np.zeros_like(l.value) * u.deg
+
+        gal_plane = SkyCoord(l=l, b=b, frame="galactic").icrs
+        ra = gal_plane.ra.rad
+        dec = gal_plane.dec.rad
+
+        for ra_i, dec_i in zip(ra, dec):
+            if dec_i >= 0:
+                panel, x, y = _project_to_hemisphere(ra_i, dec_i)
+                north_curve.append((x, y))
+            else:
+                panel, x, y = _project_to_hemisphere(ra_i, dec_i)
+                south_curve.append((x, y))
+
+        south_curve = np.asarray(south_curve)
+
+        # diagnostics
+        # ax_r.plot(
+        #     south_curve[:,0],
+        #     south_curve[:,1],
+        #     color="red",
+        #     lw=1,
+        #     alpha=0.8,
+        #     zorder=6,
+        # )
+        # ax_l.plot(
+        #     np.asarray(north_curve)[:,0],
+        #     np.asarray(north_curve)[:,1],
+        #     color="red",
+        #     lw=1,
+        #     alpha=0.8,
+        #     zorder=6,
+        # )
+
+
+
     # if galaxy:
-    #     from astropy.coordinates import SkyCoord
-    #     import astropy.units as u
 
-    #     # Sample the Galactic equator
-    #     l = np.linspace(0, 360, 720) * u.deg
-    #     b = np.zeros_like(l.value) * u.deg
-
-    #     gal_plane = SkyCoord(l=l, b=b, frame="galactic").icrs
-
-    #     ra = gal_plane.ra.rad
-    #     dec = gal_plane.dec.rad
-
-    #     south_curve = []
-
-    #     for ra_i, dec_i in zip(ra, dec):
-    #         panel, x, y = _project_to_hemisphere(ra_i, dec_i)
-
-    #         if panel == "south":
-    #             south_curve.append((x, y))
-
-    #     south_curve = np.asarray(south_curve)
-
-    #     ax_r.plot(
-    #         south_curve[:,0],
-    #         south_curve[:,1],
-    #         color="red",
-    #         lw=1,
-    #     )
 
     #     d = np.sqrt(np.sum(np.diff(south_curve, axis=0)**2, axis=1))
     #     s = np.concatenate([[0], np.cumsum(d)])
