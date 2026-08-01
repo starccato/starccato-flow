@@ -629,12 +629,12 @@ class FlowMatchingTrainer:
             font_name=font_name,
             transparent=True
         )
-        self.plot_sky_localisation_sampled_signal(
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
-            font_family=font_family,
-            font_name=font_name,
-            transparent=True
-        )
+        # self.plot_sky_localisation_sampled_signal(
+        #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
+        #     font_family=font_family,
+        #     font_name=font_name,
+        #     transparent=True
+        # )
         # Plot zoomed version (10 kpc around sun) - transparent
         self.plot_galactic_distribution_with_posterior_zoom(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom.svg"),
@@ -1245,6 +1245,22 @@ class FlowMatchingTrainer:
             true_ra = None
             true_dec = None
 
+        # if 1 == 1:
+        #     plot_galactic_supernovae_polar_hemispheres(
+        #         ccsn=self.supernovae,
+        #         posterior_ra_samples=ra_samples,
+        #         posterior_dec_samples=dec_samples,
+        #         true_ra_override=true_ra,
+        #         true_dec_override=true_dec,
+        #         show_constellation_borders=True,
+        #         fname="supernovae_galactic_polar_hemispheres.pdf",
+        #         font_family="sans-serif",
+        #         font_name="Futura",
+        #         n_background_supernovae=100000,
+        #         background="black",
+        #         coastline=True,
+        #         transparent=transparent
+        #     )
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
             fname=fname,

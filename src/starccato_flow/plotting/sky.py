@@ -600,7 +600,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
     ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1.5)
 
-    meridian_angles_deg = [0, 45, 90, 135]  # replace with e.g. np.arange(0, 360, 30) for more spokes
+    meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
     for ang_deg in meridian_angles_deg:
         ang = np.deg2rad(ang_deg)
@@ -698,8 +698,82 @@ def plot_galactic_supernovae_polar_hemispheres(
                 clip_on=False,
             )
 
+    # if galaxy:
+    #     from astropy.coordinates import SkyCoord
+    #     import astropy.units as u
+
+    #     # Sample the Galactic equator
+    #     l = np.linspace(0, 360, 720) * u.deg
+    #     b = np.zeros_like(l.value) * u.deg
+
+    #     gal_plane = SkyCoord(l=l, b=b, frame="galactic").icrs
+
+    #     ra = gal_plane.ra.rad
+    #     dec = gal_plane.dec.rad
+
+    #     south_curve = []
+
+    #     for ra_i, dec_i in zip(ra, dec):
+    #         panel, x, y = _project_to_hemisphere(ra_i, dec_i)
+
+    #         if panel == "south":
+    #             south_curve.append((x, y))
+
+    #     south_curve = np.asarray(south_curve)
+
+    #     ax_r.plot(
+    #         south_curve[:,0],
+    #         south_curve[:,1],
+    #         color="red",
+    #         lw=1,
+    #     )
+
+    #     d = np.sqrt(np.sum(np.diff(south_curve, axis=0)**2, axis=1))
+    #     s = np.concatenate([[0], np.cumsum(d)])
+
+    #     text = "MILKY WAY"
+
+    #     centre = 0.55 * s[-1]        # move this left/right
+    #     spacing = 0.035              # adjust letter spacing
+
+    #     letter_pos = centre + (
+    #         np.arange(len(text))
+    #         - (len(text)-1)/2
+    #     ) * spacing
+    
+    #     for char, target_s in zip(text, letter_pos):
+    #         idx = np.searchsorted(s, target_s)
+
+    #         idx = np.clip(idx, 1, len(s)-1)
+
+    #         t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
+
+    #         x = (1-t)*south_curve[idx-1,0] + t*south_curve[idx,0]
+    #         y = (1-t)*south_curve[idx-1,1] + t*south_curve[idx,1]
+
+    #         dx = south_curve[idx,0] - south_curve[idx-1,0]
+    #         dy = south_curve[idx,1] - south_curve[idx-1,1]
+
+    #         rotation = np.degrees(np.arctan2(dy, dx))
+
+    #         ax_r.text(
+    #             x,
+    #             y,
+    #             char,
+    #             fontsize=fontsize_title,
+    #             color=text_color,
+    #             rotation=rotation,
+    #             rotation_mode="anchor",
+    #             ha="center",
+    #             va="center",
+    #             fontweight="bold",
+    #             clip_on=False,
+    #         )
+
+
+
     # RA degree labels, curved tangent to each hemisphere panel, centered on the pole.
-    ra_label_deg = np.arange(0, 360, 45) # every 45 degrees but not 180 (which is the seam)
+    ra_label_deg = np.arange(0, 360, 30) # every 45 degrees but not 180 (which is the seam)
     if format == "poster":
         ra_label_deg = np.delete(ra_label_deg, np.where(ra_label_deg == 90))  # remove 90 degrees
     ra_label_radius = 1.02
@@ -956,6 +1030,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 levels=post_fill_levels,
                 colors=red_fill_colors,
                 antialiased=True,
+                zorder=20
             )
             ax_r.contourf(
                 pxcenters,
@@ -964,6 +1039,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 levels=post_fill_levels,
                 colors=red_fill_colors,
                 antialiased=True,
+                zorder=20
             )
 
             posterior_legend_handles = [
@@ -1007,10 +1083,10 @@ def plot_galactic_supernovae_polar_hemispheres(
                 fig.legend(
                     handles=posterior_legend_handles,
                     loc="center",
-                    bbox_to_anchor=(0.5, 0.81),
+                    bbox_to_anchor=(0.5, 0.18),
                     ncol=1,
                     frameon=False,
-                    fontsize=fontsize_constellation,
+                    fontsize=fontsize_main,
                     labelcolor=text_color,
                     handlelength=1.2,
                     handletextpad=0.5,
@@ -1073,11 +1149,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         true_ax.scatter(
             [true_loc_x],
             [true_loc_y],
-            s=72,
+            s=100,
             marker="x",
             c=SIGNAL_COLOUR,
             linewidths=1.8,
-            zorder=10,
+            zorder=20,
         )
 
     if constellations and betel_panel is not None:
@@ -1782,31 +1858,30 @@ def plot_galactic_supernovae_polar_hemispheres(
     if file_format:
         save_kwargs["format"] = file_format
     
-    plt.savefig(fname, **save_kwargs)
     
     # Optimize SVG file size by reducing decimal precision
-    if fname.endswith('.svg'):
-        import re
-        try:
-            with open(fname, 'r', encoding='utf-8') as f:
-                svg_content = f.read()
+    # if fname.endswith('.svg'):
+    #     import re
+    #     try:
+    #         with open(fname, 'r', encoding='utf-8') as f:
+    #             svg_content = f.read()
             
-            # Reduce decimal precision in coordinates (8 decimals → 4 decimals)
-            # This regex finds numbers with many decimal places and rounds them
-            # 4 decimals is enough for visual quality while reducing file size
-            svg_content = re.sub(r'(\d+\.\d{5,})', lambda m: f'{float(m.group(1)):.4f}', svg_content)
+    #         # Reduce decimal precision in coordinates (8 decimals → 4 decimals)
+    #         # This regex finds numbers with many decimal places and rounds them
+    #         # 4 decimals is enough for visual quality while reducing file size
+    #         svg_content = re.sub(r'(\d+\.\d{5,})', lambda m: f'{float(m.group(1)):.4f}', svg_content)
             
-            with open(fname, 'w', encoding='utf-8') as f:
-                f.write(svg_content)
+    #         with open(fname, 'w', encoding='utf-8') as f:
+    #             f.write(svg_content)
             
-            import os
-            size_kb = os.path.getsize(fname) / 1024
-            print(f"Optimized SVG: {fname} ({size_kb:.1f} KB)")
-        except Exception as e:
-            print(f"SVG optimization failed: {e}")
+    #         import os
+    #         size_kb = os.path.getsize(fname) / 1024
+    #         print(f"Optimized SVG: {fname} ({size_kb:.1f} KB)")
+    #     except Exception as e:
+    #         print(f"SVG optimization failed: {e}")
 
+    plt.savefig(fname, **save_kwargs)
     plt.show()
-
     plt.rcdefaults()
 
 

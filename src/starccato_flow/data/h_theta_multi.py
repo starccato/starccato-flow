@@ -791,10 +791,7 @@ class hThetaMulti(Dataset):
                 
                 # Generate detector-specific noise
                 n = self.NoiseGenerator(detector=self.detectors[j]).flatten()  # Shape: (Y_LENGTH,)
-
-                # plot noise once
-                plot_detector_signal_channels(
-                
+                                
                 d_normalized = s_normalized + n
                 d = d_normalized * TEN_KPC
                 

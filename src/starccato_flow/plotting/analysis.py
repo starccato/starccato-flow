@@ -320,7 +320,7 @@ def plot_galactic_distribution(
         0.0,
         s=sun_marker_size,
         c="black",
-        edgecolors="white",
+        edgecolors="orange",
         linewidths=1.8,
         marker="o",
         label="Galactic Center: Sgr A*",
@@ -772,7 +772,7 @@ def plot_galactic_distribution_with_posterior_zoom(
     # Black hole at galactic center: two circles (accretion disk outer + event horizon interior)
     from matplotlib.patches import Circle
     bh_disk_outer = Circle(
-        (0.0, 0.0), 0.5, color="white", alpha=0.8, zorder=8
+        (0.0, 0.0), 0.5, color="orange", alpha=0.8, zorder=8
     )
     ax.add_patch(bh_disk_outer)
     bh_interior = Circle(
