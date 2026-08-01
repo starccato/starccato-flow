@@ -1064,6 +1064,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         dec = data[:, 1]
         mag = data[:, 2]
 
+        data = data[np.where(mag < 6.0)]  # filter out very dim stars above magnitude 5.0
+        ra = data[:, 0]
+        dec = data[:, 1]
+        mag = data[:, 2]
+
         valid = np.isfinite(mag)
         ra = ra[valid]
         dec = dec[valid]
@@ -1071,10 +1076,12 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec))
 
+        sizes = np.clip(40 * 10 ** (-0.4 * mag), 0.2, 50)
+
         ax_l.scatter(
             x[north],
             y[north],
-            s=np.clip(10.0 / (mag[north] + 1e-6), 0.5, 20.0),
+            s=sizes[north],
             color="white",
             edgecolors="none",
             alpha=0.8,
@@ -1084,7 +1091,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.scatter(
             x[~north],
             y[~north],
-            s=np.clip(10.0 / (mag[~north] + 1e-6), 0.5, 20.0),
+            s=sizes[~north],
             color="white",
             edgecolors="none",
             alpha=0.8,
