@@ -1064,7 +1064,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         dec = data[:, 1]
         mag = data[:, 2]
 
-        data = data[np.where(mag < 6.0)]  # filter out very dim stars above magnitude 5.0
+        data = data[np.where(mag < 8.0)]  # filter out very dim stars above magnitude 5.0
         ra = data[:, 0]
         dec = data[:, 1]
         mag = data[:, 2]
@@ -1479,30 +1479,30 @@ def plot_galactic_supernovae_polar_hemispheres(
                 np.deg2rad(star_dec_deg),
             )
 
-        marker_styles = {
-            "Acrux": ("#c4b5fd", 20),
-            "Mimosa": ("#c4b5fd", 18),
-            "Gacrux": ("#c4b5fd", 18),
-            "Imai": ("#c4b5fd", 16),
-            "Epsilon Crucis": ("#c4b5fd", 14),
-            "Alpha Centauri": ("#fde68a", 20),
-            "Beta Centauri": ("#fde68a", 20),
-            "Achernar": ("#a5f3fc", 24),
-            "Pleiades": ("#c4b5fd", 24),
-            "Antares": ("#fca5a5", 24),
-        }
-        for star_name, (panel, sx, sy) in south_proj.items():
-            color, size = marker_styles.get(star_name, ("#f8fafc", 14))
-            mark_ax = ax_l if panel == "north" else ax_r
-            mark_ax.scatter(
-                [sx],
-                [sy],
-                s=size,
-                c=color,
-                edgecolors="none",
-                alpha=0.96,
-                zorder=9,
-            )
+        # marker_styles = {
+        #     "Acrux": ("#c4b5fd", 20),
+        #     "Mimosa": ("#c4b5fd", 18),
+        #     "Gacrux": ("#c4b5fd", 18),
+        #     "Imai": ("#c4b5fd", 16),
+        #     "Epsilon Crucis": ("#c4b5fd", 14),
+        #     "Alpha Centauri": ("#fde68a", 20),
+        #     "Beta Centauri": ("#fde68a", 20),
+        #     "Achernar": ("#a5f3fc", 24),
+        #     "Pleiades": ("#c4b5fd", 24),
+        #     "Antares": ("#fca5a5", 24),
+        # }
+        # for star_name, (panel, sx, sy) in south_proj.items():
+        #     color, size = marker_styles.get(star_name, ("#f8fafc", 14))
+        #     mark_ax = ax_l if panel == "north" else ax_r
+        #     mark_ax.scatter(
+        #         [sx],
+        #         [sy],
+        #         s=size,
+        #         c=color,
+        #         edgecolors="none",
+        #         alpha=0.96,
+        #         zorder=9,
+        #     )
 
         display_name_overrides = {
             "Pleiades": "Matariki",
@@ -1543,125 +1543,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 ha="right",
                 va="top",
                 zorder=10,
-            )
-
-        # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
-        # Brightest star from each of the 88 IAU constellations.
-        extra_visible_star_names = [
-            "Alpheratz",        "Mirach",           "Almach",
-            "Alpha Antliae",    "Epsilon Antliae",
-            "Alpha Apodis",     "Beta Apodis",
-            "Sadalmelik",       "Sadachbia",        "Sadalsuud",
-            "Altair",           "Alshain",          "Tarazed",           "Beta Aquilae",
-            "Alpha Arae",       "Beta Arae",        "Gamma Arae",
-            "Hamal",            "Sheratan",         "Mesarthim",
-            "Capella",          "Theta Aurigae",    "Iota Aurigae",      "Beta Aurigae",
-            "Arcturus",         "Muphrid",          "Izar",              "Pulcherrima",      "Seginus",
-            "Alpha Caeli",      "Gamma Caeli",
-            "Beta Camelopardalis",  "Alpha Camelopardalis",
-            "Altarf",           "Acubens",          "Tzelakot",
-            "Cor Caroli",       "Chara",            "Beta Canum Venaticorum",
-            "Sirius",           "Canopus",          "Adara",             "Wezen",
-            "Procyon",          "Gomeisa",
-            "Deneb Algedi",     "Maaz",
-            "Canopus",          "Avior",            "Miaplacidus",
-            "Schedar",          "Caph",             "Gamma Cassiopeiae", "Ruchbah",          "Segin",
-            "Rigil Kentaurus",  "Hadar",            "Muhlifain",
-            "Alderamin",        "Alfirk",           "Errai",
-            "Menkar",           "Diphda",           "Beta Ceti",
-            "Alpha Chamaeleontis",  "Gamma Chamaeleontis",
-            "Alpha Circini",    "Beta Circini",
-            "Phact",            "Wazn",
-            "Diadem",           "Beta Comae Berenices",
-            "Alpha Coronae Australis",  "Beta Coronae Australis",  "Gamma Coronae Australis",
-            "Alphecca",         "Nusakan",          "Theta Coronae Borealis",  "Gamma Coronae Borealis",
-            "Gienah",           "Brachium",         "Kraz",              "Algorab",
-            "Delta Crateris",   "Alkes",            "Labrum",
-            "Acrux",            "Gacrux",           "Iota Crucis",       "Delta Crucis",
-            "Deneb",            "Sadr",             "Delta Cygni",       "Albireo",          "Epsilon Cygni",
-            "Sualocin",         "Rotanev",          "Gamma Delphini",    "Delta Delphini",
-            "Alpha Doradus",    "Beta Doradus",
-            "Eltanin",          "Rastaban",         "Altais",
-            "Kitalpha",         "Gamma Equulei",
-            "Achernar",         "Cursa",            "Zanim",             "Azha",
-            "Fornacis",         "Alpha Fornacis",
-            "Castor",           "Pollux",           "Alhena",            "Wasat",            "Kappa Geminorum",
-            "Alnair",           "Beta Gruis",       "Gamma Gruis",
-            "Rasalgethi",       "Kornephoros",      "Sarin",             "Tau Herculis",
-            "Alpha Horologi",   "Beta Horologi",
-            "Alphard",          "Gamma Hydrae",     "Pi Hydrae",         "Epsilon Hydrae",
-            "Alpha Hydri",      "Beta Hydri",       "Gamma Hydri",
-            "Alpha Indi",       "Beta Indi",
-            "Alpha Lacertae",   "Beta Lacertae",
-            "Regulus",          "Denebola",         "Algieba",           "Zosma",            "Chertan",
-            "Praecipua",        "Beta Leonis Minoris",
-            "Arneb",            "Nihal",            "Gamma Leporis",
-            "Zubeneschamali",   "Zubenelgenubi",    "Brachium",          "Zuben Elakrab",
-            "Alpha Lupi",       "Beta Lupi",        "Gamma Lupi",
-            "Alsciaukat",       "Alpha Lynxis",
-            "Vega",             "Epsilon Lyrae",    "Zeta Lyrae",        "Delta Lyrae",      "Gamma Lyrae",
-            "Alpha Mensae",     "Beta Mensae",
-            "Epsilon Microscopii",  "Alpha Microscopii",
-            "Alpha Monocerotis",    "Beta Monocerotis",  "Gamma Monocerotis",
-            "Alpha Muscae",     "Beta Muscae",      "Gamma Muscae",
-            "Gamma Normae",     "Epsilon Normae",   "Alpha Normae",
-            "Polaris Australis",    "Beta Octantis",
-            "Rasalhague",       "Sabik",            "Cebalrai",          "Yedprior",         "Yed Posterior",
-            "Rigel",            "Betelgeuse",       "Bellatrix",         "Saiph",            "Alnitak",       "Alnilam",
-            "Peacock",          "Delta Pavonis",    "Gamma Pavonis",
-            "Enif",             "Scheat",           "Algenib",           "Markab",
-            "Mirfak",           "Algenib",          "Atik",              "Epsilon Persei",
-            "Ankaa",            "Chert",            "Psi Phoenicis",
-            "Alpha Pictoris",   "Beta Pictoris",
-            "Alrescha",         "Fum al Samakah",   "Omega Piscium",
-            "Fomalhaut",        "Delta Piscis Austrini",
-            "Naos",             "Pi Puppis",        "Zeta Puppis",
-            "Alpha Pyxidis",    "Beta Pyxidis",
-            "Alpha Reticuli",   "Beta Reticuli",
-            "Sham",             "Almach",           "Delta Sagittae",
-            "Kaus Australis",   "Kaus Media",       "Kaus Borealis",     "Ascella",
-            "Antares",          "Shaula",           "Lesath",            "Acrab",
-            "Alpha Sculptoris", "Beta Sculptoris",
-            "Alpha Scuti",      "Delta Scuti",
-            "Unukalhai",        "Eta Serpentis",    "Gamma Serpentis",
-            "Alpha Sextantis",  "Beta Sextantis",
-            "Aldebaran",        "Nath",             "Alcyone",           "Electra",          "Maia",
-            "Alpha Telescopii", "Zeta Telescopii",
-            "Mothallah",        "Dulcamara",        "Caph",
-            "Atria",            "Beta Trianguli Australis",  "Gamma Trianguli Australis",
-            "Alpha Tucanae",    "Beta Tucanae",     "Gamma Tucanae",
-            "Dubhe",            "Merak",            "Phecda",            "Megrez",           "Alioth",       "Mizar",        "Alkaid",
-            "Polaris",          "Kochab",           "Pherkad",           "Yildun",           "Epsilon Ursae Minoris",
-            "Gamma Velorum",    "Lambda Velorum",   "Delta Velorum",
-            "Spica",            "Zavijava",         "Porrima",           "Vindemiatrix",
-            "Alpha Volantis",   "Beta Volantis",
-            "Anser",            "Alpha Vulpeculae",
-        ]
-        excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
-        seen_extra_stars: set[str] = set()
-        for star_name in extra_visible_star_names:
-            if star_name in seen_extra_stars:
-                continue
-            seen_extra_stars.add(star_name)
-            if star_name in excluded_named_stars:
-                continue
-            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-            if resolved is None:
-                continue
-            star_ra_deg, star_dec_deg = resolved
-            panel, sx, sy = _project_to_hemisphere(
-                np.deg2rad(star_ra_deg),
-                np.deg2rad(star_dec_deg),
-            )
-            star_ax = ax_l if panel == "north" else ax_r
-            star_ax.scatter(
-                [sx],
-                [sy],
-                s=5,
-                c="#f8fafc",
-                edgecolors="none",
-                alpha=0.78,
-                zorder=8,
             )
 
     # Plot a random sample of n supernovae from the galactic distribution (rasterized)
