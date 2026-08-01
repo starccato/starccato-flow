@@ -729,8 +729,8 @@ def plot_eos_ye_distribution(
     )
     
     # Formatting
-    ax.set_xlabel('Equation of State (EOS)', fontsize=16)
-    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16)
+    ax.set_xlabel('Equation of State (EOS)', fontsize=16, fontfamily=font_name)
+    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16, fontfamily=font_name)
     ax.tick_params(labelsize=7, axis='x')
     ax.tick_params(labelsize=11, axis='y')
     # Rotate x-axis labels for readability

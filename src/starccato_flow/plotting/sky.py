@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.collections import LineCollection
 from matplotlib.markers import MarkerStyle
+import matplotlib.lines as mlines
 from matplotlib.patches import Circle, Patch
 from matplotlib.path import Path
 from . import set_plot_style
@@ -103,21 +104,62 @@ def _hpd_thresholds(
 
 
 def _project_to_hemisphere(
-    ra_val: float,
-    dec_val: float,
-) -> tuple[str, float, float]:
-    """Project a single (RA, Dec) point into north/south hemisphere panel coordinates."""
-    ra_use = ra_val
-    if dec_val >= 0.0:
-        rr = (np.pi / 2 - dec_val) / (np.pi / 2)
-        xx = rr * np.sin(ra_use)
-        yy = rr * np.cos(ra_use)
-        return "north", float(xx), float(yy)
+    ra: float | np.ndarray,
+    dec: float | np.ndarray,
+):
+    """Project (RA, Dec) into hemisphere panel coordinates."""
 
-    rr = (np.pi / 2 + dec_val) / (np.pi / 2)
-    xx = -rr * np.sin(ra_use)
-    yy = rr * np.cos(ra_use)
-    return "south", float(xx), float(yy)
+    ra = np.asarray(ra)
+    dec = np.asarray(dec)
+
+    north = dec >= 0.0
+
+    r = np.where(
+        north,
+        (np.pi / 2 - dec) / (np.pi / 2),
+        (np.pi / 2 + dec) / (np.pi / 2),
+    )
+
+    x = r * np.sin(ra)
+    x = np.where(north, x, -x)
+
+    y = r * np.cos(ra)
+
+    if x.ndim == 0:
+        return (
+            "north" if bool(north) else "south",
+            float(x),
+            float(y),
+        )
+
+    return north, x, y
+
+
+@lru_cache(maxsize=1)
+def _stars_and_magnitudes() -> dict[int, tuple[float, float, float]]:
+    """Return a {HIP id: (RA, Dec, Vmag)} lookup from the Hipparcos catalog."""
+
+    stars = {}
+
+    for hip, (ra, dec, vmag) in _hip_lookup_table_with_mag().items():
+
+        if (
+            np.ma.is_masked(ra)
+            or np.ma.is_masked(dec)
+            or np.ma.is_masked(vmag)
+        ):
+            continue
+
+        if not (
+            np.isfinite(ra)
+            and np.isfinite(dec)
+            and np.isfinite(vmag)
+        ):
+            continue
+
+        stars[hip] = (float(ra), float(dec), float(vmag))
+
+    return stars
 
 @lru_cache(maxsize=1)
 def _constellation_stick_segments():
@@ -125,7 +167,7 @@ def _constellation_stick_segments():
     hip_ids = _read_constellation_hip_ids(filename)
     print(len(hip_ids))
 
-    hip_lookup = _hip_lookup_table()
+    hip_lookup = _hip_lookup_table_with_mag()
 
     north_lines = []
     south_lines = []
@@ -145,8 +187,8 @@ def _constellation_stick_segments():
                 if hip1 not in hip_lookup or hip2 not in hip_lookup:
                     continue  # star not resolved in catalog - skip this segment
 
-                ra1, dec1 = hip_lookup[hip1]
-                ra2, dec2 = hip_lookup[hip2]
+                ra1, dec1, _ = hip_lookup[hip1]
+                ra2, dec2, _ = hip_lookup[hip2]
 
                 p1 = _project_to_hemisphere(np.deg2rad(ra1), np.deg2rad(dec1))
                 p2 = _project_to_hemisphere(np.deg2rad(ra2), np.deg2rad(dec2))
@@ -342,6 +384,57 @@ def _hip_lookup_table() -> dict[int, tuple[float, float]]:
     return hip_lookup
 
 
+@lru_cache(maxsize=1)
+def _hip_lookup_table_with_mag() -> dict[int, tuple[float, float, float]]:
+    """Build a {HIP id: (ra_deg, dec_deg, vmag)} lookup from the Hipparcos catalog.
+
+    Kept as a separate function/cache file from `_hip_lookup_table` (which
+    stores 2-tuples of just RA/Dec) rather than adding Vmag to that table
+    directly, since several existing callers unpack it as
+    `ra, dec = hip_lookup[hip]` and would break on a 3-tuple.
+    """
+    cache_path = os.path.join(SKY_MAP_ROOT, "hip_lookup_mag_cache.pkl")
+    if os.path.exists(cache_path):
+        import pickle
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+
+    try:
+        from astroquery.vizier import Vizier
+    except ImportError as exc:
+        raise ImportError(
+            "astroquery is required to resolve star magnitudes. Install it "
+            "with `pip install astroquery`."
+        ) from exc
+
+    vizier = Vizier(columns=["HIP", "_RAJ2000", "_DEJ2000", "Vmag"])
+    vizier.ROW_LIMIT = -1
+    table = vizier.get_catalogs("I/239/hip_main")[0]
+
+    ra_col = "_RAJ2000" if "_RAJ2000" in table.colnames else "RAJ2000"
+    dec_col = "_DEJ2000" if "_DEJ2000" in table.colnames else "DEJ2000"
+
+    hip_lookup: dict[int, tuple[float, float, float]] = {}
+    for row in table:
+        try:
+            hip_lookup[int(row["HIP"])] = (
+                float(row[ra_col]),
+                float(row[dec_col]),
+                float(row["Vmag"]),
+            )
+        except (ValueError, TypeError):
+            continue  # masked/missing entries (some HIP stars lack Vmag)
+
+    try:
+        import pickle
+        with open(cache_path, "wb") as f:
+            pickle.dump(hip_lookup, f)
+    except OSError:
+        pass  # caching is best-effort
+
+    return hip_lookup
+
+
 def plot_galactic_supernovae_polar_hemispheres(
     ccsn,
     fname: str = "plots/galactic_supernovae_polar_hemispheres.png",
@@ -496,6 +589,30 @@ def plot_galactic_supernovae_polar_hemispheres(
     else:
         ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
         ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
+
+    # Set final data limits/aspect now (moved up from later in the function)
+    # so ax.transData is already correct by the time any curved text (the
+    # MILKY WAY label, RA degree labels) is drawn using it to convert a
+    # physical point-based spacing into data-space degrees. Axes created via
+    # fig.add_axes with an explicit rect (as above) already know their
+    # figure-fraction position without needing a draw pass, so this is safe
+    # to rely on immediately - no fig.canvas.draw() required.
+    if format == "thesis":
+        # Panels are stacked, not side by side, so there is no shared seam to keep flush.
+        ax_l.set_xlim(-1.05, 1.05)
+        ax_r.set_xlim(-1.05, 1.05)
+    else:
+        # Make circles touch at center seam while keeping extra margin on outer edges.
+        ax_l.set_xlim(-1.03, 1.02)
+        ax_r.set_xlim(-1.02, 1.03)
+
+    for ax in (ax_l, ax_r):
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_ylim(-1.03, 1.03)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
 
     north_mask = dec_supernovae >= 0
     ra_n = ra_rot_supernovae[north_mask]
@@ -670,37 +787,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         zorder=10
     )
 
-    # if galaxy:
-    #     # Add curved "MILKY WAY" text below south pole, following the arc
-    #     milky_way_text = "MILKY WAY"
-    #     n_chars = len(milky_way_text)
-    #     # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
-    #     angle_start = 240  # degrees in standard angle (bottom-left)
-    #     angle_end = 300    # degrees in standard angle (bottom-right)
-    #     angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
-    #     radius = 0.72  # position along the arc (raised from south pole)
-    
-    #     for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
-    #         x = radius * np.cos(angle)
-    #         y = radius * np.sin(angle)
-    #         # Rotate text to follow the curve (tangent to circle)
-    #         rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
-    #         ax_r.text(
-    #             x,
-    #             y,
-    #             char,
-    #             color=text_color,
-    #             fontsize=fontsize_title if format == "poster" else fontsize_main,
-    #             ha="center",
-    #             va="center",
-    #             rotation=rotation,
-    #             rotation_mode="anchor",
-    #             alpha=1.0,
-    #             fontweight="bold",
-    #             zorder=5,
-    #             clip_on=False,
-    #         )
-
     if galaxy:
         from astropy.coordinates import SkyCoord
         import astropy.units as u
@@ -755,7 +841,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         text = "MILKY WAY"
 
         centre = 0.5 * s[-1]        # move this left/right
-        spacing = 0.15             # adjust letter spacing
+        spacing = 0.2             # adjust letter spacing
     
         # Decide reading direction once from the tangent at the label's center,
         # same readability rule as _draw_curved_ra_label: never let text read
@@ -816,7 +902,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         s_n = np.concatenate([[0], np.cumsum(d_n)])
 
         centre_n = 0.5 * s_n[-1]   # independent position control for the north label
-        spacing_n = 0.15          # independent letter spacing for the north label
+        spacing_n = 0.2          # independent letter spacing for the north label
 
         idx_cn = np.clip(np.searchsorted(s_n, centre_n), 1, len(s_n) - 1)
         dx_cn = north_curve[idx_cn, 0] - north_curve[idx_cn - 1, 0]
@@ -889,14 +975,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         y0 = r_tick * uy
 
         # North: positive Dec labels.
-        # ax_l.plot(
-        #     [x0 - 0.012, x0 + 0.012],
-        #     [y0, y0],
-        #     color=text_color,
-        #     alpha=0.2,
-        #     lw=0.75,
-        #     zorder=9,
-        # )
         ax_l.text(
             x0 + 0.020,
             y0,
@@ -910,14 +988,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
 
         # South: negative Dec labels.
-        # ax_r.plot(
-        #     [x0 - 0.012, x0 + 0.012],
-        #     [y0, y0],
-        #     color=text_color,
-        #     alpha=0.2,
-        #     lw=0.75,
-        #     zorder=6,
-        # )
         ax_r.text(
             x0 + 0.020,
             y0,
@@ -960,6 +1030,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             print("Constellation borders requested, but astropy is not installed in this environment.")
 
+
     if galaxy and constellations:
         north_lines, south_lines = _constellation_stick_segments()
         ax_l.add_collection(
@@ -970,7 +1041,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 alpha=1.0,
                 zorder=4,
                 joinstyle="round",
-                capstyle="round"
+                capstyle="round",
             )
         )
         ax_r.add_collection(
@@ -981,26 +1052,44 @@ def plot_galactic_supernovae_polar_hemispheres(
                 alpha=1.0,
                 zorder=4,
                 joinstyle="round",
-                capstyle="round"
+                capstyle="round",
             )
         )
 
-    if format == "thesis":
-        # Panels are stacked, not side by side, so there is no shared seam to keep flush.
-        ax_l.set_xlim(-1.05, 1.05)
-        ax_r.set_xlim(-1.05, 1.05)
-    else:
-        # Make circles touch at center seam while keeping extra margin on outer edges.
-        ax_l.set_xlim(-1.03, 1.02)
-        ax_r.set_xlim(-1.02, 1.03)
+    if galaxy and constellations:
+        stars = _stars_and_magnitudes()
 
-    for ax in (ax_l, ax_r):
-        ax.set_aspect("equal", adjustable="box")
-        ax.set_ylim(-1.03, 1.03)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
+        data = np.asarray(list(stars.values()), dtype=float)
+        ra = data[:, 0]
+        dec = data[:, 1]
+        mag = data[:, 2]
+
+        valid = np.isfinite(mag)
+        ra = ra[valid]
+        dec = dec[valid]
+        mag = mag[valid]
+
+        north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec))
+
+        ax_l.scatter(
+            x[north],
+            y[north],
+            s=np.clip(10.0 / (mag[north] + 1e-6), 0.5, 20.0),
+            color="white",
+            edgecolors="none",
+            alpha=0.8,
+            zorder=5,
+        )
+
+        ax_r.scatter(
+            x[~north],
+            y[~north],
+            s=np.clip(10.0 / (mag[~north] + 1e-6), 0.5, 20.0),
+            color="white",
+            edgecolors="none",
+            alpha=0.8,
+            zorder=5,
+        )
 
     if galaxy:
         # Keep Galactic Center fixed to the physical galactic center direction.
@@ -1359,16 +1448,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         if "Aldebaran" in taurus_proj:
             panel, tx, ty = taurus_proj["Aldebaran"]
             taur_lbl_ax = ax_l if panel == "north" else ax_r
-            # taur_lbl_ax.text(
-            #     tx + 0.03,
-            #     ty + 0.016,
-            #     "Taurus",
-            #     color="#fecaca",
-            #     fontsize=fontsize_tiny,
-            #     ha="left",
-            #     va="center",
-            #     zorder=10,
-            # )
 
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
         scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
@@ -1462,181 +1541,93 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Additional visible-night-sky stars from Astropy name resolution, plotted without labels.
         # Brightest star from each of the 88 IAU constellations.
         extra_visible_star_names = [
-            # Andromeda (3 main stars)
             "Alpheratz",        "Mirach",           "Almach",
-            # Antlia (2 main stars)
             "Alpha Antliae",    "Epsilon Antliae",
-            # Apus (2 main stars)
             "Alpha Apodis",     "Beta Apodis",
-            # Aquarius (3 main stars)
             "Sadalmelik",       "Sadachbia",        "Sadalsuud",
-            # Aquila (4 main stars)
             "Altair",           "Alshain",          "Tarazed",           "Beta Aquilae",
-            # Ara (3 main stars)
             "Alpha Arae",       "Beta Arae",        "Gamma Arae",
-            # Aries (3 main stars)
             "Hamal",            "Sheratan",         "Mesarthim",
-            # Auriga (4 main stars)
             "Capella",          "Theta Aurigae",    "Iota Aurigae",      "Beta Aurigae",
-            # Boötes (5 main stars)
             "Arcturus",         "Muphrid",          "Izar",              "Pulcherrima",      "Seginus",
-            # Caelum (2 main stars)
             "Alpha Caeli",      "Gamma Caeli",
-            # Camelopardalis (2 main stars)
             "Beta Camelopardalis",  "Alpha Camelopardalis",
-            # Cancer (3 main stars)
             "Altarf",           "Acubens",          "Tzelakot",
-            # Canes Venatici (3 main stars)
             "Cor Caroli",       "Chara",            "Beta Canum Venaticorum",
-            # Canis Major (4 main stars)
             "Sirius",           "Canopus",          "Adara",             "Wezen",
-            # Canis Minor (2 main stars)
             "Procyon",          "Gomeisa",
-            # Capella (2 main stars)
             "Deneb Algedi",     "Maaz",
-            # Carina (3 main stars)
             "Canopus",          "Avior",            "Miaplacidus",
-            # Cassiopeia (5 main stars - the W pattern)
             "Schedar",          "Caph",             "Gamma Cassiopeiae", "Ruchbah",          "Segin",
-            # Centaurus (3 main stars)
             "Rigil Kentaurus",  "Hadar",            "Muhlifain",
-            # Cepheus (3 main stars)
             "Alderamin",        "Alfirk",           "Errai",
-            # Cetus (3 main stars)
             "Menkar",           "Diphda",           "Beta Ceti",
-            # Chamaeleon (2 main stars)
             "Alpha Chamaeleontis",  "Gamma Chamaeleontis",
-            # Circinus (2 main stars)
             "Alpha Circini",    "Beta Circini",
-            # Columba (2 main stars)
             "Phact",            "Wazn",
-            # Coma Berenices (2 main stars)
             "Diadem",           "Beta Comae Berenices",
-            # Corona Australis (3 main stars)
             "Alpha Coronae Australis",  "Beta Coronae Australis",  "Gamma Coronae Australis",
-            # Corona Borealis (4 main stars - the arc)
             "Alphecca",         "Nusakan",          "Theta Coronae Borealis",  "Gamma Coronae Borealis",
-            # Corvus (4 main stars - the diamond)
             "Gienah",           "Brachium",         "Kraz",              "Algorab",
-            # Crater (3 main stars)
             "Delta Crateris",   "Alkes",            "Labrum",
-            # Crux (4 main stars - Southern Cross)
             "Acrux",            "Gacrux",           "Iota Crucis",       "Delta Crucis",
-            # Cygnus (5 main stars - Northern Cross)
             "Deneb",            "Sadr",             "Delta Cygni",       "Albireo",          "Epsilon Cygni",
-            # Delphinus (4 main stars)
             "Sualocin",         "Rotanev",          "Gamma Delphini",    "Delta Delphini",
-            # Dorado (2 main stars)
             "Alpha Doradus",    "Beta Doradus",
-            # Draco (3 main stars)
             "Eltanin",          "Rastaban",         "Altais",
-            # Equuleus (2 main stars)
             "Kitalpha",         "Gamma Equulei",
-            # Eridanus (4 main stars)
             "Achernar",         "Cursa",            "Zanim",             "Azha",
-            # Fornax (2 main stars)
             "Fornacis",         "Alpha Fornacis",
-            # Gemini (5 main stars - Castor & Pollux twins)
             "Castor",           "Pollux",           "Alhena",            "Wasat",            "Kappa Geminorum",
-            # Grus (3 main stars)
             "Alnair",           "Beta Gruis",       "Gamma Gruis",
-            # Hercules (4 main stars)
             "Rasalgethi",       "Kornephoros",      "Sarin",             "Tau Herculis",
-            # Horologium (2 main stars)
             "Alpha Horologi",   "Beta Horologi",
-            # Hydra (4 main stars - largest constellation)
             "Alphard",          "Gamma Hydrae",     "Pi Hydrae",         "Epsilon Hydrae",
-            # Hydrus (3 main stars)
             "Alpha Hydri",      "Beta Hydri",       "Gamma Hydri",
-            # Indus (2 main stars)
             "Alpha Indi",       "Beta Indi",
-            # Lacerta (2 main stars)
             "Alpha Lacertae",   "Beta Lacertae",
-            # Leo (5 main stars - the sickle)
             "Regulus",          "Denebola",         "Algieba",           "Zosma",            "Chertan",
-            # Leo Minor (2 main stars)
             "Praecipua",        "Beta Leonis Minoris",
-            # Lepus (3 main stars)
             "Arneb",            "Nihal",            "Gamma Leporis",
-            # Libra (4 main stars)
             "Zubeneschamali",   "Zubenelgenubi",    "Brachium",          "Zuben Elakrab",
-            # Lupus (3 main stars)
             "Alpha Lupi",       "Beta Lupi",        "Gamma Lupi",
-            # Lynx (2 main stars)
             "Alsciaukat",       "Alpha Lynxis",
-            # Lyra (5 main stars)
             "Vega",             "Epsilon Lyrae",    "Zeta Lyrae",        "Delta Lyrae",      "Gamma Lyrae",
-            # Mensa (2 main stars)
             "Alpha Mensae",     "Beta Mensae",
-            # Microscopium (2 main stars)
             "Epsilon Microscopii",  "Alpha Microscopii",
-            # Monoceros (3 main stars)
             "Alpha Monocerotis",    "Beta Monocerotis",  "Gamma Monocerotis",
-            # Musca (3 main stars)
             "Alpha Muscae",     "Beta Muscae",      "Gamma Muscae",
-            # Norma (3 main stars)
             "Gamma Normae",     "Epsilon Normae",   "Alpha Normae",
-            # Octans (2 main stars)
             "Polaris Australis",    "Beta Octantis",
-            # Ophiuchus (5 main stars)
             "Rasalhague",       "Sabik",            "Cebalrai",          "Yedprior",         "Yed Posterior",
-            # Orion (6 main stars - one of the most recognizable)
             "Rigel",            "Betelgeuse",       "Bellatrix",         "Saiph",            "Alnitak",       "Alnilam",
-            # Pavo (3 main stars)
             "Peacock",          "Delta Pavonis",    "Gamma Pavonis",
-            # Pegasus (4 main stars - part of the Great Square)
             "Enif",             "Scheat",           "Algenib",           "Markab",
-            # Perseus (4 main stars)
             "Mirfak",           "Algenib",          "Atik",              "Epsilon Persei",
-            # Phoenix (3 main stars)
             "Ankaa",            "Chert",            "Psi Phoenicis",
-            # Pictor (2 main stars)
             "Alpha Pictoris",   "Beta Pictoris",
-            # Pisces (3 main stars)
             "Alrescha",         "Fum al Samakah",   "Omega Piscium",
-            # Piscis Austrinus (2 main stars)
             "Fomalhaut",        "Delta Piscis Austrini",
-            # Puppis (3 main stars)
             "Naos",             "Pi Puppis",        "Zeta Puppis",
-            # Pyxis (2 main stars)
             "Alpha Pyxidis",    "Beta Pyxidis",
-            # Reticulum (2 main stars)
             "Alpha Reticuli",   "Beta Reticuli",
-            # Sagitta (3 main stars - small but distinct)
             "Sham",             "Almach",           "Delta Sagittae",
-            # Sagittarius (4 main stars - the teapot asterism)
             "Kaus Australis",   "Kaus Media",       "Kaus Borealis",     "Ascella",
-            # Scorpius (4 main stars - scorpion tail curve)
             "Antares",          "Shaula",           "Lesath",            "Acrab",
-            # Sculptor (2 main stars)
             "Alpha Sculptoris", "Beta Sculptoris",
-            # Scutum (2 main stars)
             "Alpha Scuti",      "Delta Scuti",
-            # Serpens (3 main stars)
             "Unukalhai",        "Eta Serpentis",    "Gamma Serpentis",
-            # Sextans (2 main stars)
             "Alpha Sextantis",  "Beta Sextantis",
-            # Taurus (5 main stars - Pleiades visible)
             "Aldebaran",        "Nath",             "Alcyone",           "Electra",          "Maia",
-            # Telescopium (2 main stars)
             "Alpha Telescopii", "Zeta Telescopii",
-            # Triangulum (3 main stars)
             "Mothallah",        "Dulcamara",        "Caph",
-            # Triangulum Australe (3 main stars)
             "Atria",            "Beta Trianguli Australis",  "Gamma Trianguli Australis",
-            # Tucana (3 main stars)
             "Alpha Tucanae",    "Beta Tucanae",     "Gamma Tucanae",
-            # Ursa Major (7 main stars - Big Dipper)
             "Dubhe",            "Merak",            "Phecda",            "Megrez",           "Alioth",       "Mizar",        "Alkaid",
-            # Ursa Minor (5 main stars - Little Bear, Polaris)
             "Polaris",          "Kochab",           "Pherkad",           "Yildun",           "Epsilon Ursae Minoris",
-            # Vela (3 main stars)
             "Gamma Velorum",    "Lambda Velorum",   "Delta Velorum",
-            # Virgo (4 main stars)
             "Spica",            "Zavijava",         "Porrima",           "Vindemiatrix",
-            # Volans (2 main stars)
             "Alpha Volantis",   "Beta Volantis",
-            # Vulpecula (2 main stars)
             "Anser",            "Alpha Vulpeculae",
         ]
         excluded_named_stars = set(orion_star_names + taurus_star_names + scx_star_names + pointer_names + extra_names + ["Betelgeuse"])
@@ -1800,8 +1791,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             plot_angle = np.arctan2(det_x, det_y) + np.pi / 2
             rotated_verts = rotate_marker_verts(l_marker_verts, plot_angle)
 
-            print(Path)
-            print(type(Path))
             l_marker = MarkerStyle(Path(rotated_verts))
             
             det_ax.scatter(
@@ -1912,9 +1901,6 @@ def plot_galactic_supernovae_polar_hemispheres(
     if coastline:
         coast_n, coast_s = _coastline_segments()
 
-        print(len(coast_n))
-        print(coast_n[0].shape)
-
         ax_l.add_collection(
             LineCollection(
                 coast_n,
@@ -1954,28 +1940,6 @@ def plot_galactic_supernovae_polar_hemispheres(
     }
     if file_format:
         save_kwargs["format"] = file_format
-    
-    
-    # Optimize SVG file size by reducing decimal precision
-    # if fname.endswith('.svg'):
-    #     import re
-    #     try:
-    #         with open(fname, 'r', encoding='utf-8') as f:
-    #             svg_content = f.read()
-            
-    #         # Reduce decimal precision in coordinates (8 decimals → 4 decimals)
-    #         # This regex finds numbers with many decimal places and rounds them
-    #         # 4 decimals is enough for visual quality while reducing file size
-    #         svg_content = re.sub(r'(\d+\.\d{5,})', lambda m: f'{float(m.group(1)):.4f}', svg_content)
-            
-    #         with open(fname, 'w', encoding='utf-8') as f:
-    #             f.write(svg_content)
-            
-    #         import os
-    #         size_kb = os.path.getsize(fname) / 1024
-    #         print(f"Optimized SVG: {fname} ({size_kb:.1f} KB)")
-    #     except Exception as e:
-    #         print(f"SVG optimization failed: {e}")
 
     plt.savefig(fname, **save_kwargs)
     plt.show()
@@ -2077,7 +2041,27 @@ def _draw_curved_ra_label(
     due to south's mirrored geometry.
     """
     if char_spacing_deg is None:
-        char_spacing_deg = fontsize * 0.1
+        # Scale spacing to the axes' actual on-page size, not just its
+        # normalized data-space radius. A fixed calibration against radius
+        # alone breaks across formats: the poster and thesis panels can
+        # share the same data radius (~1.04) while being physically huge
+        # vs. tiny on the page, so the same angular spacing reads as wildly
+        # different letter-to-letter distances.
+        #
+        # Instead, convert a target character pitch - a physical distance
+        # in points, scaled with fontsize - into data-space arc length via
+        # this axes' transData scale (which already encodes figure size,
+        # axes width fraction, and dpi), then into an angle via
+        # arc_length = radius * angle. This requires the axes' final
+        # xlim/ylim/aspect to already be set (they are, by this point).
+        fig = ax.figure
+        p0 = ax.transData.transform((0.0, 0.0))
+        p1 = ax.transData.transform((1.0, 0.0))
+        pixels_per_data_unit = np.hypot(*(p1 - p0))
+        points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
+        target_char_pitch_pts = fontsize * 0.6  # ~ typical character advance width
+        arc_length_data = target_char_pitch_pts / points_per_data_unit
+        char_spacing_deg = np.degrees(arc_length_data / radius)
 
     def _pos(ang_deg):
         ang = np.deg2rad(ang_deg)
@@ -2098,9 +2082,6 @@ def _draw_curved_ra_label(
 
     # Decide the flip once for the whole label, from its center, so
     # rotation and character order stay in agreement.
-    # base_rot = _travel_angle_deg(center_ang_deg)
-    # norm = ((base_rot + 180.0) % 360.0) - 180.0
-
     base_rot = _travel_angle_deg(center_ang_deg)
     norm = ((base_rot + 180.0) % 360.0) - 180.0
 

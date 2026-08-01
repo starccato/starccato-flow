@@ -84,7 +84,7 @@ def plot_signal_grid(
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
         ax.tick_params(axis='both', labelsize=9)
-        ax.yaxis.get_offset_text().set_fontsize(9)
+        # ax.yaxis.get_offset_text().set_fontsize(9)
         ax.plot(d, y, color=signal_colour, linewidth=1, alpha=1.0)
         
         ax.axvline(x=0, color=vline_color, linestyle="--", linewidth=0.75, alpha=0.5)
@@ -103,7 +103,26 @@ def plot_signal_grid(
             ax.tick_params(labelbottom=False)
 
     fig.supxlabel('time (s)', fontsize=16)
-    fig.supylabel(r'$h_+$', fontsize=16)
+
+    # Force a draw so each axis's offset text is actually computed
+    fig.canvas.draw()
+
+    # Grab the offset string once (same for every panel since ylim is shared),
+    # then hide the per-axis offset text and fold it into the shared ylabel instead.
+    offset_text = ""
+    for ax in axes[:len(signals)]:
+        ot = ax.yaxis.get_offset_text().get_text()
+        if ot:
+            offset_text = ot
+            break
+
+    for ax in axes[:len(signals)]:
+        ax.yaxis.get_offset_text().set_visible(False)
+
+    ylabel = r'$h_+$' + (f' ({offset_text})' if offset_text else '')
+    fig.supylabel(ylabel, fontsize=16)
+
+    fig.tight_layout(pad=0.3, h_pad=0.5, w_pad=0.5)
 
     if fname:
         if fname.endswith('.svg'):
@@ -440,7 +459,15 @@ def plot_signal_distribution(
     ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
     ax.set_xlabel('time (s)', size=16, color=text_color, font=font_name)
-    ax.set_ylabel(r'$h_+$', size=16, color=text_color, font=font_name)
+
+    # Force a draw so the offset text is actually computed, then fold it
+    # into the ylabel instead of leaving it floating in the corner.
+    fig.canvas.draw()
+    offset_text = ax.yaxis.get_offset_text().get_text()
+    ax.yaxis.get_offset_text().set_visible(False)
+    ylabel = r'$h_+$' + (f' ({offset_text})' if offset_text else '')
+    ax.set_ylabel(ylabel, size=16, color=text_color, font=font_name)
+
     ax.tick_params(axis='x', labelsize=11, colors=text_color)
     ax.tick_params(axis='y', labelsize=11, colors=text_color)
 
@@ -450,8 +477,6 @@ def plot_signal_distribution(
 
     ax.grid(False)
 
-    ax.yaxis.get_offset_text().set_fontsize(9)
-    ax.yaxis.get_offset_text().set_fontfamily(font_family)
     ax.ticklabel_format(axis='x', style='plain')
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
