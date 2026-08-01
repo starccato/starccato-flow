@@ -670,36 +670,36 @@ def plot_galactic_supernovae_polar_hemispheres(
         zorder=10
     )
 
-    if galaxy:
-        # Add curved "MILKY WAY" text below south pole, following the arc
-        milky_way_text = "MILKY WAY"
-        n_chars = len(milky_way_text)
-        # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
-        angle_start = 240  # degrees in standard angle (bottom-left)
-        angle_end = 300    # degrees in standard angle (bottom-right)
-        angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
-        radius = 0.72  # position along the arc (raised from south pole)
+    # if galaxy:
+    #     # Add curved "MILKY WAY" text below south pole, following the arc
+    #     milky_way_text = "MILKY WAY"
+    #     n_chars = len(milky_way_text)
+    #     # Spread text across lower arc (from -120° to -60° in compass bearing, or 210° to 300° in standard angle)
+    #     angle_start = 240  # degrees in standard angle (bottom-left)
+    #     angle_end = 300    # degrees in standard angle (bottom-right)
+    #     angles = np.linspace(np.deg2rad(angle_start), np.deg2rad(angle_end), n_chars)
+    #     radius = 0.72  # position along the arc (raised from south pole)
     
-        for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
-            x = radius * np.cos(angle)
-            y = radius * np.sin(angle)
-            # Rotate text to follow the curve (tangent to circle)
-            rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
-            ax_r.text(
-                x,
-                y,
-                char,
-                color=text_color,
-                fontsize=fontsize_title if format == "poster" else fontsize_main,
-                ha="center",
-                va="center",
-                rotation=rotation,
-                rotation_mode="anchor",
-                alpha=1.0,
-                fontweight="bold",
-                zorder=5,
-                clip_on=False,
-            )
+    #     for i, (char, angle) in enumerate(zip(milky_way_text, angles)):
+    #         x = radius * np.cos(angle)
+    #         y = radius * np.sin(angle)
+    #         # Rotate text to follow the curve (tangent to circle)
+    #         rotation = np.rad2deg(angle) + 90  # +90 to align text tangentially
+    #         ax_r.text(
+    #             x,
+    #             y,
+    #             char,
+    #             color=text_color,
+    #             fontsize=fontsize_title if format == "poster" else fontsize_main,
+    #             ha="center",
+    #             va="center",
+    #             rotation=rotation,
+    #             rotation_mode="anchor",
+    #             alpha=1.0,
+    #             fontweight="bold",
+    #             zorder=5,
+    #             clip_on=False,
+    #         )
 
     if galaxy:
         from astropy.coordinates import SkyCoord
@@ -724,72 +724,148 @@ def plot_galactic_supernovae_polar_hemispheres(
                 panel, x, y = _project_to_hemisphere(ra_i, dec_i)
                 south_curve.append((x, y))
 
-        south_curve = np.asarray(south_curve)
+        def _roll_to_remove_seam(curve: np.ndarray) -> np.ndarray:
+            """Roll a lon-ordered hemisphere curve so a genuine wrap seam (if any)
+            sits at the array boundary.
 
-        # diagnostics
-        # ax_r.plot(
-        #     south_curve[:,0],
-        #     south_curve[:,1],
-        #     color="red",
-        #     lw=1,
-        #     alpha=0.8,
-        #     zorder=6,
-        # )
-        # ax_l.plot(
-        #     np.asarray(north_curve)[:,0],
-        #     np.asarray(north_curve)[:,1],
-        #     color="red",
-        #     lw=1,
-        #     alpha=0.8,
-        #     zorder=6,
-        # )
-
-
-
-    # if galaxy:
+            Only rolls when there's an actual jump much bigger than the typical
+            point-to-point spacing. If the curve is already contiguous (doesn't
+            straddle the l=0/360 boundary), rolling at an arbitrary "largest of
+            many small gaps" point would slice a smooth arc in half and rejoin
+            it in swapped order — which makes arc-length-based text placement
+            double back on itself instead of reading in one direction.
+            """
+            if len(curve) < 3:
+                return curve
+            gaps = np.sqrt(np.sum(np.diff(curve, axis=0) ** 2, axis=1))
+            seam_idx = int(np.argmax(gaps))
+            median_gap = np.median(gaps)
+            if median_gap == 0 or gaps[seam_idx] < 5 * median_gap:
+                return curve  # no real seam here — leave it alone
+            return np.roll(curve, -(seam_idx + 1), axis=0)
 
 
-    #     d = np.sqrt(np.sum(np.diff(south_curve, axis=0)**2, axis=1))
-    #     s = np.concatenate([[0], np.cumsum(d)])
+        south_curve = _roll_to_remove_seam(np.asarray(south_curve))
+        north_curve = _roll_to_remove_seam(np.asarray(north_curve))
 
-    #     text = "MILKY WAY"
 
-    #     centre = 0.55 * s[-1]        # move this left/right
-    #     spacing = 0.035              # adjust letter spacing
+        d = np.sqrt(np.sum(np.diff(south_curve, axis=0)**2, axis=1))
+        s = np.concatenate([[0], np.cumsum(d)])
 
-    #     letter_pos = centre + (
-    #         np.arange(len(text))
-    #         - (len(text)-1)/2
-    #     ) * spacing
+        text = "MILKY WAY"
+
+        centre = 0.5 * s[-1]        # move this left/right
+        spacing = 0.15             # adjust letter spacing
     
-    #     for char, target_s in zip(text, letter_pos):
-    #         idx = np.searchsorted(s, target_s)
+        # Decide reading direction once from the tangent at the label's center,
+        # same readability rule as _draw_curved_ra_label: never let text read
+        # upside-down.
+        idx_c = np.clip(np.searchsorted(s, centre), 1, len(s) - 1)
+        dx_c = south_curve[idx_c, 0] - south_curve[idx_c - 1, 0]
+        dy_c = south_curve[idx_c, 1] - south_curve[idx_c - 1, 1]
+        center_rot = np.degrees(np.arctan2(dy_c, dx_c))
+        norm = ((center_rot + 180.0) % 360.0) - 180.0
+        flipped = norm > 90.0 or norm < -90.0
 
-    #         idx = np.clip(idx, 1, len(s)-1)
+        letter_pos = centre + (
+            np.arange(len(text)) - (len(text) - 1) / 2
+        ) * spacing
+        if flipped:
+            letter_pos = letter_pos[::-1]  # mirror placement order, not the text itself
 
-    #         t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
+        offset = -0.07  # positive = one side, negative = the other; tune to taste
 
-    #         x = (1-t)*south_curve[idx-1,0] + t*south_curve[idx,0]
-    #         y = (1-t)*south_curve[idx-1,1] + t*south_curve[idx,1]
+        for char, target_s in zip(text, letter_pos):
+            idx = np.clip(np.searchsorted(s, target_s), 1, len(s) - 1)
+            t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
+            x = (1-t)*south_curve[idx-1,0] + t*south_curve[idx,0]
+            y = (1-t)*south_curve[idx-1,1] + t*south_curve[idx,1]
 
-    #         dx = south_curve[idx,0] - south_curve[idx-1,0]
-    #         dy = south_curve[idx,1] - south_curve[idx-1,1]
+            dx = south_curve[idx,0] - south_curve[idx-1,0]
+            dy = south_curve[idx,1] - south_curve[idx-1,1]
+            rotation = np.degrees(np.arctan2(dy, dx))
+            if flipped:
+                rotation += 180.0
+            rotation = ((rotation + 180.0) % 360.0) - 180.0
 
-    #         rotation = np.degrees(np.arctan2(dy, dx))
+            # Offset perpendicular to the curve's tangent, so the label sits
+            # alongside the galactic plane line rather than directly on top of it.
+            seg_len = np.hypot(dx, dy)
+            if seg_len > 0:
+                nx, ny = -dy / seg_len, dx / seg_len  # unit normal
+            else:
+                nx, ny = 0.0, 0.0
+            x_off = x + offset * nx
+            y_off = y + offset * ny
 
-    #         ax_r.text(
-    #             x,
-    #             y,
-    #             char,
-    #             fontsize=fontsize_title,
-    #             color=text_color,
-    #             rotation=rotation,
-    #             rotation_mode="anchor",
-    #             ha="center",
-    #             va="center",
-    #             fontweight="bold",
-    #             clip_on=False,
-    #         )
+            ax_r.text(
+                x_off, y_off, char,
+                fontsize=fontsize_title,
+                color=text_color,
+                rotation=rotation,
+                rotation_mode="anchor",
+                ha="center",
+                va="center",
+                fontweight="bold",
+                clip_on=False,
+            )
+
+        north_curve = np.asarray(north_curve)
+
+        d_n = np.sqrt(np.sum(np.diff(north_curve, axis=0) ** 2, axis=1))
+        s_n = np.concatenate([[0], np.cumsum(d_n)])
+
+        centre_n = 0.5 * s_n[-1]   # independent position control for the north label
+        spacing_n = 0.15          # independent letter spacing for the north label
+
+        idx_cn = np.clip(np.searchsorted(s_n, centre_n), 1, len(s_n) - 1)
+        dx_cn = north_curve[idx_cn, 0] - north_curve[idx_cn - 1, 0]
+        dy_cn = north_curve[idx_cn, 1] - north_curve[idx_cn - 1, 1]
+        center_rot_n = np.degrees(np.arctan2(dy_cn, dx_cn))
+        norm_n = ((center_rot_n + 180.0) % 360.0) - 180.0
+        flipped_n = norm_n > 90.0 or norm_n < -90.0
+
+        letter_pos_n = centre_n + (
+            np.arange(len(text)) - (len(text) - 1) / 2
+        ) * spacing_n
+        if flipped_n:
+            letter_pos_n = letter_pos_n[::-1]
+
+        offset = 0.07  # positive = one side, negative = the other; tune to taste
+
+        for char, target_s in zip(text, letter_pos_n):
+            idx = np.clip(np.searchsorted(s_n, target_s), 1, len(s_n) - 1)
+            t = (target_s - s_n[idx-1]) / (s_n[idx] - s_n[idx-1])
+            x = (1-t)*north_curve[idx-1, 0] + t*north_curve[idx, 0]
+            y = (1-t)*north_curve[idx-1, 1] + t*north_curve[idx, 1]
+
+            dx = north_curve[idx, 0] - north_curve[idx-1, 0]
+            dy = north_curve[idx, 1] - north_curve[idx-1, 1]
+            rotation = np.degrees(np.arctan2(dy, dx))
+            if flipped_n:
+                rotation += 180.0
+            rotation = ((rotation + 180.0) % 360.0) - 180.0
+
+            seg_len = np.hypot(dx, dy)
+            if seg_len > 0:
+                nx, ny = -dy / seg_len, dx / seg_len
+            else:
+                nx, ny = 0.0, 0.0
+            x_off = x + offset * nx
+            y_off = y + offset * ny
+
+            ax_l.text(
+                x_off, y_off, char,
+                fontsize=fontsize_title,
+                color=text_color,
+                rotation=rotation,
+                rotation_mode="anchor",
+                ha="center",
+                va="center",
+                fontweight="bold",
+                clip_on=False,
+            )
+
 
 
 
