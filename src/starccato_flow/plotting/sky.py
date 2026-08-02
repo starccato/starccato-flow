@@ -34,16 +34,7 @@ try:
 except ImportError:
     _ASTROPY_AVAILABLE = False
 
-
-IMPORTANT_CONSTELLATIONS = {
-    "Ori": "Orion",
-    "Tau": "Taurus",
-    "CMa": "Canis Major",
-    "Cru": "Southern Cross",
-}
-
 import os
-
 
 def _apply_astropy_ra_rotation_deg(
     ra_deg: np.ndarray | float,
@@ -51,21 +42,6 @@ def _apply_astropy_ra_rotation_deg(
 ) -> np.ndarray | float:
     """Apply Supernovae RA rotation offset to Astropy-resolved RA values."""
     return np.mod(ra_deg + rotation_offset_deg, 360.0)
-
-
-@lru_cache(maxsize=16)
-def _get_betelgeuse_icrs_deg(rotation_offset_deg: float = 0.0) -> tuple[float, float, str]:
-    """Return Betelgeuse ICRS (RA, Dec) in degrees and a source label."""
-    if not _ASTROPY_AVAILABLE:
-        return np.nan, np.nan, "unavailable"
-
-    try:
-        coord = SkyCoord.from_name("Betelgeuse")
-        ra_deg = float(_apply_astropy_ra_rotation_deg(float(coord.ra.deg), rotation_offset_deg))
-        return ra_deg, float(coord.dec.deg), "astropy"
-    except Exception:
-        return np.nan, np.nan, "unavailable"
-
 
 @lru_cache(maxsize=512)
 def _resolve_named_star_icrs_deg(name: str, rotation_offset_deg: float = 0.0) -> tuple[float, float] | None:
@@ -1307,19 +1283,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         else:
             gc_panel, gc_x, gc_y = true_gc_panel, true_gc_x, true_gc_y
 
-    if constellations:
-        # Resolve Betelgeuse via Astropy name resolution (no hardcoded coordinate fallback).
-        betelgeuse_ra_deg, betelgeuse_dec_deg, betel_source = _get_betelgeuse_icrs_deg(
-            rotation_offset_deg=astropy_rotation_offset_deg
-        )
-        if np.isfinite(betelgeuse_ra_deg) and np.isfinite(betelgeuse_dec_deg):
-            betel_panel, betel_x, betel_y = _project_to_hemisphere(
-                np.deg2rad(betelgeuse_ra_deg),
-                np.deg2rad(betelgeuse_dec_deg),
-            )
-        else:
-            betel_panel, betel_x, betel_y = None, np.nan, np.nan
-
     if galaxy:
         # Black hole visualization at the true galactic center.
         bh_ax = ax_l if true_gc_panel == "north" else ax_r
@@ -1349,122 +1312,22 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=20,
         )
 
-    if constellations and betel_panel is not None:
-            betel_ax = ax_l if betel_panel == "north" else ax_r
-            betel_ax.scatter(
-                [betel_x],
-                [betel_y],
-                s=52,
-                c="#fbbf24",
-                edgecolors="#78350f",
-                linewidths=0.9,
-                zorder=8,
-            )
-            betel_ax.text(
-                betel_x - 0.035,
-                betel_y + 0.02,
-                "Betelgeuse",
-                color="#fde68a" if background == "black" else "#78350f",
-                fontsize=fontsize_constellation,
-                ha="right",
-                va="center",
-                zorder=8,
-            )
+    # if constellations and betel_panel is not None:
+    #         betel_ax = ax_l if betel_panel == "north" else ax_r
+    #         betel_ax.text(
+    #             betel_x - 0.035,
+    #             betel_y + 0.02,
+    #             "Betelgeuse",
+    #             color="#fde68a" if background == "black" else "#78350f",
+    #             fontsize=fontsize_constellation,
+    #             ha="right",
+    #             va="center",
+    #             zorder=8,
+    #         )
 
     if constellations:
-        # Orion stick figure using Astropy-resolved named stars only.
-        orion_star_names = [
-            "Betelgeuse",
-            "Bellatrix",
-            "Meissa",
-            "Mintaka",
-            "Alnilam",
-            "Alnitak",
-            "Saiph",
-            "Rigel",
-        ]
-        orion_edges = [
-            ("Betelgeuse", "Bellatrix"),
-            ("Betelgeuse", "Meissa"),
-            ("Bellatrix", "Meissa"),
-            ("Bellatrix", "Mintaka"),
-            ("Betelgeuse", "Alnitak"),
-            ("Mintaka", "Alnilam"),
-            ("Alnilam", "Alnitak"),
-            ("Alnitak", "Saiph"),
-            ("Mintaka", "Rigel"),
-            ("Saiph", "Rigel"),
-        ]
-
-        orion_proj: dict[str, tuple[str, float, float]] = {}
-        for star_name in orion_star_names:
-            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-            if resolved is None:
-                continue
-            star_ra_deg, star_dec_deg = resolved
-            orion_proj[star_name] = _project_to_hemisphere(
-                np.deg2rad(star_ra_deg),
-                np.deg2rad(star_dec_deg),
-            )
-
-        for star_name, (panel, sx, sy) in orion_proj.items():
-            orion_ax = ax_l if panel == "north" else ax_r
-            orion_ax.scatter(
-                [sx],
-                [sy],
-                s=9,
-                c="#f8fafc",
-                edgecolors="none",
-                alpha=0.95,
-                zorder=9,
-            )
-
-        # Taurus stick figure (head + horns) using Astropy-resolved named stars.
-        taurus_star_names = [
-            "Aldebaran",
-            "Elnath",
-            "Zeta Tauri",
-            "Gamma Tauri",
-            "Delta Tauri",
-            "Epsilon Tauri",
-        ]
-
-        taurus_proj: dict[str, tuple[str, float, float]] = {}
-        for star_name in taurus_star_names:
-            resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
-            if resolved is None:
-                continue
-            star_ra_deg, star_dec_deg = resolved
-            taurus_proj[star_name] = _project_to_hemisphere(
-                np.deg2rad(star_ra_deg),
-                np.deg2rad(star_dec_deg),
-            )
-
-        for star_name, (panel, sx, sy) in taurus_proj.items():
-            taur_ax = ax_l if panel == "north" else ax_r
-            taur_ax.scatter(
-                [sx],
-                [sy],
-                s=16,
-                c="#fecaca",
-                edgecolors="none",
-                alpha=0.95,
-                zorder=9,
-            )
-
-        if "Aldebaran" in taurus_proj:
-            panel, tx, ty = taurus_proj["Aldebaran"]
-            taur_lbl_ax = ax_l if panel == "north" else ax_r
-
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
         scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
-        scx_edges = [
-            ("Gacrux", "Acrux"),
-            ("Mimosa", "Imai"),
-            ("Acrux", "Mimosa"),
-            ("Acrux", "Imai"),
-            ("Gacrux", "Mimosa"),
-        ]
         pointer_names = ["Alpha Centauri", "Beta Centauri"]
         extra_names = ["Achernar", "Pleiades", "Antares"]
 
@@ -1479,36 +1342,31 @@ def plot_galactic_supernovae_polar_hemispheres(
                 np.deg2rad(star_dec_deg),
             )
 
-        # marker_styles = {
-        #     "Acrux": ("#c4b5fd", 20),
-        #     "Mimosa": ("#c4b5fd", 18),
-        #     "Gacrux": ("#c4b5fd", 18),
-        #     "Imai": ("#c4b5fd", 16),
-        #     "Epsilon Crucis": ("#c4b5fd", 14),
-        #     "Alpha Centauri": ("#fde68a", 20),
-        #     "Beta Centauri": ("#fde68a", 20),
-        #     "Achernar": ("#a5f3fc", 24),
-        #     "Pleiades": ("#c4b5fd", 24),
-        #     "Antares": ("#fca5a5", 24),
-        # }
-        # for star_name, (panel, sx, sy) in south_proj.items():
-        #     color, size = marker_styles.get(star_name, ("#f8fafc", 14))
-        #     mark_ax = ax_l if panel == "north" else ax_r
-        #     mark_ax.scatter(
-        #         [sx],
-        #         [sy],
-        #         s=size,
-        #         c=color,
-        #         edgecolors="none",
-        #         alpha=0.96,
-        #         zorder=9,
-        #     )
+        marker_styles = {
+            "Pleiades": ("#c4b5fd", 100, True),
+            "Antares": ("#fca5a5", 24, False),
+            "Betelgeuse": ("#fbbf24", 52, False),
+        }
+        for star_name, (panel, sx, sy) in south_proj.items():
+            color, size, border = marker_styles.get(star_name, ("#f8fafc", 14, False))
+            mark_ax = ax_l if panel == "north" else ax_r
+            mark_ax.scatter(
+                [sx],
+                [sy],
+                s=size,
+                c="none" if border else color,
+                edgecolors=color if border else "none",
+                linestyle="--" if border else "solid",
+                linewidth=0.5 if border else 0.0,
+                alpha=0.96,
+                zorder=9,
+            )
 
         display_name_overrides = {
             "Pleiades": "Matariki",
             "Acrux": "The Pointers",
             }
-        for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5")):
+        for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5"), ("Betelgeuse", "#fbbf24")):
             if label_name not in south_proj:
                 continue
             panel, lx, ly = south_proj[label_name]
