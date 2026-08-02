@@ -1312,27 +1312,12 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=20,
         )
 
-    # if constellations and betel_panel is not None:
-    #         betel_ax = ax_l if betel_panel == "north" else ax_r
-    #         betel_ax.text(
-    #             betel_x - 0.035,
-    #             betel_y + 0.02,
-    #             "Betelgeuse",
-    #             color="#fde68a" if background == "black" else "#78350f",
-    #             fontsize=fontsize_constellation,
-    #             ha="right",
-    #             va="center",
-    #             zorder=8,
-    #         )
-
     if constellations:
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
-        scx_star_names = ["Acrux", "Mimosa", "Gacrux", "Imai", "Epsilon Crucis"]
-        pointer_names = ["Alpha Centauri", "Beta Centauri"]
-        extra_names = ["Achernar", "Pleiades", "Antares"]
+        object_names = ["Achernar", "Pleiades", "Antares", "Betelgeuse", "Sirius", "Acrux", "Gacrux", "Mimosa", "Imai", "Alnair"]
 
         south_proj: dict[str, tuple[str, float, float]] = {}
-        for star_name in scx_star_names + pointer_names + extra_names:
+        for star_name in object_names:
             resolved = _resolve_named_star_icrs_deg(star_name, rotation_offset_deg=astropy_rotation_offset_deg)
             if resolved is None:
                 continue
@@ -1346,6 +1331,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             "Pleiades": ("#c4b5fd", 100, True),
             "Antares": ("#fca5a5", 24, False),
             "Betelgeuse": ("#fbbf24", 52, False),
+            "Sirius": ("#fef3c7", 52, False),
         }
         for star_name, (panel, sx, sy) in south_proj.items():
             color, size, border = marker_styles.get(star_name, ("#f8fafc", 14, False))
@@ -1366,21 +1352,32 @@ def plot_galactic_supernovae_polar_hemispheres(
             "Pleiades": "Matariki",
             "Acrux": "The Pointers",
             }
-        for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5"), ("Betelgeuse", "#fbbf24")):
+        for label_name, label_color in (("Achernar", "#a5f3fc"), ("Pleiades", "#c4b5fd"), ("Acrux", "#c4b5fd"), ("Antares", "#fca5a5"), ("Betelgeuse", "#fbbf24"), ("Sirius", "#fef3c7")):
             if label_name not in south_proj:
                 continue
             panel, lx, ly = south_proj[label_name]
             lbl_ax = ax_l if panel == "north" else ax_r
+
             y_offset = 0.018
+            x_offset = 0.0  # Default x offset
+
             if label_name == "Achernar":
                 y_offset = 0.030
-            display_name = display_name_overrides.get(label_name, label_name)
+            
             if label_name == "Acrux":
                 y_offset = 0.070
+
+            if label_name == "Acrux":
+                x_offset = -0.035
+
+            if label_name == "Betelgeuse":
+                x_offset = -0.035
+                y_offset = 0.020
+
             lbl_ax.text(
-                lx,
+                lx + x_offset,
                 ly + y_offset,
-                display_name,
+                display_name_overrides.get(label_name, label_name),
                 color=label_color if background == "black" else "#1e293b",
                 fontsize=fontsize_constellation,
                 ha="left",
