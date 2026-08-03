@@ -47,22 +47,28 @@ def set_plot_style(background: str = "white", font_family: str = "serif", font_n
     })
 
     # plt.rcParams['mathtext.fontset'] = 'stix'
-    plt.rcParams['mathtext.fontset'] = 'custom'
-    plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
-    plt.rcParams['mathtext.it'] = f'{font_name}:italic'
-    plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
+    # plt.rcParams['mathtext.fontset'] = 'custom'
+    # plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
+    # plt.rcParams['mathtext.it'] = f'{font_name}:italic'
+    # plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
+
+    if font_family.lower() == "sans-serif" and "futura" in font_name.lower(): # search if it contains "future" in the font name
+        plt.rcParams['mathtext.fontset'] = 'custom'
+        plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
+        plt.rcParams['mathtext.it'] = f'{font_name}:italic'
+        plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
 
 
 def get_time_axis(length: int = 256) -> np.ndarray:
-    """Generate consistent time axis values.
+    """Generate consistent time axis values in milliseconds for plotting signals.
     
     Args:
         length (int): Number of time points
     
     Returns:
-        np.ndarray: Array of time values
+        np.ndarray: Array of time values in milliseconds
     """
-    return np.linspace(-53 / 4096, (length - 53) / 4096, length)
+    return np.linspace(-53 / 4096, (length - 53) / 4096, length) * 1000 # convert to milliseconds
 
 
 # Import plotting functions from submodules

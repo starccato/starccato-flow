@@ -22,7 +22,7 @@ PARAMETER_LABELS = {
     # Sky localization (extrinsic) parameters
     'ra': r'$\mathrm{RA}$',
     'dec': r'$\mathrm{Dec}$',
-    'd': r'$d$',
+    'd': r'$D$',
     'psi': r'$\psi$',
 }
 

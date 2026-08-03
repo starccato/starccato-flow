@@ -4,6 +4,8 @@ from typing import Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
+from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -114,7 +116,7 @@ def plot_parameter_distributions(
     parameters_dict: dict,
     labels_dict: Optional[dict] = None,
     ranges_dict: Optional[dict] = None,
-    bins: int = 50,
+    bins: int = 200,
     fname: Optional[str] = None,
     background: str = "white",
     font_family: str = "sans-serif",
@@ -124,7 +126,6 @@ def plot_parameter_distributions(
     figsize: Tuple[float, float] = (14.5, 12)
 ) -> plt.Figure:
     """Plot distributions for multiple parameters in a 2x2 grid.
-    
     Args:
         parameters_dict (dict): Dictionary mapping parameter names to value arrays
         labels_dict (Optional[dict]): Dictionary mapping parameter names to LaTeX labels. If None, uses PARAMETER_LABELS.
@@ -135,35 +136,43 @@ def plot_parameter_distributions(
         font_family (str): Font family to use
         font_name (str): Specific font name
         color (Optional[str]): Color for the histogram. If None, uses SIGNAL_COLOUR
-        alpha (float): Transparency of the histogram bars
+        alpha (float): Transparency of the histogram dots
         figsize (Tuple[float, float]): Figure size in inches
-    
     Returns:
         plt.Figure: The figure object
     """
     set_plot_style(background, font_family, font_name)
-    
     figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     axes = axes.flatten()
-    
     if color is None:
         color = SIGNAL_COLOUR
-    
+    axis_color = "white" if background == "black" else "black"
+
     for idx, (param_name, values) in enumerate(parameters_dict.items()):
         if idx >= 4:
             break
-            
         ax = axes[idx]
-        
         if isinstance(values, list):
             values = np.array(values)
-        
-        n, bins_edges, patches = ax.hist(
-            values, 
-            bins=bins, 
-            color=color, 
-            alpha=alpha, 
+
+        if ranges_dict and param_name in ranges_dict:
+            hist_range = ranges_dict[param_name]
+        else:
+            hist_range = (min(values), max(values))
+
+        counts, bin_edges = np.histogram(values, bins=bins, range=hist_range)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+        # Build stacked dot coordinates: for each bin, one dot per count at y = 0, 1, 2, ...
+        x_dots = np.repeat(bin_centers, counts)
+        y_dots = np.concatenate([np.arange(c) for c in counts]) if counts.sum() > 0 else np.array([])
+
+        ax.scatter(
+            x_dots, y_dots,
+            color=color,
+            alpha=alpha,
+            s=0.25,
             edgecolor='none'
         )
 
@@ -172,59 +181,47 @@ def plot_parameter_distributions(
             ax.axvline(0.17, color='grey', linestyle='--', linewidth=1)
             ax.text(
                 0.03, 0.98, "Slow rotation",
-                rotation=90,
-                ha="center",
-                va="top",
+                rotation=90, ha="center", va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=8,
-                color="#6baed6",
-                weight="bold"
+                fontsize=9, color="#6baed6", weight="bold"
             )
             ax.text(
                 0.115, 0.98, "Rapid rotation",
-                rotation=90,
-                ha="center",
-                va="top",
+                rotation=90, ha="center", va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=8,
-                color="#fdae6b",
-                weight="bold"
+                fontsize=9, color="#fdae6b", weight="bold"
             )
             ax.text(
                 0.20, 0.98, "Extreme rotation",
-                rotation=90,
-                ha="center",
-                va="top",
+                rotation=90, ha="center", va="top",
                 transform=ax.get_xaxis_transform(),
-                fontsize=8,
-                color="#de2d26",
-                weight="bold"
+                fontsize=9, color="#de2d26", weight="bold"
             )
-        
+
         if labels_dict and param_name in labels_dict:
             param_label = labels_dict[param_name]
         elif param_name in PARAMETER_LABELS:
             param_label = PARAMETER_LABELS[param_name]
         else:
             param_label = param_name
-        
-        ax.set_xlabel(param_label, size=16)
-        ax.set_ylabel("Count", size=11)
-        
-        if ranges_dict and param_name in ranges_dict:
-            ax.set_xlim(ranges_dict[param_name][0], ranges_dict[param_name][1])
-        else:
-            ax.set_xlim(min(values), max(values))
-        
+        ax.set_xlabel(param_label, size=11, weight="bold")
+        ax.set_xlim(hist_range[0], hist_range[1])
+        ax.set_ylim(bottom=0)
         ax.tick_params(labelsize=11)
-        ax.tick_params(axis='x', rotation=45)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5, min_n_ticks=4))
         ax.grid(False)
-    
-    
+
+        # Remove the box border, keep only left/bottom axes lines, disconnected at the corner
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color(axis_color)
+        ax.spines['bottom'].set_color(axis_color)
+        ax.spines['left'].set_position(('outward', 8))
+        ax.spines['bottom'].set_position(('outward', 8))
+
     plt.tight_layout()
     if fname:
-        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
-    
+        plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
     plt.rcdefaults()
     return fig
 

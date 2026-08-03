@@ -817,7 +817,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         text = "MILKY WAY"
 
         centre = 0.5 * s[-1]        # move this left/right
-        spacing = 0.2             # adjust letter spacing
+        spacing = 0.15             # adjust letter spacing
     
         # Decide reading direction once from the tangent at the label's center,
         # same readability rule as _draw_curved_ra_label: never let text read
@@ -878,7 +878,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         s_n = np.concatenate([[0], np.cumsum(d_n)])
 
         centre_n = 0.5 * s_n[-1]   # independent position control for the north label
-        spacing_n = 0.2          # independent letter spacing for the north label
+        spacing_n = 0.15          # independent letter spacing for the north label
 
         idx_cn = np.clip(np.searchsorted(s_n, centre_n), 1, len(s_n) - 1)
         dx_cn = north_curve[idx_cn, 0] - north_curve[idx_cn - 1, 0]
@@ -1371,8 +1371,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                 x_offset = -0.035
 
             if label_name == "Betelgeuse":
-                x_offset = -0.035
-                y_offset = 0.020
+                x_offset = -0.09
+                y_offset = 0.025
 
             lbl_ax.text(
                 lx + x_offset,

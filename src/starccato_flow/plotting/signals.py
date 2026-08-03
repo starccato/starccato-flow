@@ -15,6 +15,8 @@ from ..utils.defaults_plotting import (
     DEFAULT_FONT, SIGNAL_LIM_UPPER, SIGNAL_LIM_LOWER, PARAMETER_LABELS, CM_TO_INCHES
 )
 
+from matplotlib.ticker import MaxNLocator
+
 def _map_detector_labels(labels: Sequence[str]) -> Tuple[str, ...]:
     """Map detector short codes to full names for display.
     
@@ -83,26 +85,42 @@ def plot_signal_grid(
         y = signals[i].flatten()
         ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
         ax.set_xlim(min(d), max(d))
-        ax.tick_params(axis='both', labelsize=9)
+        ax.tick_params(axis='both', labelsize=11)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=6, min_n_ticks=4))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5, min_n_ticks=3))
         # ax.yaxis.get_offset_text().set_fontsize(9)
         ax.plot(d, y, color=signal_colour, linewidth=1, alpha=1.0)
         
         ax.axvline(x=0, color=vline_color, linestyle="--", linewidth=0.75, alpha=0.5)
         ax.grid(False)
         
-        # Display parameter value above each subplot
-        if param_values is not None and param_label is not None and i < len(param_values):
-            # Use LaTeX label from PARAMETER_LABELS if available
+        # Determine if this axis is the last one drawn in its row
+        # (handles the case where the last row is not fully populated)
+        row_start = (i // n_cols) * n_cols
+        row_end = min(row_start + n_cols, len(signals))
+        is_last_in_row = (i == row_end - 1)
+
+        # Display the shared parameter value once per row, on the right, rotated
+        if param_values is not None and param_label is not None and is_last_in_row:
             latex_label = PARAMETER_LABELS.get(param_label, param_label)
             param_text = f"{latex_label} = {param_values[i]:.4f}"
-            ax.set_title(param_text, fontsize=7, color="black", pad=4, loc="right")
+            ax.text(
+                1.05, 0.5, param_text,
+                transform=ax.transAxes,
+                fontsize=11,
+                color=text_color,
+                rotation=270,
+                va="center",
+                ha="left",
+            )
+
         
         if i % n_cols != 0:
-            ax.tick_params(labelleft=False)
+            ax.tick_params(labelleft=False, left=False)
         if i < n_cols * (n_rows - 1):
-            ax.tick_params(labelbottom=False)
+            ax.tick_params(labelbottom=False, bottom=False)
 
-    fig.supxlabel('time (s)', fontsize=16)
+    fig.supxlabel('time (milliseconds)', fontsize=11)
 
     # Force a draw so each axis's offset text is actually computed
     fig.canvas.draw()
@@ -120,7 +138,7 @@ def plot_signal_grid(
         ax.yaxis.get_offset_text().set_visible(False)
 
     ylabel = r'$h_+$' + (f' ({offset_text})' if offset_text else '')
-    fig.supylabel(ylabel, fontsize=16)
+    fig.supylabel(ylabel, fontsize=11)
 
     fig.tight_layout(pad=0.3, h_pad=0.5, w_pad=0.5)
 
@@ -253,7 +271,7 @@ def plot_detector_signal_channels(
     axes[-1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
     
     # Set axis labels with proper size and color
-    axes[-1].set_xlabel('time (s)', fontsize=fontsize_title, color=vline_color)
+    axes[-1].set_xlabel('time (milliseconds)', fontsize=fontsize_title, color=vline_color)
     axes[1].set_ylabel(r'$' + y_axis + r'$', fontsize=fontsize_title, color=vline_color)
 
     # Add legend outside/on top if we have both signals
@@ -343,7 +361,7 @@ def plot_reconstruction(
     
     ax.set_xticks(xticks)
     ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-    ax.set_xlabel("time (s)", fontsize=16, color=vline_color)
+    ax.set_xlabel("time (milliseconds)", fontsize=16, color=vline_color)
     ax.set_ylabel("h", fontsize=16, color=vline_color)
     
     ax.legend(loc='upper right', facecolor="none", edgecolor=vline_color,
@@ -397,7 +415,7 @@ def plot_single_signal(
     plt.plot(d, y, color=signal_color)
     plt.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-    plt.xlabel('time (s)', size=16)
+    plt.xlabel('time (milliseconds)', size=16)
     plt.ylabel(r'$h_+$', size=16)
     plt.grid(True)
 
@@ -458,7 +476,7 @@ def plot_signal_distribution(
     ax.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
     ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
-    ax.set_xlabel('time (s)', size=16, color=text_color, font=font_name)
+    ax.set_xlabel('time (milliseconds)', size=11, color=text_color, font=font_name)
 
     # Force a draw so the offset text is actually computed, then fold it
     # into the ylabel instead of leaving it floating in the corner.
@@ -466,7 +484,7 @@ def plot_signal_distribution(
     offset_text = ax.yaxis.get_offset_text().get_text()
     ax.yaxis.get_offset_text().set_visible(False)
     ylabel = r'$h_+$' + (f' ({offset_text})' if offset_text else '')
-    ax.set_ylabel(ylabel, size=16, color=text_color, font=font_name)
+    ax.set_ylabel(ylabel, size=11, color=text_color, font=font_name)
 
     ax.tick_params(axis='x', labelsize=11, colors=text_color)
     ax.tick_params(axis='y', labelsize=11, colors=text_color)
