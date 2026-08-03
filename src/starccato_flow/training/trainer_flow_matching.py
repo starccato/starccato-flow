@@ -1366,7 +1366,7 @@ class FlowMatchingTrainer:
             transparent=transparent,
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 300, n_steps: int = 20, 
+    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
                                      fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
@@ -1375,7 +1375,7 @@ class FlowMatchingTrainer:
         
         Args:
             num_signals (int): Number of validation signals to use for computing coverage
-            num_samples (int): Number of posterior samples to draw per signal
+            num_samples (int): Number of posterior samples to draw per signal (default: 3000)
             n_steps (int): Number of ODE solver steps for inference
             fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
             background (str): Background color theme ("white" or "black")
@@ -1439,69 +1439,77 @@ class FlowMatchingTrainer:
         total_processed = 0
         with torch.no_grad():
             for signals_batch, noisy_signals_batch, true_params_batch in val_loader:
-                # Determine how many samples to process from this batch
                 num_to_process = min(len(signals_batch), num_signals - total_processed)
                 if num_to_process <= 0:
                     break
-                
-                # Process each sample in the batch
-                for i in range(num_to_process):
+
+                # Slice down to only what we need from this batch
+                noisy_signals = noisy_signals_batch[:num_to_process]
+                true_params = true_params_batch[:num_to_process]
+
+                if noisy_signals.dim() == 2:
+                    noisy_signals = noisy_signals.unsqueeze(0)
+                if true_params.dim() == 1:
+                    true_params = true_params.unsqueeze(0)
+
+                noisy_signals = noisy_signals.view(noisy_signals.size(0), -1).to(DEVICE).float()
+                true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
+
+                batch_n = noisy_signals.size(0)
+
+                # Repeat each signal's conditioning num_samples times, stacked across
+                # the batch: shape becomes (batch_n * num_samples, signal_dim)
+                repeated_signal = noisy_signals.repeat_interleave(num_samples, dim=0)
+
+                # Sample initial noise for all (signal x posterior-sample) pairs at once
+                posterior_samples = torch.randn(
+                    batch_n * num_samples, self.flow_param_dim, device=DEVICE
+                )
+
+                # Single ODE integration for the whole batch, instead of one per signal
+                time_steps = torch.linspace(0, 1.0, n_steps + 1)
+                for j in range(n_steps):
+                    posterior_samples = self.flow.step(
+                        posterior_samples,
+                        time_steps[j],
+                        time_steps[j + 1],
+                        repeated_signal,
+                    )
+
+                # Reshape back to (batch_n, num_samples, flow_param_dim) for per-signal processing
+                posterior_samples = posterior_samples.view(batch_n, num_samples, self.flow_param_dim)
+
+                # Denormalize parameters
+                if self.use_physics_aware_norm:
+                    samples_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy()
+                    )
+                    samples_full_denorm = samples_full_denorm.reshape(batch_n, num_samples, -1)
+                    samples_denorm_all = samples_full_denorm[:, :, self.param_extract_indices]
+
+                    true_params_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                        true_params.cpu().numpy()
+                    )
+                    true_params_denorm_all = true_params_full_denorm[:, self.param_extract_indices]
+                else:
+                    samples_denorm_all = self._denormalize_extracted_params(
+                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy(),
+                        h_theta_multi_val
+                    ).reshape(batch_n, num_samples, -1)
+
+                    true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
+                    true_params_denorm_all = self._denormalize_extracted_params(
+                        true_params_extracted,
+                        h_theta_multi_val
+                    )
+
+                # Split back into per-signal lists (still needed since plot_pp_coverage
+                # expects a list of separate arrays, one per signal)
+                for i in range(batch_n):
                     if (total_processed + 1) % max(1, num_signals // 5) == 0:
                         print(f"  Processed {total_processed + 1}/{num_signals} signals...")
-                    
-                    # Extract individual sample from batch
-                    noisy_signal = noisy_signals_batch[i:i+1]
-                    true_params = true_params_batch[i:i+1]
-                    
-                    if noisy_signal.dim() == 2:
-                        noisy_signal = noisy_signal.unsqueeze(0)
-                    if true_params.dim() == 1:
-                        true_params = true_params.unsqueeze(0)
-                    
-                    noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
-                    true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
-                    
-                    # Generate posterior samples using flow
-                    posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
-                    repeated_signal = noisy_signal.repeat(num_samples, 1)
-                    
-                    time_steps = torch.linspace(0, 1.0, n_steps + 1)
-                    for j in range(n_steps):
-                        posterior_samples = self.flow.step(
-                            posterior_samples,
-                            time_steps[j],
-                            time_steps[j + 1],
-                            repeated_signal,
-                        )
-                    
-                    # Denormalize parameters
-                    if self.use_physics_aware_norm:
-                        # Physics-aware denormalization
-                        samples_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
-                            posterior_samples.cpu().numpy()
-                        )
-                        samples_denorm = samples_full_denorm[:, self.param_extract_indices]
-                        
-                        true_params_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
-                            true_params.cpu().numpy()
-                        )
-                        true_params_denorm = true_params_full_denorm[:, self.param_extract_indices]
-                    else:
-                        # Linear denormalization
-                        samples_denorm = self._denormalize_extracted_params(
-                            posterior_samples.cpu().numpy(), 
-                            h_theta_multi_val
-                        )
-                        # Extract only the requested parameters from the full 8-parameter vector
-                        true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
-                        true_params_denorm = self._denormalize_extracted_params(
-                            true_params_extracted,
-                            h_theta_multi_val
-                        )
-                    
-                    posterior_samples_list.append(samples_denorm)
-                    true_params_list.append(true_params_denorm.flatten())
-                    
+                    posterior_samples_list.append(samples_denorm_all[i])
+                    true_params_list.append(true_params_denorm_all[i].flatten())
                     total_processed += 1
         
         print(f"Generating p-p coverage plot...")
@@ -1517,8 +1525,8 @@ class FlowMatchingTrainer:
             font_name=font_name,
             transparent=transparent,
             figsize=figsize,
-            fontsize_title=16,
-            fontsize_tick=9
+            fontsize_title=11,
+            fontsize_tick=11
         )
         
         print(f"✓ Saved p-p coverage plot to {fname}")
