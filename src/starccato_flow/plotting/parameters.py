@@ -281,7 +281,7 @@ def plot_pp_coverage(
     else:
         fallback_colors = []
     fallback_color_map = dict(zip(unknown_params, fallback_colors))
-    
+
     for param_idx in range(num_params):
         # Vectorized PIT calculation: for each event, what fraction of posterior
         # samples fall below the true value (this replaces per-level quantile calls)
@@ -321,7 +321,8 @@ def plot_pp_coverage(
             color=line_color, linewidth=1.5, label=param_label, alpha=0.8)
     
     # Plot diagonal (perfect calibration)
-    ax.plot([0, 1], [0, 1], color='gray', linewidth=1.5, linestyle='--', label='Perfect Calibration', alpha=0.6)
+    calibration_line, = ax.plot([0, 1], [0, 1], color='gray', linewidth=1.5, 
+                                  linestyle='--', label='Perfect Calibration', alpha=0.6)
     
     # Formatting
     ax.set_xlabel('Probability within the Credible Interval', size=fontsize_title)
@@ -334,7 +335,18 @@ def plot_pp_coverage(
     ax.tick_params(labelsize=fontsize_tick)
     ax.grid(True, alpha=0.3)
     legend_alpha = 0 if transparent else 0.95
-    ax.legend(fontsize=fontsize_tick, loc='lower right', framealpha=legend_alpha)
+
+    # Split legend into two: parameter lines (top left) and calibration line (bottom right)
+    all_handles, all_labels = ax.get_legend_handles_labels()
+    param_handles = [h for h, l in zip(all_handles, all_labels) if l != 'Perfect Calibration']
+    param_labels = [l for l in all_labels if l != 'Perfect Calibration']
+
+    param_legend = ax.legend(param_handles, param_labels, fontsize=fontsize_tick, 
+                              loc='upper left', framealpha=legend_alpha)
+    ax.add_artist(param_legend)  # Keep this legend when the second one is added below
+
+    ax.legend([calibration_line], ['Perfect Calibration'], fontsize=fontsize_tick,
+              loc='lower right', framealpha=legend_alpha)
     
     plt.tight_layout()
     if fname:

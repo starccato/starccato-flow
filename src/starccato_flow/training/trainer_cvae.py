@@ -494,7 +494,7 @@ class ConditionalVAETrainer:
             font_family=font_family,
             font_name=font_name,
             figsize=(14.5,8),
-            fontsize_title=16,
+            fontsize_title=11,
             fontsize_tick=11
         )
         
@@ -510,7 +510,7 @@ class ConditionalVAETrainer:
             font_family=font_family,
             font_name=font_name,
             figsize=(14.5,8),
-            fontsize_title=16,
+            fontsize_title=11,
             fontsize_tick=11
         )
         
@@ -526,7 +526,7 @@ class ConditionalVAETrainer:
             font_family=font_family,
             font_name=font_name,
             figsize=(14.5,8),
-            fontsize_title=16,
+            fontsize_title=11,
             fontsize_tick=11
         )
 

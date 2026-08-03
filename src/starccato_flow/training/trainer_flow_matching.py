@@ -470,7 +470,8 @@ class FlowMatchingTrainer:
         d: float = None, 
         ra: float = None, 
         dec: float = None, 
-        epoch: int = None, 
+        epoch: int = None,
+        num_samples: int = 3000,
         export_on: bool = False, 
         random_psi: bool = True, 
         font_family: str = "Sans-serif", 
@@ -598,7 +599,7 @@ class FlowMatchingTrainer:
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
-            case, active_h_theta_multi, num_samples=3000, n_steps=20
+            case, active_h_theta_multi, num_samples=num_samples, n_steps=20
         )
         
         self.plot_corner_sampled_signal(
@@ -1366,7 +1367,7 @@ class FlowMatchingTrainer:
             transparent=transparent,
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
+    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 5000, n_steps: int = 20, 
                                      fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
@@ -1375,7 +1376,7 @@ class FlowMatchingTrainer:
         
         Args:
             num_signals (int): Number of validation signals to use for computing coverage
-            num_samples (int): Number of posterior samples to draw per signal (default: 3000)
+            num_samples (int): Number of posterior samples to draw per signal (default: 5000)
             n_steps (int): Number of ODE solver steps for inference
             fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
             background (str): Background color theme ("white" or "black")
