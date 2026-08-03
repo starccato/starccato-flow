@@ -420,6 +420,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     constellations: bool = True,
+    galactic_contour: bool = True,
     galaxy: bool = True,
     background: str = "black",
     font_family: str = "sans-serif",
@@ -464,6 +465,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         "poster": {
             "figsize_mm": (841, 594),  # A1 landscape
             "fontsize_title": 28,
+            "fontsize_milky_way": 28,
             "fontsize_main": 22,
             "fontsize_label": 28,
             "fontsize_tick": 12,
@@ -475,6 +477,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         "thesis": {
             "figsize_mm": (145, 190),  # 14.5 x 19 cm portrait
             "fontsize_title": 11,
+            "fontsize_milky_way": 7,
             "fontsize_main": 11,
             "fontsize_label": 11,
             "fontsize_tick": 11,
@@ -495,6 +498,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         figsize_inches = (figsize[0] * mm_to_inch, figsize[1] * mm_to_inch)
     figsize = figsize_inches
     fontsize_title = config["fontsize_title"]
+    fontsize_milky_way = config["fontsize_milky_way"]
     fontsize_main = config["fontsize_main"]
     fontsize_label = config["fontsize_label"]
     fontsize_tick = config["fontsize_tick"]
@@ -628,7 +632,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     h_n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
     h_s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
 
-    if galaxy:
+    if galaxy and galactic_contour:
         blue_probs = [0.995, 0.80, 0.50, 0.25]
         combined_vals = np.concatenate([
             h_n_smooth.T[inside_circle],
@@ -687,10 +691,10 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
 
     # border circle for each hemisphere
-    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1)
-    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1)
-    ax_l.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1)
-    ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1)
+    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1, zorder=50)
+    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1, zorder=50)
+    ax_l.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1, zorder=50)
+    ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1, zorder=50)
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
@@ -725,7 +729,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         0.0,
         "North\nPole",
         color=text_color,
-        fontsize=fontsize_tick,
+        fontsize=fontsize_tick if format == "poster" else fontsize_small,
         ha="center",
         va="center",
         multialignment="center",
@@ -751,7 +755,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         0.0,
         "South\nPole",
         color=text_color,
-        fontsize=fontsize_tick,
+        fontsize=fontsize_tick if format == "poster" else fontsize_small,
         ha="center",
         va="center",
         multialignment="center",
@@ -858,7 +862,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
             ax_r.text(
                 x_off, y_off, char,
-                fontsize=fontsize_title,
+                fontsize=fontsize_milky_way,
                 color=text_color,
                 rotation=rotation,
                 rotation_mode="anchor",
@@ -866,6 +870,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 va="center",
                 fontweight="bold",
                 clip_on=False,
+                zorder=50
             )
 
         north_curve = np.asarray(north_curve)
@@ -914,7 +919,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
             ax_l.text(
                 x_off, y_off, char,
-                fontsize=fontsize_title,
+                fontsize=fontsize_milky_way,
                 color=text_color,
                 rotation=rotation,
                 rotation_mode="anchor",
@@ -922,6 +927,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 va="center",
                 fontweight="bold",
                 clip_on=False,
+                zorder=50
             )
 
 
@@ -1036,7 +1042,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         dec = data[:, 1]
         mag = data[:, 2]
 
-        data = data[np.where(mag < 8.0)]  # filter out very dim stars above magnitude 5.0
+        data = data[np.where(mag < (8.0 if format == "poster" else 5.0))]  # filter out very dim stars above magnitude 5.0
         ra = data[:, 0]
         dec = data[:, 1]
         mag = data[:, 2]
@@ -1048,15 +1054,16 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec))
 
-        sizes = np.clip(40 * 10 ** (-0.4 * mag), 0.2, 50)
+        sizes = np.clip(40 * 10 ** (-0.4 * mag), 0.2, 50 if format == "poster" else 8)
 
         ax_l.scatter(
             x[north],
             y[north],
             s=sizes[north],
             color="white",
-            edgecolors="none",
-            alpha=0.8,
+            edgecolors="none" if background == "black" else "#b1cbed",
+            linewidths=0.2 if background == "white" else 0.0,
+            alpha=1.0,
             zorder=5,
         )
 
@@ -1065,8 +1072,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             y[~north],
             s=sizes[~north],
             color="white",
-            edgecolors="none",
-            alpha=0.8,
+            edgecolors="none" if background == "black" else "#b1cbed",
+            linewidths=0.2 if background == "white" else 0.0,
+            alpha=1.0,
             zorder=5,
         )
 
@@ -1308,7 +1316,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=20,
         )
 
-    if constellations:
+    if constellations and format == "poster":
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
         object_names = ["Achernar", "Pleiades", "Antares", "Betelgeuse", "Sirius", "Acrux", "Gacrux", "Mimosa", "Imai", "Alnair"]
 
@@ -1324,10 +1332,10 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
 
         marker_styles = {
-            "Pleiades": ("#c4b5fd", 100, True),
-            "Antares": ("#fca5a5", 24, False),
-            "Betelgeuse": ("#fbbf24", 52, False),
-            "Sirius": ("#fef3c7", 52, False),
+            "Pleiades": ("#c4b5fd", 100 if format == "poster" else 10, True),
+            "Antares": ("#fca5a5", 24 if format == "poster" else 10, False),
+            "Betelgeuse": ("#fbbf24", 52 if format == "poster" else 10, False),
+            "Sirius": ("#fef3c7", 52 if format == "poster" else 10, False),
         }
         for star_name, (panel, sx, sy) in south_proj.items():
             color, size, border = marker_styles.get(star_name, ("#f8fafc", 14, False))
@@ -1340,7 +1348,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 edgecolors=color if border else "none",
                 linestyle="--" if border else "solid",
                 linewidth=0.5 if border else 0.0,
-                alpha=0.96,
+                alpha=0.9,
                 zorder=9,
             )
 
@@ -1425,7 +1433,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             x_n_sample,
             y_n_sample,
             s=2,
-            c="#d1d5db",
+            # c="#d1d5db",
+            c="lightblue",
             edgecolors="none",
             alpha=0.4,
             zorder=7,
@@ -1435,7 +1444,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             x_s_sample,
             y_s_sample,
             s=2,
-            c="#d1d5db",
+            # c="#d1d5db",
+            c="lightblue",
             edgecolors="none",
             alpha=0.4,
             zorder=7,
@@ -1609,7 +1619,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             markerfacecolor=text_color,
             markeredgecolor=text_color,
             markeredgewidth=0.0,
-            label="Gravitational Wave Detectors",
+            label="Gravitational Wave Detector" if format == "poster" else "Detector",
         )
     
     if format == "thesis":

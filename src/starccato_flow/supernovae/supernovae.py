@@ -424,6 +424,8 @@ class Supernovae:
         fname: Optional[str] = None,
         font_family: str = "sans-serif",
         font_name: str = "Avenir",
+        fontsize_title: int = 16,
+        fontsize_tick: int = 11,
         transparent: Optional[bool] = None,
         background: str = "black"
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -443,7 +445,9 @@ class Supernovae:
             font_family: Font family for plots
             font_name: Font name for plots
             transparent: Whether to make plots transparent
-            
+            background: Plot background color ("white" or "black")
+            fontsize_title: Font size for the plot title
+            fontsize_tick: Font size for the plot tick labels
         Returns:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
         """
@@ -495,6 +499,8 @@ class Supernovae:
                 dpi=300,
                 font_family=font_family,
                 font_name=font_name,
+                fontsize_title=fontsize_title,
+                fontsize_tick=fontsize_tick,
                 transparent=transparent
             )
         elif epoch_dir is not None:

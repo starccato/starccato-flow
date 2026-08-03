@@ -425,7 +425,7 @@ class ConditionalVAETrainer:
             fname=os.path.join(self.outdir, "cvae", "cvae_reconstruction.svg")
         )
 
-    def _plot_latent_space(self, fname=None, epoch=None, figsize=tuple[float, float]):
+    def _plot_latent_space(self, fname=None, epoch=None, figsize=tuple[float, float], font_family="Serif", font_name="Times New Roman"):
         """Plot the latent space of the validation set coloured by rotation class."""
         self.cvae.eval()
 
@@ -474,8 +474,9 @@ class ConditionalVAETrainer:
             background="white",
             point_colors=point_colors,
             figsize=figsize,
-            fontsize_title=9,
-            fontsize_tick=7
+            fontsize_title=11,
+            fontsize_tick=9,
+            font_name=font_name
         )
 
         print(f"Saved latent space plot to {fname}")

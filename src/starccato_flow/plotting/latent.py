@@ -767,8 +767,8 @@ def plot_latent_space_2d_3d(
     background: str = "white",
     point_colors: Optional[np.ndarray] = None,
     figsize: Tuple[float, float] = (30, 10),
-    fontsize_title=float,
-    fontsize_tick=float,
+    fontsize_title: float = 11,
+    fontsize_tick: float = 11,
     font_name="Times New Roman",
 ):
     """Plot three 2D projections of the latent space."""
@@ -806,7 +806,7 @@ def plot_latent_space_2d_3d(
             latent_sample[:, dim1],
             latent_sample[:, dim2],
             c=colours,
-            s=15,
+            s=5,
             alpha=0.7,
             edgecolors="none",
         )
@@ -829,9 +829,7 @@ def plot_latent_space_2d_3d(
 
         for spine in ax.spines.values():
             spine.set_color(text_colour)
-            spine.set_linewidth(1.0)
-
-        ax.grid(True, alpha=0.3, linestyle=":")
+            spine.set_linewidth(0.5)
 
     from matplotlib.lines import Line2D
 
