@@ -20,8 +20,10 @@ PARAMETER_LABELS = {
     'A(km)': r'$A$',
     'Ye_c_b': r'$Y_{e,\text{c,b}}$',
     # Sky localization (extrinsic) parameters
-    'ra': r'$\mathrm{RA}$',
-    'dec': r'$\mathrm{Dec}$',
+    # 'ra': r'$\mathrm{RA}$',
+    # 'dec': r'$\mathrm{Dec}$',
+    'ra': r'$\alpha$',
+    'dec': r'$\delta$',
     'd': r'$D$',
     'psi': r'$\psi$',
 }
