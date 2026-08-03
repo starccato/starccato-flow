@@ -444,15 +444,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             ``ccsn.get_galactic_center_direction()`` for center marker logic.
         true_dec_override: Optional true Dec (radians).
         show_constellation_borders: If True, overlay IAU constellation boundaries.
-        show_all_constellation_labels: If True and constellation borders are enabled,
-            annotate all 88 IAU constellations with their 3-letter codes.
         show: If True, call ``plt.show()``.
         dpi: Image save DPI.
         background: Background color theme ("white" or "black").
         font_family: Font family to use.
         font_name: Specific font name.
-        red_blob_mode: Red contour center mode. One of
-            ``"middle_star"``, ``"density_peak"``, ``"true_center"``.
         show_detectors: If True, add detector markers (LIGO Hanford, LIGO Livingston, Virgo)
             and highlight the first supernova as the true location.
         format: Layout format - "poster" for the A1 landscape poster (two hemispheres
@@ -478,7 +474,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         },
         "thesis": {
             "figsize_mm": (145, 190),  # 14.5 x 19 cm portrait
-            "fontsize_title": 16,
+            "fontsize_title": 11,
             "fontsize_main": 11,
             "fontsize_label": 11,
             "fontsize_tick": 11,

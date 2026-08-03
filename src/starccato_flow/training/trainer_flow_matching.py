@@ -486,6 +486,7 @@ class FlowMatchingTrainer:
         fontsize_title: int = 16, 
         figsize_detector_signals: tuple[float, float] = (14.5,8),
         figsize_corner: tuple[float, float] = (14.5,14.5),
+        format: str = "thesis"
     ) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
         
@@ -627,7 +628,9 @@ class FlowMatchingTrainer:
             true_param_denorm=true_param_denorm,
             font_family=font_family,
             font_name=font_name,
-            transparent=True
+            transparent=True,
+            format=format,
+            background=background
         )
         # self.plot_sky_localisation_sampled_signal(
         #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
@@ -883,10 +886,10 @@ class FlowMatchingTrainer:
         self.save_losses()
         self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
-    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float):
+    def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float, shortened_detector_labels=True):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
         params = self.validation_dataset.parameters[signal_idx]  # Raw params, shape (num_params,)
-        d = 10 # kpc
+        d = 5 # kpc
         
         distance_mask = (
             (self.supernovae.distances >= d - 0.25)
@@ -934,6 +937,7 @@ class FlowMatchingTrainer:
             figsize=figsize,
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
+            shortened_detector_labels=shortened_detector_labels
         )
 
 
@@ -1173,7 +1177,9 @@ class FlowMatchingTrainer:
         true_param_denorm=None,
         font_family: str = "Serif",
         font_name: str = "Times New Roman",
-        transparent: bool = False
+        transparent: bool = False,
+        format: str = "thesis",
+        background: str = "white"
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot or background skymap.
         
@@ -1184,6 +1190,7 @@ class FlowMatchingTrainer:
             font_family: Font family for plot text
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
+            format: Layout format - "poster" or "thesis"
             
         If both posterior_samples_denorm and true_param_denorm are None, plots just the 
         background supernova skymap without posterior overlays or true location.
@@ -1269,15 +1276,12 @@ class FlowMatchingTrainer:
             true_ra_override=true_ra,
             true_dec_override=true_dec,
             show_constellation_borders=True,
-            show_all_constellation_labels=False if fname.endswith('.svg') else True,  # Skip labels for SVG output
-            dpi=150 if fname.endswith('.svg') else 300,  # Lower DPI for SVG to reduce file size
-            background="black",
+            background=background,
             font_family=font_family,
             font_name=font_name,
-            example=True,
-            red_blob_mode="density_peak" if has_posterior else None,
             transparent=transparent,
             n_background_supernovae=2_000_000 if not has_posterior else 20_000,
+            format=format,
         )
         
         # Compress SVG files to .svgz format for ~75% size reduction while keeping all visual elements

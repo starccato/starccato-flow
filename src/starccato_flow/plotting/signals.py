@@ -45,7 +45,8 @@ def plot_signal_grid(
     font_name: str = DEFAULT_FONT,
     param_values: Optional[np.ndarray] = None,
     param_label: Optional[str] = None,
-    figsize: tuple[float, float] = (20, 30)
+    figsize: tuple[float, float] = (20, 30),
+    shortened_detector_labels: bool = False,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """Plot a grid of waveform signals.
     
@@ -163,12 +164,13 @@ def plot_detector_signal_channels(
     font_name: str = DEFAULT_FONT,
     transparent: bool = False,
     figsize_mm: Tuple[float, float] = (165, 190),
-    fontsize_tick: int = 12,
-    fontsize_title: int = 18,
+    fontsize_tick: int = 11,
+    fontsize_title: int = 11,
     line_weight: float = 1,
     left_margin: float = 0.05,
     figsize: Tuple[float, float] = (16.5, 20.3),
-    y_axis: str = 'h'
+    y_axis: str = 'h',
+    shortened_detector_labels: bool = False,
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plot 3 detector-channel signals with clean and noisy overlay styling.
 
@@ -222,9 +224,9 @@ def plot_detector_signal_channels(
     axes[1].sharex(axes[0])
     axes[2].sharex(axes[0])
     d = get_time_axis()
-    x_min, x_max = -0.01, 0.05
-    tick_step = 0.01
-    xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
+    x_min, x_max = min(d), max(d)
+    # tick_step = 0.01
+    # xticks = np.arange(x_min, x_max + (0.5 * tick_step), tick_step)
     y_expand = 1.25
     # Use noisy signal for y-limits if available, otherwise use clean signal
     signal_for_ylim = channel_noisy if channel_noisy is not None else channel_signals
@@ -233,7 +235,10 @@ def plot_detector_signal_channels(
     y_max = max_absolute_value * y_expand
 
     # Map detector labels to full names for display
-    display_labels = _map_detector_labels(detector_labels)
+    if shortened_detector_labels:
+        display_labels = detector_labels
+    else:
+        display_labels = _map_detector_labels(detector_labels)
 
     for i, ax in enumerate(axes):
         y_clean = channel_signals[i].flatten()
@@ -257,7 +262,7 @@ def plot_detector_signal_channels(
         ax.set_title(display_labels[i], fontsize=fontsize_tick)
         ax.tick_params(axis='x', colors=vline_color, labelsize=fontsize_tick)
         ax.tick_params(axis='y', colors=vline_color, labelsize=fontsize_tick)
-        ax.yaxis.get_offset_text().set_fontsize(fontsize_tick-2)
+        # ax.yaxis.get_offset_text().set_fontsize(fontsize_tick-2)
 
         for spine in ax.spines.values():
             spine.set_color(vline_color)
@@ -266,20 +271,26 @@ def plot_detector_signal_channels(
         if i < 2:
             ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
 
-    axes[-1].set_xticks(xticks)
-    axes[-1].tick_params(axis='x', which='both', labelbottom=True, bottom=True, colors=vline_color)
-    axes[-1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-    
+    # Force a draw so each axis's offset text is actually computed
+    fig.canvas.draw()
+
+    # Grab the offset string once (same for every panel since ylim is shared),
+    # then hide the per-axis offset text and fold it into the shared ylabel instead.
+    offset_text = ""
+    for ax in axes[:len(signals)]:
+        ot = ax.yaxis.get_offset_text().get_text()
+        if ot:
+            offset_text = ot
+            break
+
+    for ax in axes[:len(signals)]:
+        ax.yaxis.get_offset_text().set_visible(False)
+
+    ylabel = rf'${y_axis}$' + (f' ({offset_text})' if offset_text else '')
+
     # Set axis labels with proper size and color
     axes[-1].set_xlabel('time (milliseconds)', fontsize=fontsize_title, color=vline_color)
-    axes[1].set_ylabel(r'$' + y_axis + r'$', fontsize=fontsize_title, color=vline_color)
-
-    # Add legend outside/on top if we have both signals
-    # if channel_noisy is not None:
-    #     handles, labels = axes[0].get_legend_handles_labels()
-    #     fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.98),
-    #               facecolor="none", edgecolor=vline_color, labelcolor=vline_color, 
-    #               fontsize=12, framealpha=0.0, ncol=2)
+    axes[1].set_ylabel(ylabel, fontsize=fontsize_title, color=vline_color)
 
     if fname:
         if fname.endswith('.svg'):

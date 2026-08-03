@@ -52,14 +52,14 @@ def plot_loss(
         val_label = "Validation Loss"
     
     axes.plot(train_losses, label=train_label, color=SIGNAL_COLOUR, 
-              linewidth=3, alpha=1.0, linestyle='-')
+              linewidth=2, alpha=1.0, linestyle='-')
     
     if val_losses is not None:
         axes.plot(val_losses, label=val_label, color=GENERATED_SIGNAL_COLOUR, 
-                  linewidth=3, alpha=1.0, linestyle='-')
+                  linewidth=2, alpha=1.0, linestyle='-')
     
-    axes.set_xlabel("Epoch", size=fontsize_title)
-    axes.set_ylabel(loss_type, size=fontsize_title)
+    axes.set_xlabel("Epoch", size=fontsize_tick)
+    axes.set_ylabel(loss_type, size=fontsize_tick)
     axes.set_xlim(0, len(train_losses) - 1)
     axes.set_ylim(0, max(max(train_losses), max(val_losses) if val_losses is not None else 0) * 1.1)
     axes.legend(fontsize=fontsize_tick, framealpha=0.0)

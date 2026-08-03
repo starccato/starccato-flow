@@ -236,7 +236,7 @@ def plot_pp_coverage(
     font_name: str = "Avenir",
     figsize: Tuple[float, float] = (12, 12),
     transparent: bool = False,
-    fontsize_title: float = 16,
+    fontsize_title: float = 11,
     fontsize_tick: float = 11
 ) -> plt.Figure:
     """Plot credible interval coverage (p-p plot) for multiple parameters.
@@ -281,42 +281,35 @@ def plot_pp_coverage(
     else:
         fallback_colors = []
     fallback_color_map = dict(zip(unknown_params, fallback_colors))
-
+    
     for param_idx in range(num_params):
-        empirical_coverage = []
-        
-        # For each credible level
-        for level in credible_levels:
-            # Calculate the quantiles for this credible level
-            lower_quantile = (1 - level) / 2
-            upper_quantile = 1 - lower_quantile
-            
-            n_in_interval = 0
-            total = 0
-            
-            # Check how many true values fall within their credible intervals
-            for posterior_samples, true_params in zip(posterior_samples_list, true_params_list):
-                if isinstance(posterior_samples, torch.Tensor):
-                    posterior_samples = posterior_samples.cpu().numpy()
-                if isinstance(true_params, torch.Tensor):
-                    true_params = true_params.cpu().numpy()
-                
-                # Get the posterior samples for this parameter
-                param_posterior = posterior_samples[:, param_idx]
-                true_value = true_params[param_idx]
-                
-                # Calculate credible interval
-                lower = np.quantile(param_posterior, lower_quantile)
-                upper = np.quantile(param_posterior, upper_quantile)
-                
-                # Check if true value is within interval
-                if lower <= true_value <= upper:
-                    n_in_interval += 1
-                total += 1
-            
-            # Empirical fraction
-            empirical_coverage.append(n_in_interval / total if total > 0 else 0)
-        
+        # Vectorized PIT calculation: for each event, what fraction of posterior
+        # samples fall below the true value (this replaces per-level quantile calls)
+        pit_values = []
+        for posterior_samples, true_params in zip(posterior_samples_list, true_params_list):
+            if isinstance(posterior_samples, torch.Tensor):
+                posterior_samples = posterior_samples.cpu().numpy()
+            if isinstance(true_params, torch.Tensor):
+                true_params = true_params.cpu().numpy()
+
+            param_posterior = posterior_samples[:, param_idx]
+            true_value = true_params[param_idx]
+
+            pit = np.mean(param_posterior < true_value)
+            pit_values.append(pit)
+
+        pit_values = np.asarray(pit_values)
+
+        # Minimum symmetric credible level at which each event is captured
+        min_capture_level = 2 * np.abs(pit_values - 0.5)
+        sorted_levels = np.sort(min_capture_level)
+
+        # Empirical coverage at each credible_level: fraction of events captured
+        # by that level, computed via a single vectorized searchsorted call
+        n_events = len(sorted_levels)
+        counts = np.searchsorted(sorted_levels, credible_levels, side='right')
+        empirical_coverage = counts / n_events
+
         # Plot line for this parameter
         param_label = PARAMETER_LABELS.get(param_names[param_idx], param_names[param_idx])
         param_name = param_names[param_idx]
@@ -324,11 +317,11 @@ def plot_pp_coverage(
             line_color = PARAMETER_COLOURS[param_name]
         else:
             line_color = fallback_color_map[param_name]
-        ax.plot(credible_levels, np.array(empirical_coverage), 
-            color=line_color, linewidth=2.5, label=param_label, alpha=0.8)
+        ax.plot(credible_levels, empirical_coverage,
+            color=line_color, linewidth=1.5, label=param_label, alpha=0.8)
     
     # Plot diagonal (perfect calibration)
-    ax.plot([0, 1], [0, 1], color='gray', linewidth=2, linestyle='--', label='Perfect Calibration', alpha=0.6)
+    ax.plot([0, 1], [0, 1], color='gray', linewidth=1.5, linestyle='--', label='Perfect Calibration', alpha=0.6)
     
     # Formatting
     ax.set_xlabel('Probability within the Credible Interval', size=fontsize_title)
@@ -617,25 +610,41 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
             patch.set_alpha(1.0)
 
     # Make axis lines and adjust tick labels with appropriate colors
-    for ax in figure.get_axes():
-        for spine in ax.spines.values():
-            spine.set_edgecolor(spine_color)
-        # Axis tick numbers
-        ax.tick_params(labelsize=12)
-        # Reduce label padding to save space
-        ax.xaxis.labelpad = 2
-        ax.yaxis.labelpad = 2
-        
-        # Fix rasterization: disable rasterization for ALL artist objects
-        # This includes collections (contourf), lines, patches, and images
-        for collection in ax.collections:
-            collection.set_rasterized(False)
-        for line in ax.lines:
-            line.set_rasterized(False)
-        for patch in ax.patches:
-            patch.set_rasterized(False)
-        for image in ax.images:
-            image.set_rasterized(False)
+    n = num_params
+    axes_grid = np.array(figure.get_axes()).reshape((n, n))
+
+    for i in range(n):
+        for j in range(n):
+            ax = axes_grid[i, j]
+            if ax is None or not ax.get_visible():
+                continue
+
+            for spine in ax.spines.values():
+                spine.set_edgecolor(spine_color)
+
+            # Axis tick numbers
+            ax.tick_params(labelsize=fontsize_tick, colors=text_color)
+            # Reduce label padding to save space
+            ax.xaxis.labelpad = 2
+            ax.yaxis.labelpad = 2
+
+            # Only show x-axis ticks on the bottom row
+            if i != n - 1:
+                ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+            # Only show y-axis ticks on the left column, skipping the top-left
+            # diagonal panel (which has no y-axis / is a histogram)
+            if j != 0 or i == j:
+                ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+
+            # Fix rasterization: disable rasterization for ALL artist objects
+            for collection in ax.collections:
+                collection.set_rasterized(False)
+            for line in ax.lines:
+                line.set_rasterized(False)
+            for patch in ax.patches:
+                patch.set_rasterized(False)
+            for image in ax.images:
+                image.set_rasterized(False)
 
     # Set figure background
     figure.patch.set_facecolor(axes_color)

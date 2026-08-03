@@ -64,6 +64,7 @@ def _is_dark_color(color_str: str) -> bool:
 
 def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (14.5, 10)):
     """Plot surface density of supernovae in the galactic plane."""
+    set_plot_style(background="white", font_family=font_family, font_name=font_name)
 
     plt.rcParams["font.family"] = font_family
     if font_family == "sans-serif":
@@ -91,18 +92,19 @@ def plot_surface_density(fname=None, font_family=None, font_name=None, transpare
     figsize = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     _, ax = plt.subplots(figsize=figsize, facecolor="white")
 
-    ax.plot(r, surface_density, color="lightblue", linewidth=2)
+    # ax.plot(r, surface_density, color="lightblue", linewidth=2)
+    ax.fill_between(r, surface_density, color="lightblue", alpha=0.3)
 
     # Put ticks only on visible axes
     ax.xaxis.set_ticks_position("bottom")
     ax.yaxis.set_ticks_position("left")
-    ax.tick_params(size=11)
+    ax.tick_params(labelsize=11)
 
     # Turn off grid
     ax.grid(False)
 
-    ax.set_xlabel(r"$r\ (\mathrm{kpc})$", size=16)
-    ax.set_ylabel("Surface Density", size=16)
+    ax.set_xlabel(r"$r\ (\mathrm{kpc})$", size=11)
+    ax.set_ylabel("Surface Density", size=11)
 
     ax.set_xlim(0, 30)
     ax.set_ylim(0, 1.0)

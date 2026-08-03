@@ -673,7 +673,7 @@ class hThetaMulti(Dataset):
         """Rescale signal by distance (inverse proportionality)."""
         return signal * (10.0 / max(distance_kpc, 1e-8))
     
-    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float):
+    def _plot_project_to_detectors_steps(self, signal_idx=0, f_name_h=str, f_name_h_delayed=str, f_name_h_delayed_rescaled=str, f_name_h_delayed_rescaled_noise=str, font_family="serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float, shortened_detector_labels=True):
         n_samples = self.s.shape[1]
         h = np.zeros((n_samples, self.num_detectors, Y_LENGTH), dtype=np.float32)
         h_delayed = np.zeros_like(h)
@@ -696,7 +696,8 @@ class hThetaMulti(Dataset):
             figsize=figsize,
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            y_axis='h'
+            y_axis='h',
+            shortened_detector_labels=shortened_detector_labels
         )
         # h_delayed
         plot_detector_signal_channels(
@@ -709,7 +710,8 @@ class hThetaMulti(Dataset):
             figsize=figsize,
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            y_axis='h'
+            y_axis='h',
+            shortened_detector_labels=shortened_detector_labels
         )
         # h_rescaled
         plot_detector_signal_channels(
@@ -722,7 +724,8 @@ class hThetaMulti(Dataset):
             figsize=figsize,
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            y_axis='h'
+            y_axis='h',
+            shortened_detector_labels=shortened_detector_labels
         )
         # h_rescaled with noise
         h_rescaled_noise_normalized = self.__getitem__(signal_idx)[1].cpu().numpy()  # Get noisy signal for this index
@@ -737,7 +740,8 @@ class hThetaMulti(Dataset):
             figsize=figsize,
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
-            y_axis='d'
+            y_axis='d',
+            shortened_detector_labels=shortened_detector_labels
         )
 
         return
