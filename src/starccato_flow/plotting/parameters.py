@@ -465,7 +465,7 @@ def plot_sky_localization_cumulative_areas(
 
 def plot_distance_credible_intervals(
     d_true_list,
-    area_90cl,
+    area_50cl,
     fname=None,
     show=False,
     font_family="sans-serif",
@@ -493,10 +493,10 @@ def plot_distance_credible_intervals(
     set_plot_style(background, font_family, font_name)
     fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     
-    ax.scatter(d_true_list, area_90cl, alpha=0.6, s=50, color='blue', edgecolors='darkblue', linewidth=0.5)
+    ax.scatter(d_true_list, area_50cl, alpha=0.6, s=50, color='blue', edgecolors='darkblue', linewidth=0.5)
     
     ax.set_xlabel('True Distance (kpc)', fontsize=11)
-    ax.set_ylabel('Sky Area at 90% Credible Level (deg²)', fontsize=11)
+    ax.set_ylabel('Sky Area at 50% Credible Level (deg²)', fontsize=11)
     ax.tick_params(labelsize=11)
     ax.grid(True, alpha=0.3)
     

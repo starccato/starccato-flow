@@ -24,6 +24,8 @@ from ..nn.flow import FlowFCL, FlowCNN
 
 from . import create_train_val_split
 
+import healpy as hp
+
 def _set_seed(seed: int):
     """Set the random seed for reproducibility."""
     np.random.seed(seed)
@@ -973,7 +975,7 @@ class FlowMatchingTrainer:
                 epoch=self.num_epochs,
                 n_samples=num_signals,
                 num_epochs=self.num_epochs,
-                exponential=False,  # Uniform sampling for p-p plot calibration
+                exponential=True,  # Uniform sampling for p-p plot calibration
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
@@ -1002,9 +1004,8 @@ class FlowMatchingTrainer:
         ra_idx = self._get_extracted_index("ra")
         dec_idx = self._get_extracted_index("dec")
 
-        # extract d
+        # Extract distance index
         d_idx = self._get_extracted_index("d")
-        d_true = h_theta_multi_val.parameters[:, d_idx]
         
         posterior_samples_list = []
         true_params_list = []
@@ -1152,7 +1153,7 @@ class FlowMatchingTrainer:
             # Plot sky area vs true distance for 50% credible level
             plot_distance_credible_intervals(
                 d_true_list=np.array(d_true_list),
-                area_90cl=np.array(credible_areas[0.90]),
+                area_50cl=np.array(credible_areas[0.50]),
                 fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
                 show=False,
                 font_family=font_family,
@@ -1175,51 +1176,73 @@ class FlowMatchingTrainer:
         """
         self.plot_model_performance(num_signals=num_signals, num_samples=3000, n_steps=20)
 
-    def compute_sky_localization_credible_areas(self,
-        posterior_samples_list,  # List of (N_samples, 2) arrays with (ra, dec)
-        credible_levels=[0.50, 0.68, 0.90, 0.95]
+
+
+    def compute_sky_localization_credible_areas(
+        self,
+        posterior_samples_list,
+        credible_levels=(0.50, 0.68, 0.90, 0.95),
+        nside=256,
     ):
-        """Compute credible sky areas for each signal's posterior (vectorized).
-        
-        Args:
-            posterior_samples_list: List of posterior samples, each shape (N_samples, 2)
-            credible_levels: Credible levels to compute (e.g., [0.50, 0.90])
-        
-        Returns:
-            Dictionary with credible_level -> list of areas in deg²
         """
-        credible_areas = {level: [] for level in credible_levels}
-        
+        Compute HPD credible sky areas from posterior samples using HEALPix.
+
+        Args:
+            posterior_samples_list:
+                List of arrays of shape (N,2), columns=(ra, dec) in radians.
+
+            credible_levels:
+                Iterable of credible levels.
+
+            nside:
+                HEALPix resolution.
+
+        Returns
+        -------
+        dict
+            credible_level -> list of sky areas (deg²)
+        """
+
+        credible_areas = {cl: [] for cl in credible_levels}
+
+        # Constant pixel area
+        pixel_area_deg2 = hp.nside2pixarea(nside, degrees=True)
+
         for posterior_samples in posterior_samples_list:
-            # Convert to degrees
-            ra_deg = np.degrees(posterior_samples[:, 0])
-            dec_deg = np.degrees(posterior_samples[:, 1])
-            
-            n_samples = len(posterior_samples)
-            
-            # Vectorized pairwise distance computation using broadcasting
-            # Compute all pairwise angular distances at once
-            ra_diff = ra_deg[:, np.newaxis] - ra_deg[np.newaxis, :]  # Shape: (N, N)
-            dec_diff = dec_deg[:, np.newaxis] - dec_deg[np.newaxis, :]  # Shape: (N, N)
-            cos_dec = np.cos(np.radians(dec_deg))[:, np.newaxis]  # Shape: (N, 1)
-            
-            # Angular distances matrix (N, N) using planar approximation for small regions
-            distances_matrix = np.sqrt(ra_diff**2 + (cos_dec * dec_diff)**2)
-            
-            # Sort distances along each row to find kth nearest neighbors
-            sorted_distances = np.sort(distances_matrix, axis=1)  # Shape: (N, N)
-            
-            # For each credible level, find the minimum enclosing radius
+
+            ra = posterior_samples[:, 0]
+            dec = posterior_samples[:, 1]
+
+            # HEALPix uses:
+            # theta = colatitude
+            # phi   = longitude
+            theta = np.pi / 2 - dec
+            phi = np.mod(ra, 2 * np.pi)
+
+            # Assign each sample to a pixel
+            pixels = hp.ang2pix(nside, theta, phi)
+
+            # Posterior probability map
+            npix = hp.nside2npix(nside)
+            counts = np.bincount(pixels, minlength=npix)
+
+            posterior = counts.astype(float)
+            posterior /= posterior.sum()
+
+            # Sort pixels by posterior probability
+            sorted_prob = np.sort(posterior)[::-1]
+
+            cumulative = np.cumsum(sorted_prob)
+
             for level in credible_levels:
-                n_samples_in_region = int(np.ceil(level * n_samples))
-                # Get kth nearest distance for each sample
-                kth_distances = sorted_distances[:, n_samples_in_region - 1]  # Shape: (N,)
-                # Minimum enclosing radius across all samples
-                min_radius_deg = np.min(kth_distances)
-                # Sky area of sphere with this radius: A = 2π(1 - cos(θ))
-                area_deg2 = 2 * np.pi * (1 - np.cos(np.radians(min_radius_deg)))
-                credible_areas[level].append(area_deg2)
-        
+
+                # Number of pixels needed to reach this probability
+                n_pixels = np.searchsorted(cumulative, level) + 1
+
+                area = n_pixels * pixel_area_deg2
+
+                credible_areas[level].append(area)
+
         return credible_areas
 
     def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20, log=False):
