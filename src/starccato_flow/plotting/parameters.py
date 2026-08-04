@@ -419,35 +419,94 @@ def plot_epoch_sky_parameters(
 
 def plot_sky_localization_cumulative_areas(
     credible_areas_dict,
-    fname="sky_localization_credible_areas.pdf"
+    fname=None,
+    show=False,
+    figsize: Tuple[float, float] = (14.5, 14.5),
+    background: str = "black",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    transparent: bool = False
 ):
     """Plot cumulative histogram of sky localization credible areas.
     
+    For each credible level, shows the cumulative fraction of signals as a function
+    of credible area (deg²). X-axis is log scale.
+    
     Args:
-        credible_areas_dict: Dict from compute_sky_localization_credible_areas
+        credible_areas_dict: Dict with credible_level -> list of areas (deg²)
         fname: Output filename
+        show: Whether to display plot (default False to avoid blocking in notebooks)
     """
-    fig, ax = plt.subplots(figsize=(10, 6))
+    set_plot_style(background, font_family, font_name)
+    fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     
-    colors = ['blue', 'green', 'orange', 'red']
+    colors = {0.68: 'green', 0.90: 'orange', 0.95: 'red'}
     
-    for (level, areas), color in zip(credible_areas_dict.items(), colors):
-        areas = np.array(areas)
+    for level in sorted(credible_areas_dict.keys()):
+        areas = np.array(credible_areas_dict[level])
         # Sort areas and compute cumulative fraction
         areas_sorted = np.sort(areas)
         cumulative_frac = np.arange(1, len(areas_sorted) + 1) / len(areas_sorted)
         
         ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% CL", 
-                color=color, linewidth=2)
+                color=colors.get(level, 'gray'), linewidth=2)
     
-    ax.set_xlabel('Sky Area (deg²)', fontsize=12)
-    ax.set_ylabel('Cumulative Fraction of Signals', fontsize=12)
-    ax.set_title('Sky Localization Credible Region Areas', fontsize=14)
+    ax.set_xlabel('Sky Area (deg²)', fontsize=11)
+    ax.set_ylabel('Cumulative Fraction of Signals', fontsize=11)
+    ax.tick_params(labelsize=11)
     ax.set_xscale('log')
     ax.grid(True, alpha=0.3)
     ax.legend()
-    plt.savefig(fname, dpi=150)
-    plt.show()
+    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+def plot_distance_credible_intervals(
+    d_true_list,
+    area_90cl,
+    fname=None,
+    show=False,
+    font_family="sans-serif",
+    font_name="Avenir",
+    figsize=(14.5, 14.5),
+    background="white",
+    transparent=False
+):
+    """Scatter plot of sky area vs true distance for 50% credible level.
+    
+    For each signal, plots the true distance (kpc) on the x-axis and the
+    50% credible sky area (deg²) on the y-axis.
+    
+    Args:
+        d_true_list: Array of true distances (kpc) for each signal
+        area_50cl: Array of 50% credible sky areas (deg²) for each signal
+        fname: Output filename
+        show: Whether to display plot (default False to avoid blocking in notebooks)
+        font_family: Font family for plot text
+        font_name: Font name for plot text
+        figsize: Figure size in inches
+        background: Background color ("white" or "black")
+        transparent: Whether to make background transparent
+    """
+    set_plot_style(background, font_family, font_name)
+    fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
+    
+    ax.scatter(d_true_list, area_90cl, alpha=0.6, s=50, color='blue', edgecolors='darkblue', linewidth=0.5)
+    
+    ax.set_xlabel('True Distance (kpc)', fontsize=11)
+    ax.set_ylabel('Sky Area at 90% Credible Level (deg²)', fontsize=11)
+    ax.tick_params(labelsize=11)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
 
 
 def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 

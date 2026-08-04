@@ -15,7 +15,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels
-from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage, plot_sky_localization_cumulative_areas
+from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage, plot_sky_localization_cumulative_areas, plot_distance_credible_intervals
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
@@ -944,65 +944,242 @@ class FlowMatchingTrainer:
             shortened_detector_labels=shortened_detector_labels
         )
 
-    def plot_sky_localization_credible_areas(self, num_signals=2000):
-        """Generate cumulative sky localization credible area plot."""
-        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
-
-        # create detector-frame signals
-        val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
-            epoch=self.num_epochs,  # Use last epoch for validation
-            n_samples=num_signals,
-            num_epochs=self.num_epochs,
-            exponential=True,
-        )
-        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
+    def plot_model_performance(self, num_signals=100, num_samples=3000, n_steps=20, fname_pp=None, fname_area_v_probability=None, fname_distance_credible_intervals=None, background="white", font_family="Sans-serif", font_name="Avenir", transparent=False, figsize=(14.5, 8)):
+        """Generate both p-p (credible interval coverage) and sky localization credible areas plots.
         
-        h_theta_multi_val = hThetaMulti(
-            s=val_signals,
-            shared_max_strain=self.validation_dataset.shared_max_strain,
-            theta=val_params,
-            shared_min=self.validation_dataset.shared_min_theta,
-            shared_max=self.validation_dataset.shared_max_theta,
-            ra=val_sampled_ra,
-            dec=val_sampled_dec,
-            d=val_sampled_d,
-            batch_size=self.batch_size,
-            detector_noise_on=True,
-            random_polarization=True,
-            seed=1000,  # Different seed range for validation set
-            intrinsic_param_names=self.intrinsic_params,
-            use_physics_aware_norm=self.use_physics_aware_norm
-        )           
+        This method validates model calibration on two fronts:
+        1. P-P plot: Shows empirical vs theoretical coverage of credible intervals for each parameter
+        2. Sky localization: Shows cumulative distribution of credible areas across credible levels
         
-        # Loop through validation signals
-        for i in range(min(num_signals, len(self.validation_dataset))):
-            # Get posterior samples
-            h_theta_multi_val_signal = h_theta_multi_val[i]
-            posterior_samples_denorm, _, _ = self._generate_posterior_samples(
-                h_theta_multi_val_signal, h_theta_multi_val,
-                num_samples=5000, n_steps=20, log=False
+        Args:
+            num_signals (int): Number of validation signals to use for computing coverage
+            num_samples (int): Number of posterior samples to draw per signal (default: 3000)
+            n_steps (int): Number of ODE solver steps for inference
+            fname_pp (Optional[str]): Filename to save p-p plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
+            fname_area_v_probability (Optional[str]): Filename to save sky localization credible areas plot. If None, saves to outdir/flow_matching/sky_localization_credible_areas.png
+            background (str): Background color theme ("white" or "black")
+            font_family (str): Font family for plot text
+            font_name (str): Font name for plot text
+            transparent (bool): Whether to make the plot background transparent
+        """
+        # Initialize validation dataset if not already present
+        if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:            
+            # Sample validation signals and parameters
+            val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
+            
+            # Sample sky parameters for validation set
+            # Use uniform sampling (not exponential) for representative calibration assessment
+            val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
+                epoch=self.num_epochs,
+                n_samples=num_signals,
+                num_epochs=self.num_epochs,
+                exponential=False,  # Uniform sampling for p-p plot calibration
+                epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
-            # Extract RA/Dec
-            ra_idx = self._get_extracted_index("ra")
-            dec_idx = self._get_extracted_index("dec")
-            ra_samples = posterior_samples_denorm[:, ra_idx]
-            dec_samples = posterior_samples_denorm[:, dec_idx]
-            
-            # Compute credible areas for this signal
-            areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
-            for level, area in areas.items():
-                credible_areas[level].append(area)
-        
-        # Plot
-        plot_sky_localization_cumulative_areas(credible_areas)
+            # Create hThetaMulti validation dataset
+            h_theta_multi_val = hThetaMulti(
+                s=val_signals,
+                shared_max_strain=self.validation_dataset.shared_max_strain,
+                theta=val_params,
+                shared_min=self.validation_dataset.shared_min_theta,
+                shared_max=self.validation_dataset.shared_max_theta,
+                ra=val_sampled_ra,
+                dec=val_sampled_dec,
+                d=val_sampled_d,
+                batch_size=self.batch_size,
+                detector_noise_on=True,
+                random_polarization=True,
+                seed=1000,
+                intrinsic_param_names=self.intrinsic_params,
+                use_physics_aware_norm=self.use_physics_aware_norm
+            )
+            print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
+                
+        self.flow.eval()
 
+        # Pre-compute indices outside loop (constant for all signals)
+        ra_idx = self._get_extracted_index("ra")
+        dec_idx = self._get_extracted_index("dec")
+
+        # extract d
+        d_idx = self._get_extracted_index("d")
+        d_true = h_theta_multi_val.parameters[:, d_idx]
+        
+        posterior_samples_list = []
+        true_params_list = []
+        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
+        d_true_list = []  # Track true distance for each signal
+        
+        # Create DataLoader for efficient batch iteration
+        use_cuda = str(DEVICE).startswith("cuda")
+        loader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": 0,
+            "pin_memory": use_cuda,
+            "persistent_workers": False,
+        }
+        val_loader = DataLoader(
+            h_theta_multi_val,
+            shuffle=False,
+            **loader_kwargs,
+        )
+        
+        total_processed = 0
+        with torch.no_grad():
+            for signals_batch, noisy_signals_batch, true_params_batch in val_loader:
+                num_to_process = min(len(signals_batch), num_signals - total_processed)
+                if num_to_process <= 0:
+                    break
+
+                # Slice down to only what we need from this batch
+                noisy_signals = noisy_signals_batch[:num_to_process]
+                true_params = true_params_batch[:num_to_process]
+
+                if noisy_signals.dim() == 2:
+                    noisy_signals = noisy_signals.unsqueeze(0)
+                if true_params.dim() == 1:
+                    true_params = true_params.unsqueeze(0)
+
+                noisy_signals = noisy_signals.view(noisy_signals.size(0), -1).to(DEVICE).float()
+                true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
+
+                batch_n = noisy_signals.size(0)
+
+                # Repeat each signal's conditioning num_samples times, stacked across
+                # the batch: shape becomes (batch_n * num_samples, signal_dim)
+                repeated_signal = noisy_signals.repeat_interleave(num_samples, dim=0)
+
+                # Sample initial noise for all (signal x posterior-sample) pairs at once
+                posterior_samples = torch.randn(
+                    batch_n * num_samples, self.flow_param_dim, device=DEVICE
+                )
+
+                # Single ODE integration for the whole batch, instead of one per signal
+                time_steps = torch.linspace(0, 1.0, n_steps + 1)
+                for j in range(n_steps):
+                    posterior_samples = self.flow.step(
+                        posterior_samples,
+                        time_steps[j],
+                        time_steps[j + 1],
+                        repeated_signal,
+                    )
+
+                # Reshape back to (batch_n, num_samples, flow_param_dim) for per-signal processing
+                posterior_samples = posterior_samples.view(batch_n, num_samples, self.flow_param_dim)
+
+                # Denormalize parameters
+                if self.use_physics_aware_norm:
+                    samples_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy()
+                    )
+                    samples_full_denorm = samples_full_denorm.reshape(batch_n, num_samples, -1)
+                    samples_denorm_all = samples_full_denorm[:, :, self.param_extract_indices]
+
+                    true_params_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
+                        true_params.cpu().numpy()
+                    )
+                    true_params_denorm_all = true_params_full_denorm[:, self.param_extract_indices]
+                else:
+                    samples_denorm_all = self._denormalize_extracted_params(
+                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy(),
+                        h_theta_multi_val
+                    ).reshape(batch_n, num_samples, -1)
+
+                    true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
+                    true_params_denorm_all = self._denormalize_extracted_params(
+                        true_params_extracted,
+                        h_theta_multi_val
+                    )
+
+                # Process each signal in the batch
+                for i in range(batch_n):
+                    if (total_processed + 1) % max(1, num_signals // 5) == 0:
+                        print(f"  Processed {total_processed + 1}/{num_signals} signals...")
+                    
+                    # For p-p plot: collect all denormalized parameters
+                    posterior_samples_list.append(samples_denorm_all[i])
+                    true_params_list.append(true_params_denorm_all[i].flatten())
+                    
+                    # Track true distance from denormalized parameters
+                    if d_idx >= 0:
+                        d_true_list.append(true_params_denorm_all[i, d_idx])
+                    
+                    # For sky localization: extract RA/Dec and compute credible areas
+                    if ra_idx >= 0 and dec_idx >= 0:
+                        ra_samples = samples_denorm_all[i, :, ra_idx]
+                        dec_samples = samples_denorm_all[i, :, dec_idx]
+                        
+                        # Compute credible areas for this signal
+                        areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
+                        for level, area in areas.items():
+                            credible_areas[level].append(area[0])
+                    
+                    total_processed += 1
+        
+        print(f"Generating calibration plots (p-p coverage + sky localization)...")
+        outdir = os.path.join(self.outdir, "flow_matching")
+        os.makedirs(outdir, exist_ok=True)
+        
+        plot_pp_coverage(
+            posterior_samples_list=posterior_samples_list,
+            true_params_list=true_params_list,
+            param_names=self.parameters_to_estimate,
+            fname=fname_pp if fname_pp is not None else None,
+            background=background,
+            font_family=font_family,
+            font_name=font_name,
+            transparent=transparent,
+            fontsize_title=11,
+            fontsize_tick=11,
+            figsize=(14.5, 14.5)
+        )
+        
+        # Create sky localization credible areas plot
+        if ra_idx >= 0 and dec_idx >= 0:
+            plot_sky_localization_cumulative_areas(
+                credible_areas,
+                fname=fname_area_v_probability if fname_area_v_probability is not None else os.path.join(outdir, "sky_localization_credible_areas.png"),
+                show=False,
+                figsize=(14.5, 14.5),
+                background=background,
+                font_family=font_family,
+                font_name=font_name,
+                transparent=transparent
+            )
+
+        if d_idx >= 0 and len(d_true_list) > 0:
+            # Plot sky area vs true distance for 50% credible level
+            plot_distance_credible_intervals(
+                d_true_list=np.array(d_true_list),
+                area_90cl=np.array(credible_areas[0.90]),
+                fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
+                show=False,
+                font_family=font_family,
+                font_name=font_name,
+                background=background,
+                transparent=transparent,
+                figsize=figsize
+            )
+        
+        return
+        
+    def plot_sky_localization_credible_areas(self, num_signals=100):
+        """Generate sky localization credible area plot.
+        
+        Convenience wrapper that calls plot_model_performance to generate both
+        p-p coverage and sky localization plots in one pass.
+        
+        Args:
+            num_signals: Number of validation signals to process (default 100)
+        """
+        self.plot_model_performance(num_signals=num_signals, num_samples=3000, n_steps=20)
 
     def compute_sky_localization_credible_areas(self,
         posterior_samples_list,  # List of (N_samples, 2) arrays with (ra, dec)
         credible_levels=[0.50, 0.68, 0.90, 0.95]
     ):
-        """Compute credible sky areas for each signal's posterior.
+        """Compute credible sky areas for each signal's posterior (vectorized).
         
         Args:
             posterior_samples_list: List of posterior samples, each shape (N_samples, 2)
@@ -1011,40 +1188,34 @@ class FlowMatchingTrainer:
         Returns:
             Dictionary with credible_level -> list of areas in deg²
         """
-        from scipy.spatial.distance import cdist
-        
         credible_areas = {level: [] for level in credible_levels}
         
         for posterior_samples in posterior_samples_list:
-            # posterior_samples shape: (N_samples, 2) with columns [ra, dec]
-            ra_samples = posterior_samples[:, 0]  # radians
-            dec_samples = posterior_samples[:, 1]  # radians
+            # Convert to degrees
+            ra_deg = np.degrees(posterior_samples[:, 0])
+            dec_deg = np.degrees(posterior_samples[:, 1])
             
-            # Convert to degrees for area calculation
-            ra_deg = np.degrees(ra_samples)
-            dec_deg = np.degrees(dec_samples)
+            n_samples = len(posterior_samples)
             
-            # Compute angular distances between all sample pairs using spherical metric
-            # For small areas, use: distance = arccos(sin(dec1)sin(dec2) + cos(dec1)cos(dec2)cos(ra1-ra2))
-            coords = np.column_stack([ra_deg, dec_deg])
+            # Vectorized pairwise distance computation using broadcasting
+            # Compute all pairwise angular distances at once
+            ra_diff = ra_deg[:, np.newaxis] - ra_deg[np.newaxis, :]  # Shape: (N, N)
+            dec_diff = dec_deg[:, np.newaxis] - dec_deg[np.newaxis, :]  # Shape: (N, N)
+            cos_dec = np.cos(np.radians(dec_deg))[:, np.newaxis]  # Shape: (N, 1)
             
-            # For each credible level, find the minimum area containing that fraction
+            # Angular distances matrix (N, N) using planar approximation for small regions
+            distances_matrix = np.sqrt(ra_diff**2 + (cos_dec * dec_diff)**2)
+            
+            # Sort distances along each row to find kth nearest neighbors
+            sorted_distances = np.sort(distances_matrix, axis=1)  # Shape: (N, N)
+            
+            # For each credible level, find the minimum enclosing radius
             for level in credible_levels:
-                n_samples_in_region = int(np.ceil(level * len(posterior_samples)))
-                
-                # Find the point with smallest enclosing circle of n_samples_in_region points
-                # Simple approach: for each sample, find the distance to the n-th nearest neighbor
-                distances_to_kth = []
-                for i in range(len(posterior_samples)):
-                    # Great circle distance to all other points
-                    diffs = coords - coords[i]
-                    # Simple approximation for small regions
-                    angular_distances = np.sqrt(diffs[:, 0]**2 + (np.cos(np.radians(dec_deg[i])) * diffs[:, 1])**2)
-                    angular_distances = np.sort(angular_distances)
-                    distances_to_kth.append(angular_distances[n_samples_in_region - 1])
-                
-                # Minimum enclosing radius
-                min_radius_deg = np.min(distances_to_kth)
+                n_samples_in_region = int(np.ceil(level * n_samples))
+                # Get kth nearest distance for each sample
+                kth_distances = sorted_distances[:, n_samples_in_region - 1]  # Shape: (N,)
+                # Minimum enclosing radius across all samples
+                min_radius_deg = np.min(kth_distances)
                 # Sky area of sphere with this radius: A = 2π(1 - cos(θ))
                 area_deg2 = 2 * np.pi * (1 - np.cos(np.radians(min_radius_deg)))
                 credible_areas[level].append(area_deg2)
@@ -1487,7 +1658,7 @@ class FlowMatchingTrainer:
             transparent=transparent,
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 5000, n_steps: int = 20, 
+    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
                                      fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
         """Generate a p-p (credible interval coverage) plot using validation set signals.
         
@@ -1496,7 +1667,7 @@ class FlowMatchingTrainer:
         
         Args:
             num_signals (int): Number of validation signals to use for computing coverage
-            num_samples (int): Number of posterior samples to draw per signal (default: 5000)
+            num_samples (int): Number of posterior samples to draw per signal (default: 3000)
             n_steps (int): Number of ODE solver steps for inference
             fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
             background (str): Background color theme ("white" or "black")
@@ -1652,7 +1823,7 @@ class FlowMatchingTrainer:
         
         print(f"✓ Saved p-p coverage plot to {fname}")
 
-    def calculate_computation_time(self, num_signals: int = 10000, num_samples: int = 5000, n_steps: int = 20) -> tuple[float, float]:
+    def calculate_computation_time(self, num_signals: int = 10000, num_samples: int = 3000, n_steps: int = 20) -> tuple[float, float]:
         """Calculate the average computation time for posterior sampling of a given number of signals.
         
         Args:
