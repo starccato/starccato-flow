@@ -327,6 +327,8 @@ class ConditionalVAETrainer:
             Generated signals of shape (num_samples * num_batches, signal_length)
         """
         self.cvae.eval()
+
+        t0 = time.time()
         
         # Ensure params is 2D
         if target_params.ndim == 1:
@@ -345,6 +347,9 @@ class ConditionalVAETrainer:
         with torch.no_grad():
             generated = self.cvae.decoder(z, params_tensor).cpu().numpy()
         
+        t1 = time.time()
+        print(f"Signal generation took {(t1 - t0)/num_samples:.2f}s per signal")
+
         return generated
     
 
@@ -723,7 +728,8 @@ class ConditionalVAETrainer:
             
         Returns:
             np.ndarray: Generated signals with shape (signal_length, num_samples)
-        """        
+        """
+        t0 = time.time()
         # Get parameter dimension from training dataset
         param_dim = self.training_dataset.parameters.shape[1]
                 
@@ -766,7 +772,10 @@ class ConditionalVAETrainer:
         # Signals are already in normalized space from decoder
         # Reshape from (num_samples, signal_length) to (signal_length, num_samples)
         signals_array = generated_signals_norm.T * self.training_dataset.shared_max_strain  # Scale by max strain to get physical units
-                
+
+        t1 = time.time()
+        print(f"Signal generation took {(t1 - t0)}s for {num_samples} signals")
+
         # Plot signal distribution
         plot_signal_distribution(
             signals=signals_array / TEN_KPC,  # Convert to 10kpc distance
