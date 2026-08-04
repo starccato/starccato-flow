@@ -419,7 +419,9 @@ class Supernovae:
         epoch: int,
         n_samples: int,
         num_epochs: int,
-        exponential: bool = True,
+        exponential: bool = False,
+        curriculum_mode: str = "progressive_uniform",
+        curriculum_switch_epoch: Optional[int] = None,
         epoch_dir: Optional[str] = None,
         fname: Optional[str] = None,
         font_family: str = "sans-serif",
@@ -431,15 +433,19 @@ class Supernovae:
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Sample RA/Dec/d sky parameters for an epoch distance shell.
 
-        When ``exponential`` is True, samples are weighted to favor larger
-        distances in the shell (near ``max_kiloparsec``), with the weighting
-        strength increasing over epochs.
+        Supports multiple curriculum learning strategies for progressive training:
+        
+        - "exponential": (default) Expands shell over epochs, biases towards far edge
+        - "progressive_uniform": Expands shell uniformly, switches to full range at switch_epoch
+        - "uniform": Always uniform across full distance range (no curriculum)
         
         Args:
             epoch: Current epoch number
             n_samples: Number of samples to draw
-            num_epochs: Total number of epochs (for exponential weighting)
-            exponential: Whether to use exponential weighting (favor larger distances)
+            num_epochs: Total number of epochs
+            exponential: Legacy parameter. If True and curriculum_mode not specified, uses exponential mode
+            curriculum_mode: Curriculum strategy ("exponential", "progressive_uniform", "uniform")
+            curriculum_switch_epoch: For progressive_uniform, epoch when to switch to full range (default: 70% of num_epochs)
             epoch_dir: Optional directory to save galactic distribution plots
             fname: Optional filename for thesis plots
             font_family: Font family for plots
@@ -448,14 +454,41 @@ class Supernovae:
             background: Plot background color ("white" or "black")
             fontsize_title: Font size for the plot title
             fontsize_tick: Font size for the plot tick labels
+            
         Returns:
             Tuple of (ra, dec, d) arrays with sampled sky parameters
         """
         from ..utils.defaults_general import MAX_DISTANCE_KPC
         
         threshold_d = MAX_DISTANCE_KPC
-        min_d_mask = 0.0
-        max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 0.5)
+        
+        # Determine curriculum mode
+        if curriculum_mode not in ("exponential", "progressive_uniform", "uniform"):
+            curriculum_mode = "exponential" if exponential else "uniform"
+        
+        # Determine distance range based on curriculum mode
+        if curriculum_mode == "uniform":
+            # No curriculum: always full range
+            min_d_mask = 0.0
+            max_d_mask = threshold_d
+        elif curriculum_mode == "progressive_uniform":
+            # Progressive curriculum: expand shell uniformly, then full range
+            if curriculum_switch_epoch is None:
+                curriculum_switch_epoch = int(0.7 * num_epochs)
+            
+            if epoch < curriculum_switch_epoch:
+                # Early training: expand shell from 0 to full range
+                max_d_mask = min(threshold_d, (epoch / curriculum_switch_epoch) * threshold_d + 0.5)
+                min_d_mask = 0.0
+            else:
+                # Late training: sample full range
+                min_d_mask = 0.0
+                max_d_mask = threshold_d
+        else:
+            # "exponential" (original behavior): expand shell with exponential bias
+            min_d_mask = 0.0
+            max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 0.5)
+        
         distance_mask = (
             (self.distances >= min_d_mask)
             & (self.distances <= max_d_mask)
@@ -468,7 +501,8 @@ class Supernovae:
             )
 
         sample_probs = None
-        if exponential:
+        if curriculum_mode == "exponential" and exponential:
+            # Original exponential weighting: bias towards far edge of shell
             candidate_distances = self.distances[candidate_indices]
             shell_width = max(max_d_mask - min_d_mask, 1e-8)
             normalized_distance = np.clip((candidate_distances - min_d_mask) / shell_width, 0.0, 1.0)

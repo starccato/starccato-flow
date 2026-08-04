@@ -752,7 +752,8 @@ class FlowMatchingTrainer:
                 epoch,
                 self.samples_per_epoch,
                 self.num_epochs,
-                exponential=True,
+                curriculum_mode="progressive_uniform",
+                curriculum_switch_epoch=int(0.7 * self.num_epochs),
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
@@ -825,7 +826,8 @@ class FlowMatchingTrainer:
                     epoch,
                     n_val_signals,
                     self.num_epochs,
-                    exponential=True,
+                    curriculum_mode="progressive_uniform",
+                    curriculum_switch_epoch=int(0.7 * self.num_epochs),
                     epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
                 )
                 val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, n_val_signals)                
@@ -978,7 +980,7 @@ class FlowMatchingTrainer:
                 epoch=self.num_epochs,
                 n_samples=num_signals,
                 num_epochs=self.num_epochs,
-                exponential=True,  # Uniform sampling for p-p plot calibration
+                curriculum_mode="uniform",
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             
@@ -1699,171 +1701,6 @@ class FlowMatchingTrainer:
             transparent=transparent,
         )
 
-    def plot_pp_coverage_validation(self, num_signals: int = 2000, num_samples: int = 3000, n_steps: int = 20, 
-                                     fname: Optional[str] = None, background: str = "white", font_family: str = "Serif", font_name: str = "Times New Roman", transparent: bool = False, figsize: tuple[float, float] = (12,12)) -> None:
-        """Generate a p-p (credible interval coverage) plot using validation set signals.
-        
-        This plot shows empirical vs theoretical coverage of credible intervals for each parameter.
-        Each parameter is represented as a separate line. Perfect calibration is shown as the diagonal.
-        
-        Args:
-            num_signals (int): Number of validation signals to use for computing coverage
-            num_samples (int): Number of posterior samples to draw per signal (default: 3000)
-            n_steps (int): Number of ODE solver steps for inference
-            fname (Optional[str]): Filename to save plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
-            background (str): Background color theme ("white" or "black")
-            font_family (str): Font family for plot text
-            font_name (str): Font name for plot text
-            transparent (bool): Whether to make the plot background transparent
-        """
-        # Initialize validation dataset if not already present
-        if not hasattr(self, 'h_theta_multi_val') or self.h_theta_multi_val is None:            
-            # Sample validation signals and parameters
-            val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
-            
-            # Sample sky parameters for validation set
-            # Use uniform sampling (not exponential) for representative calibration assessment
-            val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
-                epoch=self.num_epochs,
-                n_samples=num_signals,
-                num_epochs=self.num_epochs,
-                exponential=True,  # Uniform sampling for p-p plot calibration
-                epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
-            )
-            
-            # Create hThetaMulti validation dataset
-            h_theta_multi_val = hThetaMulti(
-                s=val_signals,
-                shared_max_strain=self.validation_dataset.shared_max_strain,
-                theta=val_params,
-                shared_min=self.validation_dataset.shared_min_theta,
-                shared_max=self.validation_dataset.shared_max_theta,
-                ra=val_sampled_ra,
-                dec=val_sampled_dec,
-                d=val_sampled_d,
-                batch_size=self.batch_size,
-                detector_noise_on=True,
-                random_polarization=True,
-                seed=1000,
-                intrinsic_param_names=self.intrinsic_params,
-                use_physics_aware_norm=self.use_physics_aware_norm
-            )
-            print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
-                
-        self.flow.eval()
-        
-        posterior_samples_list = []
-        true_params_list = []
-        
-        # Create DataLoader for efficient batch iteration
-        use_cuda = str(DEVICE).startswith("cuda")
-        loader_kwargs = {
-            "batch_size": self.batch_size,
-            "num_workers": 0,
-            "pin_memory": use_cuda,
-            "persistent_workers": False,
-        }
-        val_loader = DataLoader(
-            h_theta_multi_val,
-            shuffle=False,
-            **loader_kwargs,
-        )
-        
-        total_processed = 0
-        with torch.no_grad():
-            for signals_batch, noisy_signals_batch, true_params_batch in val_loader:
-                num_to_process = min(len(signals_batch), num_signals - total_processed)
-                if num_to_process <= 0:
-                    break
-
-                # Slice down to only what we need from this batch
-                noisy_signals = noisy_signals_batch[:num_to_process]
-                true_params = true_params_batch[:num_to_process]
-
-                if noisy_signals.dim() == 2:
-                    noisy_signals = noisy_signals.unsqueeze(0)
-                if true_params.dim() == 1:
-                    true_params = true_params.unsqueeze(0)
-
-                noisy_signals = noisy_signals.view(noisy_signals.size(0), -1).to(DEVICE).float()
-                true_params = true_params.view(true_params.size(0), -1).to(DEVICE).float()
-
-                batch_n = noisy_signals.size(0)
-
-                # Repeat each signal's conditioning num_samples times, stacked across
-                # the batch: shape becomes (batch_n * num_samples, signal_dim)
-                repeated_signal = noisy_signals.repeat_interleave(num_samples, dim=0)
-
-                # Sample initial noise for all (signal x posterior-sample) pairs at once
-                posterior_samples = torch.randn(
-                    batch_n * num_samples, self.flow_param_dim, device=DEVICE
-                )
-
-                # Single ODE integration for the whole batch, instead of one per signal
-                time_steps = torch.linspace(0, 1.0, n_steps + 1)
-                for j in range(n_steps):
-                    posterior_samples = self.flow.step(
-                        posterior_samples,
-                        time_steps[j],
-                        time_steps[j + 1],
-                        repeated_signal,
-                    )
-
-                # Reshape back to (batch_n, num_samples, flow_param_dim) for per-signal processing
-                posterior_samples = posterior_samples.view(batch_n, num_samples, self.flow_param_dim)
-
-                # Denormalize parameters
-                if self.use_physics_aware_norm:
-                    samples_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
-                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy()
-                    )
-                    samples_full_denorm = samples_full_denorm.reshape(batch_n, num_samples, -1)
-                    samples_denorm_all = samples_full_denorm[:, :, self.param_extract_indices]
-
-                    true_params_full_denorm = h_theta_multi_val.denormalize_parameters_physics_aware(
-                        true_params.cpu().numpy()
-                    )
-                    true_params_denorm_all = true_params_full_denorm[:, self.param_extract_indices]
-                else:
-                    samples_denorm_all = self._denormalize_extracted_params(
-                        posterior_samples.reshape(-1, self.flow_param_dim).cpu().numpy(),
-                        h_theta_multi_val
-                    ).reshape(batch_n, num_samples, -1)
-
-                    true_params_extracted = true_params[:, self.param_extract_indices].cpu().numpy()
-                    true_params_denorm_all = self._denormalize_extracted_params(
-                        true_params_extracted,
-                        h_theta_multi_val
-                    )
-
-                # Split back into per-signal lists (still needed since plot_pp_coverage
-                # expects a list of separate arrays, one per signal)
-                for i in range(batch_n):
-                    if (total_processed + 1) % max(1, num_signals // 5) == 0:
-                        print(f"  Processed {total_processed + 1}/{num_signals} signals...")
-                    posterior_samples_list.append(samples_denorm_all[i])
-                    true_params_list.append(true_params_denorm_all[i].flatten())
-                    total_processed += 1
-        
-        print(f"Generating p-p coverage plot...")
-        
-        # Create p-p coverage plot
-        plot_pp_coverage(
-            posterior_samples_list=posterior_samples_list,
-            true_params_list=true_params_list,
-            param_names=self.parameters_to_estimate,
-            fname=fname,
-            background=background,
-            font_family=font_family,
-            font_name=font_name,
-            transparent=transparent,
-            figsize=figsize,
-            fontsize_title=11,
-            fontsize_tick=11
-        )
-        
-        print(f"✓ Saved p-p coverage plot to {fname}")
-
     def calculate_computation_time(self, num_signals: int = 10000, num_samples: int = 3000, n_steps: int = 20) -> tuple[float, float]:
         """Calculate the average computation time for posterior sampling of a given number of signals.
         
@@ -1885,6 +1722,7 @@ class FlowMatchingTrainer:
             epoch=self.num_epochs,
             n_samples=num_signals,
             num_epochs=self.num_epochs,
+            curriculum_mode="uniform",
             exponential=True
         )
         
