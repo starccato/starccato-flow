@@ -1,6 +1,7 @@
 import os
 import time
 from typing import Optional
+from unittest import case
 
 import numpy as np
 import pandas as pd
@@ -598,7 +599,7 @@ class FlowMatchingTrainer:
             figsize=figsize_detector_signals
         )
         # Generate posterior samples once and reuse for both plots
-        posterior_samples_denorm, true_param_denorm = self._generate_posterior_samples(
+        posterior_samples_denorm, true_param_denorm, _ = self._generate_posterior_samples(
             case, active_h_theta_multi, num_samples=num_samples, n_steps=20
         )
         
@@ -945,7 +946,7 @@ class FlowMatchingTrainer:
         )
 
 
-    def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20):
+    def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20, log=False):
         """Generate posterior samples for a given signal case.
         
         Args:
@@ -986,23 +987,24 @@ class FlowMatchingTrainer:
             
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
-            
-            # DEBUG: Check raw flow outputs (before denormalization)
-            if self.use_physics_aware_norm:
-                print(f"\n=== RAW FLOW OUTPUT (Physics-Aware Normalized Space) ===")
-                print(f"Shape: {samples_cpu.shape} (11D: intrinsic params + 2D cyclic + 1D distance)")
-                print(f"Overall range: [{samples_cpu.min():.4f}, {samples_cpu.max():.4f}]")
-                print("Note: (cos, sin) pairs should be in [-1, 1], distance in [0, 1]")
-            else:
-                print(f"\n=== RAW FLOW OUTPUT (Normalized Space [-1, 1]) ===")
-                print(f"Shape: {samples_cpu.shape}")
-                for i, param_name in enumerate(self.parameters_to_estimate):
-                    param_samples = samples_cpu[:, i]
-                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}, "
-                          f"mean={param_samples.mean():.4f}, std={param_samples.std():.4f}")
-                    n_outside = np.sum((param_samples < -1.0) | (param_samples > 1.0))
-                    if n_outside > 0:
-                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
+
+            if log:
+                # DEBUG: Check raw flow outputs (before denormalization)
+                if self.use_physics_aware_norm:
+                    print(f"\n=== RAW FLOW OUTPUT (Physics-Aware Normalized Space) ===")
+                    print(f"Shape: {samples_cpu.shape} (11D: intrinsic params + 2D cyclic + 1D distance)")
+                    print(f"Overall range: [{samples_cpu.min():.4f}, {samples_cpu.max():.4f}]")
+                    print("Note: (cos, sin) pairs should be in [-1, 1], distance in [0, 1]")
+                else:
+                    print(f"\n=== RAW FLOW OUTPUT (Normalized Space [-1, 1]) ===")
+                    print(f"Shape: {samples_cpu.shape}")
+                    for i, param_name in enumerate(self.parameters_to_estimate):
+                        param_samples = samples_cpu[:, i]
+                        print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}, "
+                            f"mean={param_samples.mean():.4f}, std={param_samples.std():.4f}")
+                        n_outside = np.sum((param_samples < -1.0) | (param_samples > 1.0))
+                        if n_outside > 0:
+                            print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE [-1, 1]!")
         
         if self.use_physics_aware_norm:
             # Physics-aware denormalization: full 11D → 8D physical
@@ -1015,19 +1017,20 @@ class FlowMatchingTrainer:
             # Extract only the requested parameters in physical space
             samples_denorm = samples_full_denorm[:, self.param_extract_indices]  # (N_samples, n_requested)
             true_params_denorm = true_params_full_denorm[self.param_extract_indices]  # (n_requested,)
-            
-            # DEBUG: Check denormalized samples
-            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) - Physics-Aware ===")
-            for i, param_name in enumerate(self.parameters_to_estimate):
-                param_idx = self.param_extract_indices[i]
-                param_samples = samples_full_denorm[:, param_idx]
-                min_bound = h_theta_multi_dataset.shared_min_theta[param_idx]
-                max_bound = h_theta_multi_dataset.shared_max_theta[param_idx]
-                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
-                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
-                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
-                if n_outside > 0:
-                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
+
+            if log:
+                # DEBUG: Check denormalized samples
+                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) - Physics-Aware ===")
+                for i, param_name in enumerate(self.parameters_to_estimate):
+                    param_idx = self.param_extract_indices[i]
+                    param_samples = samples_full_denorm[:, param_idx]
+                    min_bound = h_theta_multi_dataset.shared_min_theta[param_idx]
+                    max_bound = h_theta_multi_dataset.shared_max_theta[param_idx]
+                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                    if n_outside > 0:
+                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
         else:
             # Linear denormalization: extract then denormalize
             samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
@@ -1044,23 +1047,26 @@ class FlowMatchingTrainer:
             true_params_denorm = self._denormalize_extracted_params(
                 true_params_extracted.reshape(1, -1), h_theta_multi_dataset
             ).flatten()
-            
-            # DEBUG: Check denormalized samples
-            print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
-            for i, param_name in enumerate(self.parameters_to_estimate):
-                param_samples = samples_denorm[:, i]
-                min_bound = h_theta_multi_dataset.shared_min_theta[i]
-                max_bound = h_theta_multi_dataset.shared_max_theta[i]
-                print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
-                print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
-                n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
-                if n_outside > 0:
-                    print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
+
+            if log:
+                # DEBUG: Check denormalized samples
+                print(f"\n=== DENORMALIZED OUTPUT (Physical Units) ===")
+                for i, param_name in enumerate(self.parameters_to_estimate):
+                    param_samples = samples_denorm[:, i]
+                    min_bound = h_theta_multi_dataset.shared_min_theta[i]
+                    max_bound = h_theta_multi_dataset.shared_max_theta[i]
+                    print(f"  {param_name:10s}: min={param_samples.min():.4f}, max={param_samples.max():.4f}")
+                    print(f"             bounds: [{min_bound:.4f}, {max_bound:.4f}]")
+                    n_outside = np.sum((param_samples < min_bound) | (param_samples > max_bound))
+                    if n_outside > 0:
+                        print(f"             WARNING: {n_outside}/{len(param_samples)} samples OUTSIDE bounds!")
     
         t1 = time.time()
-        print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
+        if log:
+            print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
+        compute_time = t1 - t0
         
-        return samples_denorm, true_params_denorm
+        return samples_denorm, true_params_denorm, compute_time
 
     def plot_corner_sampled_signal(
         self,
@@ -1541,6 +1547,59 @@ class FlowMatchingTrainer:
         
         print(f"✓ Saved p-p coverage plot to {fname}")
 
+    def calculate_computation_time(self, num_signals: int = 10000, num_samples: int = 5000, n_steps: int = 20) -> tuple[float, float]:
+        """Calculate the average computation time for posterior sampling of a given number of signals.
+        
+        Args:
+            num_signals: Number of signals to sample
+            num_samples: Number of posterior samples per signal
+            n_steps: Number of ODE solver steps
+
+        Returns:
+            Tuple containing the mean and standard deviation of computation times per signal."""
+
+        self.flow.eval()
+
+        # Sample validation signals and parameters
+        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
+        
+        # Sample sky parameters for validation set
+        val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
+            epoch=self.num_epochs,
+            n_samples=num_signals,
+            num_epochs=self.num_epochs,
+            exponential=True
+        )
+        
+        # Create hThetaMulti validation dataset
+        h_theta_multi_val = hThetaMulti(
+            s=val_signals,
+            shared_max_strain=self.validation_dataset.shared_max_strain,
+            theta=val_params,
+            shared_min=self.validation_dataset.shared_min_theta,
+            shared_max=self.validation_dataset.shared_max_theta,
+            ra=val_sampled_ra,
+            dec=val_sampled_dec,
+            d=val_sampled_d,
+            batch_size=self.batch_size,
+            detector_noise_on=True,
+            random_polarization=True,
+            seed=1000,
+            intrinsic_param_names=self.intrinsic_params,
+            use_physics_aware_norm=self.use_physics_aware_norm
+        )
+
+        computation_times = []
+        for i in range(num_signals):
+            # Generate posterior samples once and reuse for both plots
+            case = h_theta_multi_val[i]
+            _, _, compute_time = self._generate_posterior_samples(
+                case, h_theta_multi_val, num_samples=num_samples, n_steps=n_steps, log=False
+            )
+            computation_times.append(compute_time)
+
+        return np.mean(computation_times), np.std(computation_times)
+
     def _extract_params_to_estimate(self, full_params: torch.Tensor) -> torch.Tensor:
         """Extract only the parameters we're estimating from the full parameter tensor.
         
@@ -1588,23 +1647,6 @@ class FlowMatchingTrainer:
             'train_loss': self.avg_mse_losses,
             'val_loss': self.avg_mse_losses_val
         }
-        
-        # # Add gradient norms if available (pad with NaN if fewer entries)
-        # if hasattr(self, 'flow_gradient_norms') and len(self.flow_gradient_norms) > 0:
-        #     # Average gradient norms per epoch (there are many batches per epoch)
-        #     samples_per_epoch = self.samples_per_epoch
-        #     batch_size = self.batch_size
-        #     batches_per_epoch = max(1, samples_per_epoch // batch_size)
-            
-        #     epoch_avg_grads = []
-        #     for epoch_idx in range(len(self.avg_mse_losses)):
-        #         start_idx = epoch_idx * batches_per_epoch
-        #         end_idx = min((epoch_idx + 1) * batches_per_epoch, len(self.flow_gradient_norms))
-        #         if start_idx < len(self.flow_gradient_norms):
-        #             epoch_avg_grads.append(np.mean(self.flow_gradient_norms[start_idx:end_idx]))
-        #         else:
-        #             epoch_avg_grads.append(np.nan)
-        #     data['avg_gradient_norm'] = epoch_avg_grads
         
         df = pd.DataFrame(data)
         df.to_csv(fname, index=False)
