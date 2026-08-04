@@ -15,7 +15,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels
-from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage, plot_sky_localization_cumulative_areas, plot_distance_credible_intervals
+from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage, plot_sky_localization_cumulative_areas, plot_distance_credible_intervals, plot_angular_error_vs_distance
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
@@ -946,12 +946,13 @@ class FlowMatchingTrainer:
             shortened_detector_labels=shortened_detector_labels
         )
 
-    def plot_model_performance(self, num_signals=100, num_samples=3000, n_steps=20, fname_pp=None, fname_area_v_probability=None, fname_distance_credible_intervals=None, background="white", font_family="Sans-serif", font_name="Avenir", transparent=False, figsize=(14.5, 8)):
+    def plot_model_performance(self, num_signals=100, num_samples=3000, n_steps=20, fname_pp=None, fname_area_v_probability=None, fname_distance_credible_intervals=None, fname_angular_error=None, background="white", font_family="Sans-serif", font_name="Avenir", transparent=False, figsize=(14.5, 8)):
         """Generate both p-p (credible interval coverage) and sky localization credible areas plots.
         
         This method validates model calibration on two fronts:
         1. P-P plot: Shows empirical vs theoretical coverage of credible intervals for each parameter
         2. Sky localization: Shows cumulative distribution of credible areas across credible levels
+        3. Angular error: Shows angular localization error vs true distance
         
         Args:
             num_signals (int): Number of validation signals to use for computing coverage
@@ -959,6 +960,8 @@ class FlowMatchingTrainer:
             n_steps (int): Number of ODE solver steps for inference
             fname_pp (Optional[str]): Filename to save p-p plot. If None, saves to outdir/flow_matching/pp_coverage_validation.png
             fname_area_v_probability (Optional[str]): Filename to save sky localization credible areas plot. If None, saves to outdir/flow_matching/sky_localization_credible_areas.png
+            fname_distance_credible_intervals (Optional[str]): Filename to save distance vs credible area plot
+            fname_angular_error (Optional[str]): Filename to save angular error vs distance plot
             background (str): Background color theme ("white" or "black")
             font_family (str): Font family for plot text
             font_name (str): Font name for plot text
@@ -1011,6 +1014,7 @@ class FlowMatchingTrainer:
         true_params_list = []
         credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
         d_true_list = []  # Track true distance for each signal
+        angular_error_list = []  # Track angular error for each signal
         
         # Create DataLoader for efficient batch iteration
         use_cuda = str(DEVICE).startswith("cuda")
@@ -1115,6 +1119,19 @@ class FlowMatchingTrainer:
                         areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
                         for level, area in areas.items():
                             credible_areas[level].append(area[0])
+                        
+                        # Compute angular error: separation between true and posterior mean position
+                        ra_true = true_params_denorm_all[i, ra_idx]
+                        dec_true = true_params_denorm_all[i, dec_idx]
+                        ra_mean = np.mean(ra_samples)
+                        dec_mean = np.mean(dec_samples)
+                        
+                        # Spherical angular distance in radians
+                        cos_sep = np.sin(dec_true) * np.sin(dec_mean) + np.cos(dec_true) * np.cos(dec_mean) * np.cos(ra_true - ra_mean)
+                        cos_sep = np.clip(cos_sep, -1.0, 1.0)  # Handle numerical errors
+                        angular_sep_rad = np.arccos(cos_sep)
+                        angular_sep_deg = np.degrees(angular_sep_rad)
+                        angular_error_list.append(angular_sep_deg)
                     
                     total_processed += 1
         
@@ -1155,6 +1172,20 @@ class FlowMatchingTrainer:
                 d_true_list=np.array(d_true_list),
                 area_50cl=np.array(credible_areas[0.50]),
                 fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
+                show=False,
+                font_family=font_family,
+                font_name=font_name,
+                background=background,
+                transparent=transparent,
+                figsize=figsize
+            )
+        
+        if ra_idx >= 0 and dec_idx >= 0 and len(angular_error_list) > 0:
+            # Plot angular error vs true distance
+            plot_angular_error_vs_distance(
+                d_true_list=np.array(d_true_list),
+                angular_error_list=np.array(angular_error_list),
+                fname=fname_angular_error if fname_angular_error is not None else os.path.join(outdir, "angular_error_vs_distance.pdf"),
                 show=False,
                 font_family=font_family,
                 font_name=font_name,

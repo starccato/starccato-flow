@@ -509,6 +509,52 @@ def plot_distance_credible_intervals(
         plt.close(fig)
 
 
+def plot_angular_error_vs_distance(
+    d_true_list,
+    angular_error_list,
+    fname=None,
+    show=False,
+    font_family="sans-serif",
+    font_name="Avenir",
+    figsize=(14.5, 14.5),
+    background="white",
+    transparent=False
+):
+    """Scatter plot of angular localization error vs true distance.
+    
+    For each signal, plots the true distance (kpc) on the x-axis and the
+    angular separation between true and posterior mean sky position (degrees) on the y-axis.
+    
+    Args:
+        d_true_list: Array of true distances (kpc) for each signal
+        angular_error_list: Array of angular errors (degrees) for each signal
+        fname: Output filename
+        show: Whether to display plot (default False to avoid blocking in notebooks)
+        font_family: Font family for plot text
+        font_name: Font name for plot text
+        figsize: Figure size in inches
+        background: Background color ("white" or "black")
+        transparent: Whether to make background transparent
+    """
+    set_plot_style(background, font_family, font_name)
+    fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
+    
+    ax.scatter(d_true_list, angular_error_list, alpha=0.6, s=50, color='blue', edgecolors='darkblue', linewidth=0.5)
+    
+    ax.set_xlabel('True Distance (kpc)', fontsize=11)
+    ax.set_ylabel('Angular Error (degrees)', fontsize=11)
+    ax.tick_params(labelsize=11)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    if fname:
+        plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
 def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 
                 labels=None, ranges=None, font_family="sans-serif", font_name="Avenir", figsize=(14.5, 14.5), fontsize_title=16, fontsize_tick=12):
     """Plot corner plot of parameter posterior distribution.
