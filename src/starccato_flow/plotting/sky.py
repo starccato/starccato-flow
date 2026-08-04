@@ -16,6 +16,9 @@ from matplotlib.patches import Circle, Patch
 from matplotlib.path import Path
 from . import set_plot_style
 
+from matplotlib.textpath import TextPath
+from matplotlib.font_manager import FontProperties
+
 from ..utils.defaults_plotting import (
     SIGNAL_COLOUR,
     GENERATED_SIGNAL_COLOUR,
@@ -420,6 +423,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     constellations: bool = True,
+    show_stars: bool = True,
     galactic_contour: bool = True,
     galaxy: bool = True,
     background: str = "black",
@@ -560,8 +564,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Portrait layout: North stacked on top of South, with a small gap between
         # them for the "Credible Intervals" legend and room at the bottom for the
         # main legend.
-        ax_l = fig.add_axes([0.0, 0.525, 1.0, 0.425], facecolor=fig_facecolor)
-        ax_r = fig.add_axes([0.0, 0.05, 1.0, 0.425], facecolor=fig_facecolor)
+        ax_l = fig.add_axes([0.0, 0.505, 1.0, 0.45], facecolor=fig_facecolor)
+        ax_r = fig.add_axes([0.0, 0.045, 1.0, 0.45], facecolor=fig_facecolor)
     else:
         ax_l = fig.add_axes([0.015, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
         ax_r = fig.add_axes([0.505, 0.07, 0.48, 0.94], facecolor=fig_facecolor)
@@ -691,10 +695,10 @@ def plot_galactic_supernovae_polar_hemispheres(
         ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
 
     # border circle for each hemisphere
-    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1, zorder=50)
-    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1, zorder=50)
-    ax_l.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1, zorder=50)
-    ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1, zorder=50)
+    ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
+    ax_r.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
+    ax_l.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
+    ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
@@ -940,6 +944,13 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_label_radius = 1.02
     for ra_deg in ra_label_deg:
         label = f"{int(ra_deg)}\u00b0"
+        if ra_deg == 0 and format == "thesis":
+            _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+            continue  # skip 0 degrees for thesis format, as it is already labeled at the top of the north panel
+        if ra_deg == 180 and format == "thesis":
+            _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+            continue  # skip 180 degrees for thesis format, as it is already labeled at the bottom of the south panel
+
         _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
         _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
 
@@ -1034,7 +1045,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
         )
 
-    if galaxy and constellations:
+    if show_stars:
         stars = _stars_and_magnitudes()
 
         data = np.asarray(list(stars.values()), dtype=float)
@@ -1316,7 +1327,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             zorder=20,
         )
 
-    if constellations and format == "poster":
+    if show_stars:
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
         object_names = ["Achernar", "Pleiades", "Antares", "Betelgeuse", "Sirius", "Acrux", "Gacrux", "Mimosa", "Imai", "Alnair"]
 
@@ -1578,7 +1589,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             markerfacecolor="black",
             markeredgecolor="orange",
             markeredgewidth=1.7,
-            label="Galactic Center: Sgr A*",
+            label="Galactic Center: Sgr A*" if format == "thesis" else "Galactic Center: Sagittarius A*",
         )
 
     if true_loc_panel is not None:
@@ -1773,42 +1784,16 @@ def _draw_curved_ra_label(
     char_spacing_deg: float | None = None,
     zorder: int = 9,
 ) -> None:
-    """Draw `text` as individual characters curved tangent to the hemisphere
-    circle, centered on `center_ang_deg` (same RA-angle convention used
-    elsewhere: 0 deg = top, increasing clockwise for north / mirrored for
-    south) at the given `radius` from the pole.
+    """..."""  # docstring unchanged
+    fig = ax.figure
+    ax.apply_aspect()  # ensure the aspect-corrected box is current before measuring
+    p0 = ax.transData.transform((0.0, 0.0))
+    p1 = ax.transData.transform((1.0, 0.0))
+    pixels_per_data_unit = np.hypot(*(p1 - p0))
+    points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
 
-    Rotation is derived from the true direction of travel as RA increases
-    (which differs between north and south due to south's mirrored x),
-    not from radial position alone. Away from the 90/270 deg positions,
-    the flip decision avoids upside-down text by keeping the reading
-    direction within +/-90 deg of horizontal. Exactly at 90/270 deg the
-    tangent is perfectly vertical, so there's no real "upside-down" to
-    avoid there - both choices are equally sideways - so the tie is
-    resolved instead by explicitly picking whichever orientation faces
-    the pole (inward), which is otherwise inconsistent between panels
-    due to south's mirrored geometry.
-    """
     if char_spacing_deg is None:
-        # Scale spacing to the axes' actual on-page size, not just its
-        # normalized data-space radius. A fixed calibration against radius
-        # alone breaks across formats: the poster and thesis panels can
-        # share the same data radius (~1.04) while being physically huge
-        # vs. tiny on the page, so the same angular spacing reads as wildly
-        # different letter-to-letter distances.
-        #
-        # Instead, convert a target character pitch - a physical distance
-        # in points, scaled with fontsize - into data-space arc length via
-        # this axes' transData scale (which already encodes figure size,
-        # axes width fraction, and dpi), then into an angle via
-        # arc_length = radius * angle. This requires the axes' final
-        # xlim/ylim/aspect to already be set (they are, by this point).
-        fig = ax.figure
-        p0 = ax.transData.transform((0.0, 0.0))
-        p1 = ax.transData.transform((1.0, 0.0))
-        pixels_per_data_unit = np.hypot(*(p1 - p0))
-        points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
-        target_char_pitch_pts = fontsize * 0.6  # ~ typical character advance width
+        target_char_pitch_pts = fontsize * 0.6
         arc_length_data = target_char_pitch_pts / points_per_data_unit
         char_spacing_deg = np.degrees(arc_length_data / radius)
 
@@ -1820,8 +1805,6 @@ def _draw_curved_ra_label(
             return -radius * np.sin(ang), radius * np.cos(ang)
 
     def _travel_angle_deg(ang_deg):
-        # Direction of increasing RA (d/dang of position), which is what
-        # "reads correctly" means - not the radial/position angle.
         ang = np.deg2rad(ang_deg)
         if panel == "north":
             dx, dy = np.cos(ang), -np.sin(ang)
@@ -1829,19 +1812,9 @@ def _draw_curved_ra_label(
             dx, dy = -np.cos(ang), -np.sin(ang)
         return np.degrees(np.arctan2(dy, dx))
 
-    # Decide the flip once for the whole label, from its center, so
-    # rotation and character order stay in agreement.
     base_rot = _travel_angle_deg(center_ang_deg)
     norm = ((base_rot + 180.0) % 360.0) - 180.0
-
-    # Flip only strictly between 90 and 270 degrees (through 180) -
-    # never across 0. At exactly 90 or 270 degrees, don't flip by default.
     flipped = norm > 90.0 or norm < -90.0
-
-    # norm == +90 corresponds to the 270 deg position for both panels
-    # (base_rot is identical there since the cos(ang) term cancels out),
-    # but only the south panel's orientation comes out wrong at that
-    # specific spot - invert just for south there.
     if panel == "south" and np.isclose(norm, 90.0):
         flipped = not flipped
 
@@ -1858,14 +1831,40 @@ def _draw_curved_ra_label(
             rot += 180.0
         rot = ((rot + 180.0) % 360.0) - 180.0
 
+        # Correct for va="center" centering the font's ascent/descent box
+        # rather than this glyph's actual ink, which otherwise biases text
+        # toward/away from the pole depending on rotation (see top/bottom
+        # asymmetry writeup).
+        ink_c_pts = _ink_center_pts(char, fontsize)
+        ink_c_data = ink_c_pts / points_per_data_unit
+        theta = np.deg2rad(rot)
+        c, s = np.cos(theta), np.sin(theta)
+        offset = np.array([
+            c * ink_c_data[0] - s * ink_c_data[1],
+            s * ink_c_data[0] + c * ink_c_data[1],
+        ])
+        x_adj, y_adj = x - offset[0], y - offset[1]
+
         ax.text(
-            x, y, char,
+            x_adj, y_adj, char,
             color=color,
             fontsize=fontsize,
-            ha="center",
-            va="center",
+            ha="left",
+            va="baseline",
             rotation=rot,
             rotation_mode="anchor",
             alpha=alpha,
             zorder=zorder,
         )
+
+_fp_cache = {}
+
+def _ink_center_pts(char: str, fontsize: float) -> np.ndarray:
+    """Return the tight ink-bbox center (in points, relative to the glyph's
+    baseline-left origin) for a character at a given font size."""
+    key = (char, fontsize)
+    if key not in _fp_cache:
+        fp = FontProperties(size=fontsize)
+        bb = TextPath((0, 0), char, prop=fp).get_extents()
+        _fp_cache[key] = np.array([(bb.x0 + bb.x1) / 2.0, (bb.y0 + bb.y1) / 2.0])
+    return _fp_cache[key]

@@ -631,7 +631,10 @@ class FlowMatchingTrainer:
             font_name=font_name,
             transparent=True,
             format=format,
-            background=background
+            background=background,
+            constellations=True,
+            show_stars=False,
+            coastline=False,
         )
         # self.plot_sky_localisation_sampled_signal(
         #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
@@ -1180,7 +1183,10 @@ class FlowMatchingTrainer:
         font_name: str = "Times New Roman",
         transparent: bool = False,
         format: str = "thesis",
-        background: str = "white"
+        background: str = "white",
+        constellations: bool = False,
+        show_stars: bool = True,
+        coastline: bool = True
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot or background skymap.
         
@@ -1283,6 +1289,9 @@ class FlowMatchingTrainer:
             transparent=transparent,
             n_background_supernovae=2_000_000 if not has_posterior else 20_000,
             format=format,
+            constellations=constellations,
+            show_stars=show_stars,
+            coastline=coastline
         )
         
         # Compress SVG files to .svgz format for ~75% size reduction while keeping all visual elements
