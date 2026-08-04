@@ -1164,19 +1164,6 @@ class FlowMatchingTrainer:
             )
         
         return
-        
-    def plot_sky_localization_credible_areas(self, num_signals=100):
-        """Generate sky localization credible area plot.
-        
-        Convenience wrapper that calls plot_model_performance to generate both
-        p-p coverage and sky localization plots in one pass.
-        
-        Args:
-            num_signals: Number of validation signals to process (default 100)
-        """
-        self.plot_model_performance(num_signals=num_signals, num_samples=3000, n_steps=20)
-
-
 
     def compute_sky_localization_credible_areas(
         self,
