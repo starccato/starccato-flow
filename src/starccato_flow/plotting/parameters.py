@@ -417,6 +417,38 @@ def plot_epoch_sky_parameters(
     plt.savefig(fname, facecolor=background, edgecolor='none', dpi=300)
     plt.close()
 
+def plot_sky_localization_cumulative_areas(
+    credible_areas_dict,
+    fname="sky_localization_credible_areas.pdf"
+):
+    """Plot cumulative histogram of sky localization credible areas.
+    
+    Args:
+        credible_areas_dict: Dict from compute_sky_localization_credible_areas
+        fname: Output filename
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    colors = ['blue', 'green', 'orange', 'red']
+    
+    for (level, areas), color in zip(credible_areas_dict.items(), colors):
+        areas = np.array(areas)
+        # Sort areas and compute cumulative fraction
+        areas_sorted = np.sort(areas)
+        cumulative_frac = np.arange(1, len(areas_sorted) + 1) / len(areas_sorted)
+        
+        ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% CL", 
+                color=color, linewidth=2)
+    
+    ax.set_xlabel('Sky Area (deg²)', fontsize=12)
+    ax.set_ylabel('Cumulative Fraction of Signals', fontsize=12)
+    ax.set_title('Sky Localization Credible Region Areas', fontsize=14)
+    ax.set_xscale('log')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.savefig(fname, dpi=150)
+    plt.show()
+
 
 def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner_plot.png", dataset=None, 
                 labels=None, ranges=None, font_family="sans-serif", font_name="Avenir", figsize=(14.5, 14.5), fontsize_title=16, fontsize_tick=12):

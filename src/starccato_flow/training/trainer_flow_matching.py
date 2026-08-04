@@ -1,7 +1,6 @@
 import os
 import time
 from typing import Optional
-from unittest import case
 
 import numpy as np
 import pandas as pd
@@ -16,7 +15,7 @@ from tqdm.auto import trange
   
 from ..plotting.sky import plot_galactic_supernovae_polar_hemispheres
 from ..plotting.signals import plot_detector_signal_channels
-from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage
+from ..plotting.parameters import plot_eos_ye_posterior_distribution, plot_epoch_sky_parameters, plot_corner, plot_pp_coverage, plot_sky_localization_cumulative_areas
 from ..plotting.losses import plot_loss
 
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
@@ -945,6 +944,112 @@ class FlowMatchingTrainer:
             shortened_detector_labels=shortened_detector_labels
         )
 
+    def plot_sky_localization_credible_areas(self, num_signals=2000):
+        """Generate cumulative sky localization credible area plot."""
+        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
+
+        # create detector-frame signals
+        val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
+            epoch=self.num_epochs,  # Use last epoch for validation
+            n_samples=num_signals,
+            num_epochs=self.num_epochs,
+            exponential=True,
+        )
+        val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
+        
+        h_theta_multi_val = hThetaMulti(
+            s=val_signals,
+            shared_max_strain=self.validation_dataset.shared_max_strain,
+            theta=val_params,
+            shared_min=self.validation_dataset.shared_min_theta,
+            shared_max=self.validation_dataset.shared_max_theta,
+            ra=val_sampled_ra,
+            dec=val_sampled_dec,
+            d=val_sampled_d,
+            batch_size=self.batch_size,
+            detector_noise_on=True,
+            random_polarization=True,
+            seed=1000,  # Different seed range for validation set
+            intrinsic_param_names=self.intrinsic_params,
+            use_physics_aware_norm=self.use_physics_aware_norm
+        )           
+        
+        # Loop through validation signals
+        for i in range(min(num_signals, len(self.validation_dataset))):
+            # Get posterior samples
+            h_theta_multi_val_signal = h_theta_multi_val[i]
+            posterior_samples_denorm, _, _ = self._generate_posterior_samples(
+                h_theta_multi_val_signal, h_theta_multi_val,
+                num_samples=5000, n_steps=20, log=False
+            )
+            
+            # Extract RA/Dec
+            ra_idx = self._get_extracted_index("ra")
+            dec_idx = self._get_extracted_index("dec")
+            ra_samples = posterior_samples_denorm[:, ra_idx]
+            dec_samples = posterior_samples_denorm[:, dec_idx]
+            
+            # Compute credible areas for this signal
+            areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
+            for level, area in areas.items():
+                credible_areas[level].append(area)
+        
+        # Plot
+        plot_sky_localization_cumulative_areas(credible_areas)
+
+
+    def compute_sky_localization_credible_areas(self,
+        posterior_samples_list,  # List of (N_samples, 2) arrays with (ra, dec)
+        credible_levels=[0.50, 0.68, 0.90, 0.95]
+    ):
+        """Compute credible sky areas for each signal's posterior.
+        
+        Args:
+            posterior_samples_list: List of posterior samples, each shape (N_samples, 2)
+            credible_levels: Credible levels to compute (e.g., [0.50, 0.90])
+        
+        Returns:
+            Dictionary with credible_level -> list of areas in deg²
+        """
+        from scipy.spatial.distance import cdist
+        
+        credible_areas = {level: [] for level in credible_levels}
+        
+        for posterior_samples in posterior_samples_list:
+            # posterior_samples shape: (N_samples, 2) with columns [ra, dec]
+            ra_samples = posterior_samples[:, 0]  # radians
+            dec_samples = posterior_samples[:, 1]  # radians
+            
+            # Convert to degrees for area calculation
+            ra_deg = np.degrees(ra_samples)
+            dec_deg = np.degrees(dec_samples)
+            
+            # Compute angular distances between all sample pairs using spherical metric
+            # For small areas, use: distance = arccos(sin(dec1)sin(dec2) + cos(dec1)cos(dec2)cos(ra1-ra2))
+            coords = np.column_stack([ra_deg, dec_deg])
+            
+            # For each credible level, find the minimum area containing that fraction
+            for level in credible_levels:
+                n_samples_in_region = int(np.ceil(level * len(posterior_samples)))
+                
+                # Find the point with smallest enclosing circle of n_samples_in_region points
+                # Simple approach: for each sample, find the distance to the n-th nearest neighbor
+                distances_to_kth = []
+                for i in range(len(posterior_samples)):
+                    # Great circle distance to all other points
+                    diffs = coords - coords[i]
+                    # Simple approximation for small regions
+                    angular_distances = np.sqrt(diffs[:, 0]**2 + (np.cos(np.radians(dec_deg[i])) * diffs[:, 1])**2)
+                    angular_distances = np.sort(angular_distances)
+                    distances_to_kth.append(angular_distances[n_samples_in_region - 1])
+                
+                # Minimum enclosing radius
+                min_radius_deg = np.min(distances_to_kth)
+                # Sky area of sphere with this radius: A = 2π(1 - cos(θ))
+                area_deg2 = 2 * np.pi * (1 - np.cos(np.radians(min_radius_deg)))
+                credible_areas[level].append(area_deg2)
+        
+        return credible_areas
 
     def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20, log=False):
         """Generate posterior samples for a given signal case.
