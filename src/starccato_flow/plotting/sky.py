@@ -717,19 +717,26 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
-    frame_rotation_deg = 90.0 if thesis_rotate else 0.0
 
     for ang_deg in meridian_angles_deg:
-        ang = np.deg2rad(ang_deg + frame_rotation_deg)
+        ang = np.deg2rad(ang_deg)
 
         # North panel: full diameter from angle to angle+180, through the center.
         x1_n, y1_n = np.sin(ang), np.cos(ang)
         x2_n, y2_n = -np.sin(ang), -np.cos(ang)
-        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.2, lw=0.75, zorder=10)
-
+        
         # South panel (mirrored x, per the rest of the file's convention).
         x1_s, y1_s = -np.sin(ang), np.cos(ang)
         x2_s, y2_s = np.sin(ang), -np.cos(ang)
+        
+        # Apply thesis rotation to both panels' meridian coordinates
+        if thesis_rotate:
+            x1_n, y1_n = y1_n, -x1_n
+            x2_n, y2_n = y2_n, -x2_n
+            x1_s, y1_s = y1_s, -x1_s
+            x2_s, y2_s = y2_s, -x2_s
+        
+        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.2, lw=0.75, zorder=10)
         ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.2, lw=0.75, zorder=10)
 
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
@@ -855,6 +862,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         ) * spacing
         if flipped:
             letter_pos = letter_pos[::-1]  # mirror placement order, not the text itself
+        if thesis_rotate:
+            letter_pos = letter_pos[::-1]  # reverse direction along curve in thesis mode
 
         offset = -0.07  # positive = one side, negative = the other; tune to taste
 
@@ -868,6 +877,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             dy = south_curve[idx,1] - south_curve[idx-1,1]
             rotation = np.degrees(np.arctan2(dy, dx))
             if flipped:
+                rotation += 180.0
+            # In thesis mode, add 180° to correct for the rotated coordinate system
+            if thesis_rotate:
                 rotation += 180.0
             rotation = ((rotation + 180.0) % 360.0) - 180.0
 
@@ -914,6 +926,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         ) * spacing_n
         if flipped_n:
             letter_pos_n = letter_pos_n[::-1]
+        if thesis_rotate:
+            letter_pos_n = letter_pos_n[::-1]  # reverse direction along curve in thesis mode
 
         offset = 0.07  # positive = one side, negative = the other; tune to taste
 
@@ -927,6 +941,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             dy = north_curve[idx, 1] - north_curve[idx-1, 1]
             rotation = np.degrees(np.arctan2(dy, dx))
             if flipped_n:
+                rotation += 180.0
+            # In thesis mode, add 180° to correct for the rotated coordinate system
+            if thesis_rotate:
                 rotation += 180.0
             rotation = ((rotation + 180.0) % 360.0) - 180.0
 
@@ -960,20 +977,23 @@ def plot_galactic_supernovae_polar_hemispheres(
     ra_label_radius = 1.02
     for ra_deg in ra_label_deg:
         label = f"{int(ra_deg)}\u00b0"
-        plot_ra_deg = ra_deg + frame_rotation_deg
 
-        _draw_curved_ra_label(ax_l, "north", plot_ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
-        _draw_curved_ra_label(ax_r, "south", plot_ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+        _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75, thesis_rotate=thesis_rotate)
+        _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75, thesis_rotate=thesis_rotate)
 
     dec_abs_ticks = [80, 60, 40, 20]
     # Place Dec ticks on the 0h/24h RA meridian (or rotated 0h for thesis).
-    ang0 = np.deg2rad(frame_rotation_deg)
+    ang0 = np.deg2rad(0.0)
     ux = np.sin(ang0)
     uy = np.cos(ang0)
     for dec_abs in dec_abs_ticks:
         r_tick = (90.0 - float(dec_abs)) / 90.0
         x0 = r_tick * ux
         y0 = r_tick * uy
+        
+        # Apply thesis rotation if needed
+        if thesis_rotate:
+            x0, y0 = y0, -x0
 
         # North: positive Dec labels.
         ax_l.text(
@@ -1606,7 +1626,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 ha="left",
                 va="center",
                 alpha=0.95,
-                zorder=10,
+                zorder=50,
             )
 
     if galaxy:
@@ -1813,6 +1833,7 @@ def _draw_curved_ra_label(
     alpha: float,
     char_spacing_deg: float | None = None,
     zorder: int = 9,
+    thesis_rotate: bool = False,
 ) -> None:
     """..."""  # docstring unchanged
     fig = ax.figure
@@ -1830,9 +1851,13 @@ def _draw_curved_ra_label(
     def _pos(ang_deg):
         ang = np.deg2rad(ang_deg)
         if panel == "north":
-            return radius * np.sin(ang), radius * np.cos(ang)
+            x, y = radius * np.sin(ang), radius * np.cos(ang)
         else:
-            return -radius * np.sin(ang), radius * np.cos(ang)
+            x, y = -radius * np.sin(ang), radius * np.cos(ang)
+        # Apply thesis rotation if needed
+        if thesis_rotate:
+            x, y = y, -x
+        return x, y
 
     def _travel_angle_deg(ang_deg):
         ang = np.deg2rad(ang_deg)
@@ -1840,6 +1865,9 @@ def _draw_curved_ra_label(
             dx, dy = np.cos(ang), -np.sin(ang)
         else:
             dx, dy = -np.cos(ang), -np.sin(ang)
+        # Apply thesis rotation if needed
+        if thesis_rotate:
+            dx, dy = dy, -dx
         return np.degrees(np.arctan2(dy, dx))
 
     base_rot = _travel_angle_deg(center_ang_deg)
