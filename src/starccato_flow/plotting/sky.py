@@ -85,8 +85,12 @@ def _hpd_thresholds(
 def _project_to_hemisphere(
     ra: float | np.ndarray,
     dec: float | np.ndarray,
+    thesis_rotate: bool = False,
 ):
-    """Project (RA, Dec) into hemisphere panel coordinates."""
+    """Project (RA, Dec) into hemisphere panel coordinates.
+    
+    If thesis_rotate is True, rotate both panels 90° CW.
+    """
 
     ra = np.asarray(ra)
     dec = np.asarray(dec)
@@ -103,6 +107,10 @@ def _project_to_hemisphere(
     x = np.where(north, x, -x)
 
     y = r * np.cos(ra)
+
+    # Thesis mode: rotate both panels 90° CW.
+    if thesis_rotate:
+        x, y = y, -x
 
     if x.ndim == 0:
         return (
@@ -140,8 +148,7 @@ def _stars_and_magnitudes() -> dict[int, tuple[float, float, float]]:
 
     return stars
 
-@lru_cache(maxsize=1)
-def _constellation_stick_segments():
+def _constellation_stick_segments(thesis_rotate: bool = False):
     filename = os.path.join(SKY_MAP_ROOT, "constellations_rey.txt")
     hip_ids = _read_constellation_hip_ids(filename)
     print(len(hip_ids))
@@ -169,8 +176,8 @@ def _constellation_stick_segments():
                 ra1, dec1, _ = hip_lookup[hip1]
                 ra2, dec2, _ = hip_lookup[hip2]
 
-                p1 = _project_to_hemisphere(np.deg2rad(ra1), np.deg2rad(dec1))
-                p2 = _project_to_hemisphere(np.deg2rad(ra2), np.deg2rad(dec2))
+                p1 = _project_to_hemisphere(np.deg2rad(ra1), np.deg2rad(dec1), thesis_rotate=thesis_rotate)
+                p2 = _project_to_hemisphere(np.deg2rad(ra2), np.deg2rad(dec2), thesis_rotate=thesis_rotate)
 
                 if p1[0] == p2[0]:
                     segment = np.array([[p1[1], p1[2]], [p2[1], p2[2]]])
@@ -199,13 +206,17 @@ def _constellation_stick_segments():
                 edge_n = (np.sin(ang), np.cos(ang))
                 edge_s = (-np.sin(ang), np.cos(ang))
 
+                # Apply thesis rotation to edge points if needed
+                if thesis_rotate:
+                    edge_n = (edge_n[1], -edge_n[0])  # 90° CW: (x, y) -> (y, -x)
+                    edge_s = (edge_s[1], -edge_s[0])  # 90° CW: (x, y) -> (y, -x)
+
                 north_lines.append(np.array([[pt_n[1], pt_n[2]], list(edge_n)]))
                 south_lines.append(np.array([[edge_s[0], edge_s[1]], [pt_s[1], pt_s[2]]]))
 
     return north_lines, south_lines
 
-@lru_cache(maxsize=1)
-def _constellation_border_segments():
+def _constellation_border_segments(thesis_rotate: bool = False):
     border_file = os.path.join(SKY_MAP_ROOT, "lines_in_18.txt")
 
     # --- read raw points first ---
@@ -241,7 +252,7 @@ def _constellation_border_segments():
             return
         north, south = [], []
         for ra_deg, dec_deg in current_points:
-            hemi, x, y = _project_to_hemisphere(np.deg2rad(ra_deg), np.deg2rad(dec_deg))
+            hemi, x, y = _project_to_hemisphere(np.deg2rad(ra_deg), np.deg2rad(dec_deg), thesis_rotate=thesis_rotate)
             (north if hemi == "north" else south).append((x, y))
         if len(north) >= 2:
             north_lines.append(np.asarray(north))
@@ -522,6 +533,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Ensure SVG text is vectorized (not rasterized)
     plt.rcParams['svg.fonttype'] = 'path'
     
+    thesis_rotate = (format == "thesis")
     astropy_rotation_offset_deg = 0.0
     
     # Extract RA and Dec, optionally sampling only the closest supernovae
@@ -607,6 +619,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     r_s = (np.pi / 2 + dec_s) / (np.pi / 2)
     x_s = -r_s * np.sin(ra_s)  # RA increases clockwise for south pole
     y_s = r_s * np.cos(ra_s)
+
+    if thesis_rotate:
+        x_n, y_n = y_n, -x_n
+        x_s, y_s = y_s, -x_s
 
     theta = np.linspace(0, 2 * np.pi, 600)
     lat_step_deg = 10
@@ -701,9 +717,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     ax_r.plot(1.01 * np.cos(theta), 1.01 * np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
+    frame_rotation_deg = 90.0 if thesis_rotate else 0.0
 
     for ang_deg in meridian_angles_deg:
-        ang = np.deg2rad(ang_deg)
+        ang = np.deg2rad(ang_deg + frame_rotation_deg)
 
         # North panel: full diameter from angle to angle+180, through the center.
         x1_n, y1_n = np.sin(ang), np.cos(ang)
@@ -784,10 +801,10 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         for ra_i, dec_i in zip(ra, dec):
             if dec_i >= 0:
-                panel, x, y = _project_to_hemisphere(ra_i, dec_i)
+                panel, x, y = _project_to_hemisphere(ra_i, dec_i, thesis_rotate=thesis_rotate)
                 north_curve.append((x, y))
             else:
-                panel, x, y = _project_to_hemisphere(ra_i, dec_i)
+                panel, x, y = _project_to_hemisphere(ra_i, dec_i, thesis_rotate=thesis_rotate)
                 south_curve.append((x, y))
 
         def _roll_to_remove_seam(curve: np.ndarray) -> np.ndarray:
@@ -939,25 +956,20 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     # RA degree labels, curved tangent to each hemisphere panel, centered on the pole.
     ra_label_deg = np.arange(0, 360, 30) # every 45 degrees but not 180 (which is the seam)
-    if format == "poster":
-        ra_label_deg = np.delete(ra_label_deg, np.where(ra_label_deg == 90))  # remove 90 degrees
+    ra_label_deg = np.delete(ra_label_deg, np.where(ra_label_deg == 90))  # remove 90 degrees
     ra_label_radius = 1.02
     for ra_deg in ra_label_deg:
         label = f"{int(ra_deg)}\u00b0"
-        if ra_deg == 0 and format == "thesis":
-            _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
-            continue  # skip 0 degrees for thesis format, as it is already labeled at the top of the north panel
-        if ra_deg == 180 and format == "thesis":
-            _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
-            continue  # skip 180 degrees for thesis format, as it is already labeled at the bottom of the south panel
+        plot_ra_deg = ra_deg + frame_rotation_deg
 
-        _draw_curved_ra_label(ax_l, "north", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
-        _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+        _draw_curved_ra_label(ax_l, "north", plot_ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
+        _draw_curved_ra_label(ax_r, "south", plot_ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75)
 
     dec_abs_ticks = [80, 60, 40, 20]
-    # Place Dec ticks on the 0h/24h RA meridian.
-    ux = 0.0
-    uy = 1.0
+    # Place Dec ticks on the 0h/24h RA meridian (or rotated 0h for thesis).
+    ang0 = np.deg2rad(frame_rotation_deg)
+    ux = np.sin(ang0)
+    uy = np.cos(ang0)
     for dec_abs in dec_abs_ticks:
         r_tick = (90.0 - float(dec_abs)) / 90.0
         x0 = r_tick * ux
@@ -991,7 +1003,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     if show_constellation_borders:
         if _ASTROPY_AVAILABLE:
-            north_lines, south_lines = _constellation_border_segments()
+            north_lines, south_lines = _constellation_border_segments(thesis_rotate=thesis_rotate)
             ax_l.add_collection(
                 LineCollection(
                     north_lines,
@@ -1021,7 +1033,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
 
     if galaxy and constellations:
-        north_lines, south_lines = _constellation_stick_segments()
+        north_lines, south_lines = _constellation_stick_segments(thesis_rotate=thesis_rotate)
         ax_l.add_collection(
             LineCollection(
                 north_lines,
@@ -1063,7 +1075,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         dec = dec[valid]
         mag = mag[valid]
 
-        north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec))
+        north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec), thesis_rotate=thesis_rotate)
 
         sizes = np.clip(40 * 10 ** (-0.4 * mag), 0.2, 50 if format == "poster" else 8)
 
@@ -1111,7 +1123,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     if galaxy:
         # Use the true galactic center for black hole visualization.
-        true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec)
+        true_gc_panel, true_gc_x, true_gc_y = _project_to_hemisphere(gc_ra, gc_dec, thesis_rotate=thesis_rotate)
 
     # Optional true event location marker (independent of Galactic Center).
     true_loc_panel = None
@@ -1121,6 +1133,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         true_loc_panel, true_loc_x, true_loc_y = _project_to_hemisphere(
             float(true_ra_override),
             float(true_dec_override),
+            thesis_rotate=thesis_rotate,
         )
 
     if use_posterior_samples:
@@ -1162,6 +1175,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         r_ps = (np.pi / 2 + dec_ps) / (np.pi / 2)
         x_ps = -r_ps * np.sin(ra_ps)
         y_ps = r_ps * np.cos(ra_ps)
+
+        # Apply thesis rotation if needed
+        if thesis_rotate:
+            x_pn, y_pn = y_pn, -x_pn
+            x_ps, y_ps = y_ps, -x_ps
 
         # Use coarser bins and stronger smoothing for readable posterior contours.
         post_bins = 180
@@ -1340,6 +1358,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             south_proj[star_name] = _project_to_hemisphere(
                 np.deg2rad(star_ra_deg),
                 np.deg2rad(star_dec_deg),
+                thesis_rotate=thesis_rotate,
             )
 
         marker_styles = {
@@ -1439,6 +1458,11 @@ def plot_galactic_supernovae_polar_hemispheres(
         x_s_sample = -r_s_sample * np.sin(ra_s_sample)
         y_s_sample = r_s_sample * np.cos(ra_s_sample)
         
+        # Apply thesis rotation if needed
+        if thesis_rotate:
+            x_n_sample, y_n_sample = y_n_sample, -x_n_sample
+            x_s_sample, y_s_sample = y_s_sample, -x_s_sample
+        
         # Plot as rasterized scatter (single rasterized layer, not individual points)
         ax_l.scatter(
             x_n_sample,
@@ -1488,6 +1512,9 @@ def plot_galactic_supernovae_polar_hemispheres(
         x_n = r_n * np.sin(ra_n)
         y_n = r_n * np.cos(ra_n)
         
+        if thesis_rotate:
+            x_n, y_n = y_n, -x_n
+        
         ax_l.scatter(
             x_n,
             y_n,
@@ -1506,6 +1533,9 @@ def plot_galactic_supernovae_polar_hemispheres(
         r_s = (np.pi / 2 + dec_s) / (np.pi / 2)
         x_s = -r_s * np.sin(ra_s)
         y_s = r_s * np.cos(ra_s)
+        
+        if thesis_rotate:
+            x_s, y_s = y_s, -x_s
         
         ax_r.scatter(
             x_s,
@@ -1542,7 +1572,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             return verts @ rot_matrix.T
         
         for det_name, det_ra, det_dec, det_color in detector_markers:
-            det_panel, det_x, det_y = _project_to_hemisphere(det_ra, det_dec)
+            det_panel, det_x, det_y = _project_to_hemisphere(det_ra, det_dec, thesis_rotate=thesis_rotate)
             det_ax = ax_l if det_panel == "north" else ax_r
             
             # Rotate marker to point radially outward from pole
@@ -1659,7 +1689,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     # Earth coastlines
     # -------------------------------------------------
     if coastline:
-        coast_n, coast_s = _coastline_segments()
+        coast_n, coast_s = _coastline_segments(thesis_rotate=thesis_rotate)
 
         ax_l.add_collection(
             LineCollection(
@@ -1706,8 +1736,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     plt.rcdefaults()
 
 
-@lru_cache(maxsize=1)
-def _coastline_segments():
+def _coastline_segments(thesis_rotate: bool = False):
     """
     Return projected coastline line segments for the north and south hemispheres.
     """
@@ -1746,6 +1775,7 @@ def _coastline_segments():
                 hemi, x, y = _project_to_hemisphere(
                     np.deg2rad(lon),
                     np.deg2rad(lat),
+                    thesis_rotate=thesis_rotate,
                 )
 
                 if hemi == "north":
