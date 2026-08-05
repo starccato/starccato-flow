@@ -299,10 +299,6 @@ def plot_detector_signal_channels(
         else:
             plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=transparent)
 
-    plt.show()
-    plt.rcdefaults()
-    return fig, np.array(axes)
-
 def plot_reconstruction(
     original: torch.Tensor,
     reconstructed: torch.Tensor,

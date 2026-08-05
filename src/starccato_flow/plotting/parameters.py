@@ -822,7 +822,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
     # Restore old rcParams if they were changed
     if file_format == 'svg' and old_rasterized is not None:
         plt.rcParams['image.composite_image'] = old_rasterized
-    plt.show()
+    # plt.show()
 
 
 def plot_eos_ye_distribution(

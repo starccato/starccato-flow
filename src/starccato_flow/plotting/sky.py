@@ -1752,8 +1752,8 @@ def plot_galactic_supernovae_polar_hemispheres(
         save_kwargs["format"] = file_format
 
     plt.savefig(fname, **save_kwargs)
-    plt.show()
-    plt.rcdefaults()
+    # plt.show()
+    # plt.rcdefaults()
 
 
 def _coastline_segments(thesis_rotate: bool = False):

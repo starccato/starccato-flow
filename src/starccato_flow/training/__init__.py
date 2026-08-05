@@ -15,6 +15,7 @@ def create_train_val_split(
     seed: int,
     num_epochs: int,
     parameters: list = None,
+    intrinsic_param_names: list = None,
 ):
     """Create training and validation datasets with proper splitting.
     
@@ -26,6 +27,8 @@ def create_train_val_split(
         num_epochs: Number of training epochs
         parameters: List of parameter names to estimate. If None, defaults to
                     ["beta_ic_b", "ra", "dec", "d", "psi"]
+        intrinsic_param_names: List of intrinsic parameter names (e.g., ["beta1_IC_b"])
+                              If None, infers from parameters list
         
     Returns:
         tuple: (training_dataset, validation_dataset, val_indices)
@@ -35,8 +38,13 @@ def create_train_val_split(
     
     # Filter parameters to only include those available in sTheta (intrinsic CCSN parameters)
     # Sky parameters (ra, dec, d, psi) are added later by hThetaMulti
-    intrinsic_params = {"beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"}
-    stheta_parameters = [p for p in parameters if p in intrinsic_params]
+    intrinsic_param_set = {"beta1_IC_b", "omega_0(rad|s)", "A(km)", "Ye_c_b"}
+    if intrinsic_param_names is not None:
+        # Use explicitly provided intrinsic param names (may be empty for sky-only estimation)
+        stheta_parameters = [p for p in intrinsic_param_names if p in intrinsic_param_set]
+    else:
+        # Infer from parameters list
+        stheta_parameters = [p for p in parameters if p in intrinsic_param_set]
     # If user requests ONLY sky parameters, stheta_parameters will be empty
     # hThetaMulti will then only output sky parameters
     

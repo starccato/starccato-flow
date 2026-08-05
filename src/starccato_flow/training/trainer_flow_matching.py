@@ -54,6 +54,8 @@ class FlowMatchingTrainer:
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None,  # Path to validation data files (real CVAE val set)
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization (Gabbard-inspired)
+        model_weight_path: str = None,  # Custom path for saving model weights (.pt file)
+        loss_path: str = None,  # Custom path for saving training losses (CSV file)
     ):
         """Initialize FlowMatchingTrainer.
         
@@ -75,6 +77,10 @@ class FlowMatchingTrainer:
                 - Distance: log-space [0, 1] to ensure positive values
                 - Intrinsic params: linear [-1, 1]
                 If False, use original linear [-1, 1] normalization for all parameters.
+            model_weight_path: Custom path for saving model weights (.pt file).
+                If None, defaults to {outdir}/flow_sky_weights.pt
+            loss_path: Custom path for saving training losses (CSV file).
+                If None, defaults to {outdir}/flow_matching/sky_losses.csv
                 
         Note: If both train_data_path and val_data_path are provided, they take precedence
         over custom_data.
@@ -90,6 +96,8 @@ class FlowMatchingTrainer:
         self.validation_split = validation_split
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
+        self.model_weight_path = model_weight_path
+        self.loss_path = loss_path
         
         # Construct absolute outdir path if not provided
         if outdir == "outdir" or (outdir and not os.path.isabs(outdir)):
@@ -232,6 +240,7 @@ class FlowMatchingTrainer:
                 seed=self.seed,
                 num_epochs=self.num_epochs,
                 parameters=parameters,
+                intrinsic_param_names=self.intrinsic_params,
             )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
@@ -299,8 +308,8 @@ class FlowMatchingTrainer:
             self.flow_param_dim = len(self.parameters_to_estimate)
         
         self.flow_signal_dim = Y_LENGTH * 3
-        self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
-        # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        # self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
         
@@ -594,14 +603,13 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-            # figsize_mm=(165, 190),
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
             figsize=figsize_detector_signals
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm, _ = self._generate_posterior_samples(
-            case, active_h_theta_multi, num_samples=num_samples, n_steps=20
+            case, active_h_theta_multi, num_samples=num_samples, n_steps=20, log=False
         )
         
         self.plot_corner_sampled_signal(
@@ -985,7 +993,7 @@ class FlowMatchingTrainer:
             )
             
             # Create hThetaMulti validation dataset
-            h_theta_multi_val = hThetaMulti(
+            self.h_theta_multi_val = hThetaMulti(
                 s=val_signals,
                 shared_max_strain=self.validation_dataset.shared_max_strain,
                 theta=val_params,
@@ -1001,7 +1009,7 @@ class FlowMatchingTrainer:
                 intrinsic_param_names=self.intrinsic_params,
                 use_physics_aware_norm=self.use_physics_aware_norm
             )
-            print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
+            print(f"✓ Created validation dataset with {len(self.h_theta_multi_val)} signals")
                 
         self.flow.eval()
 
@@ -1027,7 +1035,7 @@ class FlowMatchingTrainer:
             "persistent_workers": False,
         }
         val_loader = DataLoader(
-            h_theta_multi_val,
+            self.h_theta_multi_val,
             shuffle=False,
             **loader_kwargs,
         )
@@ -1779,7 +1787,9 @@ class FlowMatchingTrainer:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_intrinsic_sky_weights.pt"
+        if self.model_weight_path is not None:
+            return self.model_weight_path
+        return f"{self.outdir}/flow_sky_weights.pt"
     
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
@@ -1789,10 +1799,14 @@ class FlowMatchingTrainer:
         """Save training and validation losses to a CSV file (optional, for compatibility).
         
         Args:
-            fname: Output CSV filename. If None, saves to outdir/flow_matching/losses.csv
+            fname: Output CSV filename. If None, uses self.loss_path if provided,
+                   otherwise defaults to outdir/flow_matching/sky_losses.csv
         """
         if fname is None:
-            fname = os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
+            if self.loss_path is not None:
+                fname = self.loss_path
+            else:
+                fname = os.path.join(self.outdir, "flow_matching", "sky_losses.csv")
         
         os.makedirs(os.path.dirname(fname), exist_ok=True)
         
@@ -1845,7 +1859,7 @@ class FlowMatchingTrainer:
         cls,
         model_path: str,
         param_dim: int = 5
-    ) -> 'FlowFCL':
+    ) -> 'FlowCNN':
         """Load a trained Flow model from disk.
         
         Args:
@@ -1857,7 +1871,7 @@ class FlowMatchingTrainer:
         """
         # Reconstruct model architecture with correct parameter names
         signal_dim = Y_LENGTH * 3  # 3 detectors
-        flow = FlowFCL(dim=param_dim, signal_dim=signal_dim).to(DEVICE)
+        flow = FlowCNN(dim=param_dim, signal_dim=signal_dim).to(DEVICE)
         
         # Load saved weights
         flow.load_state_dict(torch.load(model_path, map_location=DEVICE))
