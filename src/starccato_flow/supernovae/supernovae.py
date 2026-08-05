@@ -419,7 +419,6 @@ class Supernovae:
         epoch: int,
         n_samples: int,
         num_epochs: int,
-        exponential: bool = False,
         curriculum_mode: str = "progressive_uniform",
         curriculum_switch_epoch: Optional[int] = None,
         epoch_dir: Optional[str] = None,
@@ -435,7 +434,6 @@ class Supernovae:
 
         Supports multiple curriculum learning strategies for progressive training:
         
-        - "exponential": (default) Expands shell over epochs, biases towards far edge
         - "progressive_uniform": Expands shell uniformly, switches to full range at switch_epoch
         - "uniform": Always uniform across full distance range (no curriculum)
         
@@ -443,8 +441,7 @@ class Supernovae:
             epoch: Current epoch number
             n_samples: Number of samples to draw
             num_epochs: Total number of epochs
-            exponential: Legacy parameter. If True and curriculum_mode not specified, uses exponential mode
-            curriculum_mode: Curriculum strategy ("exponential", "progressive_uniform", "uniform")
+            curriculum_mode: Curriculum strategy ("progressive_uniform", "uniform")
             curriculum_switch_epoch: For progressive_uniform, epoch when to switch to full range (default: 70% of num_epochs)
             epoch_dir: Optional directory to save galactic distribution plots
             fname: Optional filename for thesis plots
@@ -463,8 +460,8 @@ class Supernovae:
         threshold_d = MAX_DISTANCE_KPC
         
         # Determine curriculum mode
-        if curriculum_mode not in ("exponential", "progressive_uniform", "uniform"):
-            curriculum_mode = "exponential" if exponential else "uniform"
+        if curriculum_mode not in ("progressive_uniform", "uniform"):
+            curriculum_mode = "uniform"
         
         # Determine distance range based on curriculum mode
         if curriculum_mode == "uniform":
@@ -484,10 +481,6 @@ class Supernovae:
                 # Late training: sample full range
                 min_d_mask = 0.0
                 max_d_mask = threshold_d
-        else:
-            # "exponential" (original behavior): expand shell with exponential bias
-            min_d_mask = 0.0
-            max_d_mask = min(threshold_d, (epoch / num_epochs) * threshold_d + 0.5)
         
         distance_mask = (
             (self.distances >= min_d_mask)
@@ -500,27 +493,11 @@ class Supernovae:
                 f"No supernovae found in [{min_d_mask:.3f}, {max_d_mask:.3f}] kpc range."
             )
 
-        sample_probs = None
-        if curriculum_mode == "exponential" and exponential:
-            # Original exponential weighting: bias towards far edge of shell
-            candidate_distances = self.distances[candidate_indices]
-            shell_width = max(max_d_mask - min_d_mask, 1e-8)
-            normalized_distance = np.clip((candidate_distances - min_d_mask) / shell_width, 0.0, 1.0)
-
-            # Increase bias through training so later epochs concentrate more strongly
-            # near the far edge of each shell.
-            epoch_fraction = (epoch + 1) / max(num_epochs, 1)
-            growth = 1.0 + 7.0 * epoch_fraction
-            weights = np.exp(growth * normalized_distance)
-            weight_sum = np.sum(weights)
-            if np.isfinite(weight_sum) and weight_sum > 0.0:
-                sample_probs = weights / weight_sum
-
         sampled_indices = np.random.choice(
             candidate_indices,
             size=n_samples,
             replace=candidate_indices.size < n_samples, # conditional sampling with replacement if not enough candidates
-            p=sample_probs,
+            p=None,
         )
         if fname is not None:
             # Use provided filename (thesis plots)
