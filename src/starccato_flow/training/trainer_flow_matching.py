@@ -1023,7 +1023,7 @@ class FlowMatchingTrainer:
         
         posterior_samples_list = []
         true_params_list = []
-        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
+        credible_areas = {0.68: [], 0.90: [], 0.95: []}
         d_true_list = []  # Track true distance for each signal
         angular_error_list = []  # Track angular error for each signal
         
@@ -1132,7 +1132,10 @@ class FlowMatchingTrainer:
                         dec_samples = samples_denorm_all[i, :, dec_idx]
                         
                         # Compute credible areas for this signal
-                        areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
+                        areas = self.compute_sky_localization_credible_areas(
+                            [np.column_stack([ra_samples, dec_samples])],
+                            credible_levels=(0.68, 0.90, 0.95)
+                        )
                         for level, area in areas.items():
                             credible_areas[level].append(area[0])
                         
@@ -1186,7 +1189,7 @@ class FlowMatchingTrainer:
             # Plot sky area vs true distance for 50% credible level
             plot_distance_credible_intervals(
                 d_true_list=np.array(d_true_list),
-                area_50cl=np.array(credible_areas[0.50]),
+                area_50cl=np.array(credible_areas[0.68]),
                 fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
                 show=False,
                 font_family=font_family,

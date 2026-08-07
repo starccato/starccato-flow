@@ -3,7 +3,7 @@
 from typing import Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, to_rgba
 from matplotlib.ticker import MaxNLocator
 from matplotlib.ticker import MaxNLocator
 import numpy as np
@@ -436,7 +436,12 @@ def plot_sky_localization_cumulative_areas(
     set_plot_style(background, font_family, font_name)
     fig, ax = plt.subplots(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES))
     
-    colors = {0.68: 'green', 0.90: 'orange', 0.95: 'red'}
+    red_bases = [GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR, GENERATED_SIGNAL_COLOUR]
+    colors = {
+        0.68: to_rgba(red_bases[0], alpha=0.40),
+        0.90: to_rgba(red_bases[1], alpha=0.62),
+        0.95: to_rgba(red_bases[2], alpha=0.88)
+    }
     
     for level in sorted(credible_areas_dict.keys()):
         areas = np.array(credible_areas_dict[level])
@@ -444,11 +449,12 @@ def plot_sky_localization_cumulative_areas(
         areas_sorted = np.sort(areas)
         cumulative_frac = np.arange(1, len(areas_sorted) + 1) / len(areas_sorted)
         
-        ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% CL", 
-                color=colors.get(level, 'gray'), linewidth=2)
+        ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% Credible Level", 
+                color=colors[level], linewidth=2)
     
     ax.set_xlabel('Sky Area (deg²)', fontsize=11)
     ax.set_ylabel('Cumulative Fraction of Signals', fontsize=11)
+    ax.set_ylim(0, 1)
     ax.tick_params(labelsize=11)
     ax.set_xscale('log')
     ax.grid(True, alpha=0.3)
