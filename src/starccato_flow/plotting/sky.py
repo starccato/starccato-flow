@@ -1342,13 +1342,13 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         # accretion disk (outer ring).
         bh_disk_outer = Circle(
-            (true_gc_x, true_gc_y), 0.015, color="orange", alpha=0.8, zorder=8
+            (true_gc_x, true_gc_y), 0.015 if format == "poster" else 0.03, color="orange", alpha=0.8, zorder=8
         )
         bh_ax.add_patch(bh_disk_outer)
 
         # Black hole interior (event horizon) - blends into the background so it reads as a void.
         bh_interior = Circle(
-            (true_gc_x, true_gc_y), 0.010, color="black", alpha=0.95, zorder=9
+            (true_gc_x, true_gc_y), 0.010 if format == "poster" else 0.02, color="black", alpha=0.95, zorder=9
         )
         bh_ax.add_patch(bh_interior)
 
