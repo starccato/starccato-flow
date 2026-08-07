@@ -136,7 +136,7 @@ def plot_parameter_distributions(
         font_family (str): Font family to use
         font_name (str): Specific font name
         color (Optional[str]): Color for the histogram. If None, uses SIGNAL_COLOUR
-        alpha (float): Transparency of the histogram dots
+        alpha (float): Transparency of the histogram bars
         figsize (Tuple[float, float]): Figure size in inches
     Returns:
         plt.Figure: The figure object
@@ -163,16 +163,13 @@ def plot_parameter_distributions(
 
         counts, bin_edges = np.histogram(values, bins=bins, range=hist_range)
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        bin_width = bin_edges[1] - bin_edges[0]
 
-        # Build stacked dot coordinates: for each bin, one dot per count at y = 0, 1, 2, ...
-        x_dots = np.repeat(bin_centers, counts)
-        y_dots = np.concatenate([np.arange(c) for c in counts]) if counts.sum() > 0 else np.array([])
-
-        ax.scatter(
-            x_dots, y_dots,
+        ax.bar(
+            bin_centers, counts,
+            width=bin_width,
             color=color,
             alpha=alpha,
-            s=0.25,
             edgecolor='none'
         )
 
@@ -224,7 +221,6 @@ def plot_parameter_distributions(
         plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
     plt.rcdefaults()
     return fig
-
 
 def plot_pp_coverage(
     posterior_samples_list: list,
