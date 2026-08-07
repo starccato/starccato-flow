@@ -993,7 +993,7 @@ class FlowMatchingTrainer:
             )
             
             # Create hThetaMulti validation dataset
-            self.h_theta_multi_val = hThetaMulti(
+            h_theta_multi_val = hThetaMulti(
                 s=val_signals,
                 shared_max_strain=self.validation_dataset.shared_max_strain,
                 theta=val_params,
@@ -1009,9 +1009,10 @@ class FlowMatchingTrainer:
                 intrinsic_param_names=self.intrinsic_params,
                 use_physics_aware_norm=self.use_physics_aware_norm
             )
-            print(f"✓ Created validation dataset with {len(self.h_theta_multi_val)} signals")
+            print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
                 
         self.flow.eval()
+        self.h_theta_multi_val = h_theta_multi_val
 
         # Pre-compute indices outside loop (constant for all signals)
         ra_idx = self._get_extracted_index("ra")
@@ -1034,10 +1035,15 @@ class FlowMatchingTrainer:
             "pin_memory": use_cuda,
             "persistent_workers": False,
         }
+        # inside plot_model_performance, before creating val_loader
+        signals_per_forward_batch = max(1, 20000 // num_samples)  # cap total (batch_n*num_samples)
         val_loader = DataLoader(
-            self.h_theta_multi_val,
+            h_theta_multi_val,
             shuffle=False,
-            **loader_kwargs,
+            batch_size=signals_per_forward_batch,   # instead of self.batch_size
+            num_workers=0,
+            pin_memory=use_cuda,
+            persistent_workers=False,
         )
         
         total_processed = 0

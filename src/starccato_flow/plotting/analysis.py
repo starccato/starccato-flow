@@ -62,7 +62,7 @@ def _is_dark_color(color_str: str) -> bool:
     # Default to light color (text should be black)
     return False
 
-def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (14.5, 10)):
+def plot_surface_density(fname=None, font_family=None, font_name=None, transparent=False, figsize: tuple[float, float] = (14.5, 6)):
     """Plot surface density of supernovae in the galactic plane."""
     set_plot_style(background="white", font_family=font_family, font_name=font_name)
 
@@ -352,6 +352,18 @@ def plot_galactic_distribution(
         )
     ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=fontsize_title)
     ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=fontsize_title)
+
+    n_supernovae = galactic_coords.shape[0]
+    ax1.text(
+        0.95,
+        0.02,
+        f"n={n_supernovae:,}",
+        transform=ax1.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=fontsize_tick,
+        color=text_color,
+    )
 
     _style_2d_axes(ax1)
     ax1.set_xlim(-xy_radius, xy_radius)

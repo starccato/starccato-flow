@@ -490,11 +490,14 @@ def plot_signal_distribution(
     fig.canvas.draw()
     offset_text = ax.yaxis.get_offset_text().get_text()
     ax.yaxis.get_offset_text().set_visible(False)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=5, min_n_ticks=4))
     ylabel = r'$h_+$' + (f' ({offset_text})' if offset_text else '')
     ax.set_ylabel(ylabel, size=11, color=text_color, font=font_name)
 
     ax.tick_params(axis='x', labelsize=11, colors=text_color)
     ax.tick_params(axis='y', labelsize=11, colors=text_color)
+
+
 
     for label in ax.get_xticklabels() + ax.get_yticklabels():
         label.set_fontfamily(font_family)
@@ -506,7 +509,7 @@ def plot_signal_distribution(
 
     n = signals.shape[1] if signals.ndim > 1 else len(signals)
     ax.text(
-        0.98, 0.02, f"n = {n}",
+        0.98, 0.02, f"n = {n:,}",
         ha='right', va='bottom',
         transform=ax.transAxes,
         fontsize=11, font=font_name, color=text_color,
