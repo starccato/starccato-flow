@@ -6,6 +6,9 @@ import io
 import numpy as np
 import pandas as pd
 from PIL import Image
+from sympy import plot
+
+from matplotlib import pyplot as plt
 
 from ..plotting.analysis import plot_surface_density
 
@@ -111,13 +114,11 @@ class Supernovae:
         # Rejection sampling for radial distances
         r_samples = []
         while len(r_samples) < num_supernovae:
-            # Propose samples uniformly
             r_proposal = np.random.uniform(0.01, 16.8, num_supernovae * 2)
             u = np.random.uniform(0, pdf_max, num_supernovae * 2)
-            # Accept where u < pdf_2d(r)
-            accepted = r_proposal[u < np.abs(self.pdf_2d(r_proposal))]
+            accepted = r_proposal[u < self.radial_pdf(r_proposal)]
             r_samples.extend(accepted)
-        
+
         r = np.array(r_samples[:num_supernovae])
         
         # Sample angles uniformly (azimuthally symmetric disk)
@@ -129,7 +130,14 @@ class Supernovae:
         
         # Sample z heights from Gaussian (scale height ~100 pc = 0.1 kpc)
         z = np.random.normal(loc=0, scale=0.3, size=num_supernovae)
-        
+
+        r_grid = np.linspace(0.01, 16.8, 1000)
+        f_vals = self.radial_pdf(r_grid)
+        f_vals /= np.trapz(f_vals, r_grid)   # normalize to integrate to 1
+
+        plt.hist(r, bins=100, density=True, alpha=0.5)
+        plt.plot(r_grid, f_vals) 
+
         # Store galactic coordinates
         self._galactic_coords = np.column_stack([x, y, z])
         

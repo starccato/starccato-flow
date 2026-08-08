@@ -202,7 +202,7 @@ def plot_parameter_distributions(
         else:
             param_label = param_name
         ax.set_xlabel(param_label, size=11, weight="bold")
-        ax.set_xlim(hist_range[0], hist_range[1])
+        # ax.set_xlim(hist_range[0], hist_range[1])
         ax.set_ylim(bottom=0)
         ax.tick_params(labelsize=11)
         ax.yaxis.set_major_locator(MaxNLocator(nbins=5, min_n_ticks=4))

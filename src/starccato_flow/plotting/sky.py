@@ -272,6 +272,34 @@ def _constellation_border_segments(thesis_rotate: bool = False):
 
     return north_lines, south_lines
 
+# Mapping of 3-letter IAU constellation abbreviations to full names
+_CONSTELLATION_FULL_NAMES = {
+    "And": "Andromeda", "Ant": "Antlia", "Aps": "Apus", "Aqr": "Aquarius",
+    "Aql": "Aquila", "Ara": "Ara", "Ari": "Aries", "Aur": "Auriga",
+    "Boo": "Boötes", "Cae": "Caelum", "Cam": "Camelopardalis", "Cnc": "Cancer",
+    "CVn": "Canes Venatici", "CMa": "Canis Major", "CMi": "Canis Minor",
+    "Cap": "Capricornus", "Car": "Carina", "Cas": "Cassiopeia", "Cen": "Centaurus",
+    "Cep": "Cepheus", "Cet": "Cetus", "Cha": "Chamaeleon", "Cir": "Circinus",
+    "Col": "Columba", "Com": "Coma Berenices", "CrA": "Corona Australis",
+    "CrB": "Corona Borealis", "Crv": "Corvus", "Crt": "Crater", "Cru": "Crux",
+    "Cyg": "Cygnus", "Del": "Delphinus", "Dor": "Dorado", "Dra": "Draco",
+    "Equ": "Equuleus", "Eri": "Eridanus", "For": "Fornax", "Gem": "Gemini",
+    "Gru": "Grus", "Her": "Hercules", "Hor": "Horologium", "Hya": "Hydra",
+    "Hyi": "Hydrus", "Ind": "Indus", "Lac": "Lacerta", "Leo": "Leo",
+    "LMi": "Leo Minor", "Lep": "Lepus", "Lib": "Libra", "Lup": "Lupus",
+    "Lyn": "Lynx", "Lyr": "Lyra", "Men": "Mensa", "Mic": "Microscopium",
+    "Mil": "Miletus", "Mon": "Monoceros", "Mus": "Musca", "Nor": "Norma",
+    "Oct": "Octans", "Oph": "Ophiuchus", "Ori": "Orion", "Pav": "Pavo",
+    "Peg": "Pegasus", "Per": "Perseus", "Phe": "Phoenix", "Pic": "Pictor",
+    "Psc": "Pisces", "PsA": "Piscis Austrinus", "Pup": "Puppis", "Pyx": "Pyxis",
+    "Ret": "Reticulum", "Sge": "Sagitta", "Sgr": "Sagittarius", "Sco": "Scorpius",
+    "Scl": "Sculptor", "Sct": "Scutum", "Ser": "Serpens", "Sex": "Sextans",
+    "Sge": "Sagitta", "Sco": "Scorpius", "Scl": "Sculptor", "Sct": "Scutum",
+    "Tra": "Triangulum Australe", "Tri": "Triangulum", "Tuc": "Tucana",
+    "UMa": "Ursa Major", "UMi": "Ursa Minor", "Vel": "Vela", "Vir": "Virgo",
+    "Vol": "Volans", "Vul": "Vulpecula",
+}
+
 @lru_cache(maxsize=8)
 def _constellation_centers_icrs_deg(n_ra: int = 360, n_dec: int = 180) -> dict[str, tuple[float, float]]:
     """Estimate constellation label centers (RA, Dec deg) from an ICRS sampling grid."""
@@ -433,6 +461,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_ra_override: float | None = None,
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
+    show_constellation_names: bool = False,
     constellations: bool = True,
     show_stars: bool = True,
     galactic_contour: bool = True,
@@ -460,6 +489,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             ``ccsn.get_galactic_center_direction()`` for center marker logic.
         true_dec_override: Optional true Dec (radians).
         show_constellation_borders: If True, overlay IAU constellation boundaries.
+        show_constellation_names: If True, display constellation names on the plot.
         show: If True, call ``plt.show()``.
         dpi: Image save DPI.
         background: Background color theme ("white" or "black").
@@ -1076,6 +1106,35 @@ def plot_galactic_supernovae_polar_hemispheres(
                 capstyle="round",
             )
         )
+
+    if show_constellation_names and _ASTROPY_AVAILABLE:
+        # Get constellation centers in RA/Dec coordinates
+        constellation_centers = _constellation_centers_icrs_deg(n_ra=360, n_dec=180)
+        
+        for const_name, (center_ra_deg, center_dec_deg) in constellation_centers.items():
+            # Convert to radians for projection
+            center_ra = np.deg2rad(center_ra_deg)
+            center_dec = np.deg2rad(center_dec_deg)
+            
+            # Project to hemisphere panel coordinates to determine which panel
+            panel, x, y = _project_to_hemisphere(center_ra, center_dec, thesis_rotate=thesis_rotate)
+            
+            # Only plot if within the hemisphere circle
+            if np.sqrt(x**2 + y**2) <= 1.0:
+                ax = ax_l if panel == "north" else ax_r
+                # Get full constellation name
+                full_name = _CONSTELLATION_FULL_NAMES.get(const_name, const_name)
+                # Use smaller font size (50% of constellation font size)
+                const_fontsize = fontsize_constellation * 0.5
+                # Draw constellation name with curved text rendering along declination arc
+                _draw_constellation_name(
+                    ax, full_name, center_ra, center_dec, panel,
+                    color=text_color,
+                    fontsize=const_fontsize,
+                    alpha=0.7,
+                    thesis_rotate=thesis_rotate,
+                    zorder=7
+                )
 
     if show_stars:
         stars = _stars_and_magnitudes()
@@ -1915,6 +1974,125 @@ def _draw_curved_ra_label(
             zorder=zorder,
         )
 
+def _draw_constellation_name(
+    ax,
+    const_name: str,
+    center_ra_rad: float,
+    center_dec_rad: float,
+    panel: str,
+    color: str,
+    fontsize: float,
+    alpha: float,
+    thesis_rotate: bool = False,
+    zorder: int = 7,
+) -> None:
+    """Draw constellation name along a constant-declination circle, similar to RA labels.
+    
+    The constellation name is positioned at a fixed declination with letters
+    spread along the RA direction, each rotated to follow the arc tangentially.
+    """
+    fig = ax.figure
+    ax.apply_aspect()
+    p0 = ax.transData.transform((0.0, 0.0))
+    p1 = ax.transData.transform((1.0, 0.0))
+    pixels_per_data_unit = np.hypot(*(p1 - p0))
+    points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
+    
+    # Calculate radius in plot coordinates for this declination
+    if panel == "north":
+        radius = (np.pi / 2 - center_dec_rad) / (np.pi / 2)
+    else:
+        radius = (np.pi / 2 + center_dec_rad) / (np.pi / 2)
+    
+    # Skip if radius is too small (near pole)
+    if radius < 0.1:
+        return
+    
+    # Calculate character spacing based on font size
+    target_char_pitch_pts = fontsize * 0.55
+    arc_length_data = target_char_pitch_pts / points_per_data_unit
+    char_spacing_deg = np.degrees(arc_length_data / max(radius, 0.1))
+    
+    center_ang_deg = np.degrees(center_ra_rad)
+    
+    # Helper to convert RA angle to plot coordinates
+    def _pos(ang_deg):
+        ang = np.deg2rad(ang_deg)
+        if panel == "north":
+            x, y = radius * np.sin(ang), radius * np.cos(ang)
+        else:
+            x, y = -radius * np.sin(ang), radius * np.cos(ang)
+        if thesis_rotate:
+            x, y = y, -x
+        return x, y
+    
+    # Helper to get rotation angle for character placement
+    def _travel_angle_deg(ang_deg):
+        ang = np.deg2rad(ang_deg)
+        if panel == "north":
+            dx, dy = np.cos(ang), -np.sin(ang)
+        else:
+            dx, dy = -np.cos(ang), -np.sin(ang)
+        if thesis_rotate:
+            dx, dy = dy, -dx
+        return np.degrees(np.arctan2(dy, dx))
+    
+    # Determine orientation based on center position
+    base_rot = _travel_angle_deg(center_ang_deg)
+    norm = ((base_rot + 180.0) % 360.0) - 180.0
+    flipped = norm > 90.0 or norm < -90.0
+    
+    # Calculate positions for each character
+    n = len(const_name)
+    offsets = (np.arange(n) - (n - 1) / 2.0) * char_spacing_deg
+    if flipped:
+        offsets = offsets[::-1]
+    
+    for char, off in zip(const_name, offsets):
+        ang_deg = center_ang_deg + off
+        x, y = _pos(ang_deg)
+        
+        # Calculate rotation to align tangent to the arc
+        rot = _travel_angle_deg(ang_deg)
+        if flipped:
+            rot += 180.0
+        rot = ((rot + 180.0) % 360.0) - 180.0
+        
+        # Minimal ink center correction for proper vertical positioning
+        try:
+            ink_c_pts = _ink_center_pts(char, fontsize)
+            if not np.isfinite(ink_c_pts).all():
+                ink_c_pts = np.array([0.0, 0.0])
+            ink_c_data = ink_c_pts / points_per_data_unit
+        except:
+            ink_c_data = np.array([0.0, 0.0])
+        
+        # Apply rotation-based offset for vertical centering on the arc
+        theta = np.deg2rad(rot)
+        c, s = np.cos(theta), np.sin(theta)
+        offset_vec = np.array([
+            c * ink_c_data[0] - s * ink_c_data[1],
+            s * ink_c_data[0] + c * ink_c_data[1],
+        ])
+        x_adj = x - offset_vec[0]
+        y_adj = y - offset_vec[1]
+        
+        # Ensure positions are finite
+        if not (np.isfinite(x_adj) and np.isfinite(y_adj)):
+            continue
+        
+        ax.text(
+            x_adj, y_adj, char,
+            color=color,
+            fontsize=fontsize,
+            ha="left",
+            va="baseline",
+            rotation=rot,
+            rotation_mode="anchor",
+            alpha=alpha,
+            zorder=zorder,
+        )
+
 _fp_cache = {}
 
 def _ink_center_pts(char: str, fontsize: float) -> np.ndarray:
@@ -1922,7 +2100,15 @@ def _ink_center_pts(char: str, fontsize: float) -> np.ndarray:
     baseline-left origin) for a character at a given font size."""
     key = (char, fontsize)
     if key not in _fp_cache:
-        fp = FontProperties(size=fontsize)
-        bb = TextPath((0, 0), char, prop=fp).get_extents()
-        _fp_cache[key] = np.array([(bb.x0 + bb.x1) / 2.0, (bb.y0 + bb.y1) / 2.0])
+        try:
+            fp = FontProperties(size=fontsize)
+            bb = TextPath((0, 0), char, prop=fp).get_extents()
+            center = np.array([(bb.x0 + bb.x1) / 2.0, (bb.y0 + bb.y1) / 2.0])
+            # Handle case where bounding box is empty or invalid
+            if not np.isfinite(center).all():
+                center = np.array([0.0, 0.0])
+            _fp_cache[key] = center
+        except:
+            # Fallback for characters that can't be rendered
+            _fp_cache[key] = np.array([0.0, 0.0])
     return _fp_cache[key]
