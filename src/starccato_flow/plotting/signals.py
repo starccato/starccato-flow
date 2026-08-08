@@ -121,7 +121,7 @@ def plot_signal_grid(
         if i < n_cols * (n_rows - 1):
             ax.tick_params(labelbottom=False, bottom=False)
 
-    fig.supxlabel('time (milliseconds)', fontsize=11)
+    fig.supxlabel(r'$t$' + f' (milliseconds)', fontsize=11)
 
     # Force a draw so each axis's offset text is actually computed
     fig.canvas.draw()
@@ -289,7 +289,7 @@ def plot_detector_signal_channels(
     ylabel = rf'${y_axis}$' + (f' ({offset_text})' if offset_text else '')
 
     # Set axis labels with proper size and color
-    axes[-1].set_xlabel('time (milliseconds)', fontsize=fontsize_title, color=vline_color)
+    axes[-1].set_xlabel(r'$t$' + f' (milliseconds)', fontsize=fontsize_title, color=vline_color)
     axes[1].set_ylabel(ylabel, fontsize=fontsize_title, color=vline_color)
 
     if fname:
@@ -368,8 +368,8 @@ def plot_reconstruction(
     
     ax.set_xticks(xticks)
     ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-    ax.set_xlabel("time (milliseconds)", fontsize=16, color=vline_color)
-    ax.set_ylabel("h", fontsize=16, color=vline_color)
+    ax.set_xlabel(r'$t$' + f' (milliseconds)', fontsize=16, color=vline_color)
+    ax.set_ylabel(r"$h$", fontsize=16, color=vline_color)
     
     ax.legend(loc='upper right', facecolor="none", edgecolor=vline_color,
              labelcolor=vline_color, fontsize=11, framealpha=0.0)
@@ -422,7 +422,7 @@ def plot_single_signal(
     plt.plot(d, y, color=signal_color)
     plt.axvline(x=0, color=vline_color, linestyle="--", alpha=0.5)
     plt.ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
-    plt.xlabel('time (milliseconds)', size=16)
+    plt.xlabel(r'$t$' + f' (milliseconds)', size=16)
     plt.ylabel(r'$h_+$', size=16)
     plt.grid(True)
 
@@ -483,7 +483,7 @@ def plot_signal_distribution(
     ax.axvline(x=0, color=vline_color, linestyle='--', alpha=0.5)
     ax.set_ylim(SIGNAL_LIM_LOWER, SIGNAL_LIM_UPPER)
     ax.set_xlim(min(d), max(d))
-    ax.set_xlabel('time (milliseconds)', size=11, color=text_color, font=font_name)
+    ax.set_xlabel(r'$t$' + f' (milliseconds)', size=11, color=text_color, font=font_name)
 
     # Force a draw so the offset text is actually computed, then fold it
     # into the ylabel instead of leaving it floating in the corner.

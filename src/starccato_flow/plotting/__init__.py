@@ -46,18 +46,11 @@ def set_plot_style(background: str = "white", font_family: str = "serif", font_n
         'font.size': DEFAULT_FONT_SIZE
     })
 
-    # plt.rcParams['mathtext.fontset'] = 'stix'
-    # plt.rcParams['mathtext.fontset'] = 'custom'
-    # plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
-    # plt.rcParams['mathtext.it'] = f'{font_name}:italic'
-    # plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
-
-    if font_family.lower() == "sans-serif" and "futura" in font_name.lower(): # search if it contains "future" in the font name
-        plt.rcParams['mathtext.fontset'] = 'custom'
-        plt.rcParams['mathtext.rm'] = f'{font_name}:regular'
-        plt.rcParams['mathtext.it'] = f'{font_name}:italic'
-        plt.rcParams['mathtext.bf'] = f'{font_name}:bold'
-
+    latex_font = 'stixsans'
+    plt.rcParams['mathtext.fontset'] = f'{latex_font}'
+    plt.rcParams['mathtext.rm'] = f'{latex_font}:bold'
+    plt.rcParams['mathtext.it'] = f'{latex_font}:bold'
+    plt.rcParams['mathtext.bf'] = f'{latex_font}:bold'
 
 def get_time_axis(length: int = 256) -> np.ndarray:
     """Generate consistent time axis values in milliseconds for plotting signals.

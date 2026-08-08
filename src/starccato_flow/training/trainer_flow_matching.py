@@ -54,8 +54,6 @@ class FlowMatchingTrainer:
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None,  # Path to validation data files (real CVAE val set)
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization (Gabbard-inspired)
-        model_weight_path: str = None,  # Custom path for saving model weights (.pt file)
-        loss_path: str = None,  # Custom path for saving training losses (CSV file)
     ):
         """Initialize FlowMatchingTrainer.
         
@@ -77,10 +75,6 @@ class FlowMatchingTrainer:
                 - Distance: log-space [0, 1] to ensure positive values
                 - Intrinsic params: linear [-1, 1]
                 If False, use original linear [-1, 1] normalization for all parameters.
-            model_weight_path: Custom path for saving model weights (.pt file).
-                If None, defaults to {outdir}/flow_sky_weights.pt
-            loss_path: Custom path for saving training losses (CSV file).
-                If None, defaults to {outdir}/flow_matching/sky_losses.csv
                 
         Note: If both train_data_path and val_data_path are provided, they take precedence
         over custom_data.
@@ -96,8 +90,6 @@ class FlowMatchingTrainer:
         self.validation_split = validation_split
         self.lr_flow = lr_flow
         self.checkpoint_interval = checkpoint_interval
-        self.model_weight_path = model_weight_path
-        self.loss_path = loss_path
         
         # Construct absolute outdir path if not provided
         if outdir == "outdir" or (outdir and not os.path.isabs(outdir)):
@@ -240,7 +232,6 @@ class FlowMatchingTrainer:
                 seed=self.seed,
                 num_epochs=self.num_epochs,
                 parameters=parameters,
-                intrinsic_param_names=self.intrinsic_params,
             )
 
         # Create DataLoaders (datasets already have disjoint base signals via indices parameter)
@@ -308,8 +299,8 @@ class FlowMatchingTrainer:
             self.flow_param_dim = len(self.parameters_to_estimate)
         
         self.flow_signal_dim = Y_LENGTH * 3
-        # self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
-        self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        self.flow = FlowFCL(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
+        # self.flow = FlowCNN(dim=self.flow_param_dim, signal_dim=self.flow_signal_dim).to(DEVICE)
         self.optimizer = torch.optim.Adam(self.flow.parameters(), lr=self.lr_flow, weight_decay=1e-5)
         self.loss_fn = nn.MSELoss()
         
@@ -603,13 +594,14 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
+            # figsize_mm=(165, 190),
             fontsize_tick=fontsize_tick,
             fontsize_title=fontsize_title,
             figsize=figsize_detector_signals
         )
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm, _ = self._generate_posterior_samples(
-            case, active_h_theta_multi, num_samples=num_samples, n_steps=20, log=False
+            case, active_h_theta_multi, num_samples=num_samples, n_steps=20
         )
         
         self.plot_corner_sampled_signal(
@@ -1012,7 +1004,6 @@ class FlowMatchingTrainer:
             print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
                 
         self.flow.eval()
-        self.h_theta_multi_val = h_theta_multi_val
 
         # Pre-compute indices outside loop (constant for all signals)
         ra_idx = self._get_extracted_index("ra")
@@ -1023,7 +1014,7 @@ class FlowMatchingTrainer:
         
         posterior_samples_list = []
         true_params_list = []
-        credible_areas = {0.68: [], 0.90: [], 0.95: []}
+        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
         d_true_list = []  # Track true distance for each signal
         angular_error_list = []  # Track angular error for each signal
         
@@ -1035,15 +1026,10 @@ class FlowMatchingTrainer:
             "pin_memory": use_cuda,
             "persistent_workers": False,
         }
-        # inside plot_model_performance, before creating val_loader
-        signals_per_forward_batch = max(1, 20000 // num_samples)  # cap total (batch_n*num_samples)
         val_loader = DataLoader(
             h_theta_multi_val,
             shuffle=False,
-            batch_size=signals_per_forward_batch,   # instead of self.batch_size
-            num_workers=0,
-            pin_memory=use_cuda,
-            persistent_workers=False,
+            **loader_kwargs,
         )
         
         total_processed = 0
@@ -1132,10 +1118,7 @@ class FlowMatchingTrainer:
                         dec_samples = samples_denorm_all[i, :, dec_idx]
                         
                         # Compute credible areas for this signal
-                        areas = self.compute_sky_localization_credible_areas(
-                            [np.column_stack([ra_samples, dec_samples])],
-                            credible_levels=(0.68, 0.90, 0.95)
-                        )
+                        areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
                         for level, area in areas.items():
                             credible_areas[level].append(area[0])
                         
@@ -1189,7 +1172,7 @@ class FlowMatchingTrainer:
             # Plot sky area vs true distance for 50% credible level
             plot_distance_credible_intervals(
                 d_true_list=np.array(d_true_list),
-                area_50cl=np.array(credible_areas[0.68]),
+                area_50cl=np.array(credible_areas[0.50]),
                 fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
                 show=False,
                 font_family=font_family,
@@ -1796,9 +1779,7 @@ class FlowMatchingTrainer:
         
     @property
     def save_fname(self):
-        if self.model_weight_path is not None:
-            return self.model_weight_path
-        return f"{self.outdir}/flow_sky_weights.pt"
+        return f"{self.outdir}/flow_intrinsic_sky_weights.pt"
     
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
@@ -1808,14 +1789,10 @@ class FlowMatchingTrainer:
         """Save training and validation losses to a CSV file (optional, for compatibility).
         
         Args:
-            fname: Output CSV filename. If None, uses self.loss_path if provided,
-                   otherwise defaults to outdir/flow_matching/sky_losses.csv
+            fname: Output CSV filename. If None, saves to outdir/flow_matching/losses.csv
         """
         if fname is None:
-            if self.loss_path is not None:
-                fname = self.loss_path
-            else:
-                fname = os.path.join(self.outdir, "flow_matching", "sky_losses.csv")
+            fname = os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
         
         os.makedirs(os.path.dirname(fname), exist_ok=True)
         
@@ -1868,7 +1845,7 @@ class FlowMatchingTrainer:
         cls,
         model_path: str,
         param_dim: int = 5
-    ) -> 'FlowCNN':
+    ) -> 'FlowFCL':
         """Load a trained Flow model from disk.
         
         Args:
@@ -1880,7 +1857,7 @@ class FlowMatchingTrainer:
         """
         # Reconstruct model architecture with correct parameter names
         signal_dim = Y_LENGTH * 3  # 3 detectors
-        flow = FlowCNN(dim=param_dim, signal_dim=signal_dim).to(DEVICE)
+        flow = FlowFCL(dim=param_dim, signal_dim=signal_dim).to(DEVICE)
         
         # Load saved weights
         flow.load_state_dict(torch.load(model_path, map_location=DEVICE))

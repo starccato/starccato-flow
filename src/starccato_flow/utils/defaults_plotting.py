@@ -16,16 +16,16 @@ CM_TO_INCHES = 2.54
 PARAMETER_LABELS = {
     # Intrinsic (CCSN) parameters
     'beta1_IC_b': r'$\beta_{\text{IC,b}}$',
-    'omega_0(rad|s)': r'$\Omega_0$',
-    'A(km)': r'$A$',
-    'Ye_c_b': r'$Y_{e,\,\text{c,b}}$',
+    'omega_0(rad|s)': r'$\Omega_0$' + f' (rad/s)',
+    'A(km)': r'$A$' + f' (km)',
+    'Ye_c_b': r'$Y_{e\text{,c,b}}$',
     # Sky localization (extrinsic) parameters
     # 'ra': r'$\mathrm{RA}$',
     # 'dec': r'$\mathrm{Dec}$',
-    'ra': r'$\alpha$',
-    'dec': r'$\delta$',
-    'd': r'$D$',
-    'psi': r'$\psi$',
+    'ra': r'$\alpha$' + f' (rad)',
+    'dec': r'$\delta$' + f' (rad)',
+    'd': r'$D$' + f' (kpc)',
+    'psi': r'$\psi$' + f' (rad)',
 }
 
 # Stable parameter colors so the same parameter keeps the same color across plots,

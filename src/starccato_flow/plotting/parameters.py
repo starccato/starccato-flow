@@ -201,6 +201,7 @@ def plot_parameter_distributions(
             param_label = PARAMETER_LABELS[param_name]
         else:
             param_label = param_name
+            
         ax.set_xlabel(param_label, size=11, weight="bold")
         # ax.set_xlim(hist_range[0], hist_range[1])
         ax.set_ylim(bottom=0)

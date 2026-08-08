@@ -216,7 +216,9 @@ class sTheta(BaseDataset, Dataset):
         print(f"Plotting signal distribution for {mask.sum()} signals with beta in [{beta_min}, {beta_max}]")
         plot_signal_distribution(self.signals[:,mask]/TEN_KPC, generated=False, background=background, font_family=font_family, font_name=font_name, fname=fname, figsize=figsize, axes=axes)
 
-    def plot_parameter_distributions(self, fname, font_family="sans-serif", font_name="Avenir"):
+
+    def plot_parameter_distributions(self, background=None, font_family="serif", font_name="Times New Roman", fname=None):
+
         params_dict = {
             param: self.parameters[:, self.parameter_names.index(param)] 
             for param in self.parameter_names
