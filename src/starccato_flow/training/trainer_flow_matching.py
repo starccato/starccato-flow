@@ -20,7 +20,7 @@ from ..plotting.losses import plot_loss
 
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH_SIZE, DEVICE, TEN_KPC, VALIDATION_SPLIT, MAX_DISTANCE_KPC, SAMPLING_FREQ
 from ..utils.defaults_plotting import PARAMETER_LABELS 
-from ..nn.flow import FlowFCL, FlowCNN
+from ..nn.flow import FlowFCL
 
 from . import create_train_val_split
 
