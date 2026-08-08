@@ -295,7 +295,7 @@ _CONSTELLATION_FULL_NAMES = {
     "Ret": "Reticulum", "Sge": "Sagitta", "Sgr": "Sagittarius", "Sco": "Scorpius",
     "Scl": "Sculptor", "Sct": "Scutum", "Ser": "Serpens", "Sex": "Sextans",
     "Sge": "Sagitta", "Sco": "Scorpius", "Scl": "Sculptor", "Sct": "Scutum",
-    "Tra": "Triangulum Australe", "Tri": "Triangulum", "Tuc": "Tucana",
+    "Tau": "Taurus", "TrA": "Triangulum Australe", "Tri": "Triangulum", "Tuc": "Tucana",
     "UMa": "Ursa Major", "UMi": "Ursa Minor", "Vel": "Vela", "Vir": "Virgo",
     "Vol": "Volans", "Vul": "Vulpecula",
 }
@@ -1991,13 +1991,6 @@ def _draw_constellation_name(
     The constellation name is positioned at a fixed declination with letters
     spread along the RA direction, each rotated to follow the arc tangentially.
     """
-    fig = ax.figure
-    ax.apply_aspect()
-    p0 = ax.transData.transform((0.0, 0.0))
-    p1 = ax.transData.transform((1.0, 0.0))
-    pixels_per_data_unit = np.hypot(*(p1 - p0))
-    points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
-    
     # Calculate radius in plot coordinates for this declination
     if panel == "north":
         radius = (np.pi / 2 - center_dec_rad) / (np.pi / 2)
@@ -2008,10 +2001,12 @@ def _draw_constellation_name(
     if radius < 0.1:
         return
     
-    # Calculate character spacing based on font size
-    target_char_pitch_pts = fontsize * 0.55
-    arc_length_data = target_char_pitch_pts / points_per_data_unit
-    char_spacing_deg = np.degrees(arc_length_data / max(radius, 0.1))
+    fig = ax.figure
+    ax.apply_aspect()
+    p0 = ax.transData.transform((0.0, 0.0))
+    p1 = ax.transData.transform((1.0, 0.0))
+    pixels_per_data_unit = np.hypot(*(p1 - p0))
+    points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
     
     center_ang_deg = np.degrees(center_ra_rad)
     
@@ -2042,51 +2037,56 @@ def _draw_constellation_name(
     norm = ((base_rot + 180.0) % 360.0) - 180.0
     flipped = norm > 90.0 or norm < -90.0
     
-    # Calculate positions for each character
-    n = len(const_name)
-    offsets = (np.arange(n) - (n - 1) / 2.0) * char_spacing_deg
-    if flipped:
-        offsets = offsets[::-1]
+    # Build a circle arc at this declination for arc-length based positioning
+    # Sample angles around the center position with enough range for the constellation name
+    angle_range = 60  # degrees on each side of center
+    sample_angles = np.linspace(center_ang_deg - angle_range, center_ang_deg + angle_range, 400)
+    arc_points = np.array([_pos(ang) for ang in sample_angles])
     
-    for char, off in zip(const_name, offsets):
-        ang_deg = center_ang_deg + off
-        x, y = _pos(ang_deg)
+    # Calculate arc length along this curve
+    d = np.sqrt(np.sum(np.diff(arc_points, axis=0)**2, axis=1))
+    s = np.concatenate([[0], np.cumsum(d)])
+    
+    # Place characters at equal arc-length intervals
+    arc_spacing = 0.0175  # Fixed arc distance between character centers
+    centre = 0.5 * s[-1]  # Center the text on the arc
+    
+    n = len(const_name)
+    letter_pos = centre + (np.arange(n) - (n - 1) / 2.0) * arc_spacing
+    if flipped:
+        letter_pos = letter_pos[::-1]
+    
+    # Draw each character at its arc-length position
+    for char, target_s in zip(const_name, letter_pos):
+        if target_s < 0 or target_s > s[-1]:
+            continue  # Skip if outside arc bounds
         
-        # Calculate rotation to align tangent to the arc
-        rot = _travel_angle_deg(ang_deg)
+        # Interpolate position along arc using arc length
+        idx = np.clip(np.searchsorted(s, target_s), 1, len(s) - 1)
+        if s[idx] == s[idx-1]:
+            continue  # Skip if segment has zero length
+        t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
+        x = (1 - t) * arc_points[idx-1, 0] + t * arc_points[idx, 0]
+        y = (1 - t) * arc_points[idx-1, 1] + t * arc_points[idx, 1]
+        
+        # Calculate rotation from tangent to the arc
+        dx = arc_points[idx, 0] - arc_points[idx-1, 0]
+        dy = arc_points[idx, 1] - arc_points[idx-1, 1]
+        rot = np.degrees(np.arctan2(dy, dx))
         if flipped:
             rot += 180.0
         rot = ((rot + 180.0) % 360.0) - 180.0
         
-        # Minimal ink center correction for proper vertical positioning
-        try:
-            ink_c_pts = _ink_center_pts(char, fontsize)
-            if not np.isfinite(ink_c_pts).all():
-                ink_c_pts = np.array([0.0, 0.0])
-            ink_c_data = ink_c_pts / points_per_data_unit
-        except:
-            ink_c_data = np.array([0.0, 0.0])
-        
-        # Apply rotation-based offset for vertical centering on the arc
-        theta = np.deg2rad(rot)
-        c, s = np.cos(theta), np.sin(theta)
-        offset_vec = np.array([
-            c * ink_c_data[0] - s * ink_c_data[1],
-            s * ink_c_data[0] + c * ink_c_data[1],
-        ])
-        x_adj = x - offset_vec[0]
-        y_adj = y - offset_vec[1]
-        
         # Ensure positions are finite
-        if not (np.isfinite(x_adj) and np.isfinite(y_adj)):
+        if not (np.isfinite(x) and np.isfinite(y)):
             continue
         
         ax.text(
-            x_adj, y_adj, char,
+            x, y, char,
             color=color,
             fontsize=fontsize,
-            ha="left",
-            va="baseline",
+            ha="center",
+            va="center",
             rotation=rot,
             rotation_mode="anchor",
             alpha=alpha,
