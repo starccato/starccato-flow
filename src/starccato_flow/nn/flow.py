@@ -4,28 +4,82 @@ from torch import Tensor
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM
 
 class FlowFCL(nn.Module):
-    """Fully Connected Layers version of Flow (original implementation)."""
+    """Fully Connected Layers version of Flow with batch normalization and deeper architecture.
+    
+    Improvements:
+    - Batch normalization after each layer for training stability
+    - Deeper network with more hidden layers
+    - Better capacity for learning complex signal-parameter mappings
+    """
     def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM):
         super().__init__()
-        # Encode signal separately first
-        self.signal_encoder = nn.Sequential(
-            nn.Linear(signal_dim, h), nn.GELU(),
-            nn.Linear(h, h // 2), nn.GELU()
-        )
-        # Then combine with parameters
-        self.net = nn.Sequential(
-            nn.Linear(dim + 1 + h // 2, h), nn.GELU(),
-            nn.Linear(h, h), nn.GELU(),
-            nn.Linear(h, dim)
-        )
+        # Deeper signal encoder with batch normalization
+        self.signal_fc1 = nn.Linear(signal_dim, h)
+        self.signal_bn1 = nn.BatchNorm1d(h)
+        
+        self.signal_fc2 = nn.Linear(h, h)
+        self.signal_bn2 = nn.BatchNorm1d(h)
+        
+        self.signal_fc3 = nn.Linear(h, h // 2)
+        self.signal_bn3 = nn.BatchNorm1d(h // 2)
+        
+        # Deeper main network with batch normalization
+        self.fc1 = nn.Linear(dim + 1 + h // 2, h)
+        self.bn1 = nn.BatchNorm1d(h)
+        
+        self.fc2 = nn.Linear(h, h)
+        self.bn2 = nn.BatchNorm1d(h)
+        
+        self.fc3 = nn.Linear(h, h)
+        self.bn3 = nn.BatchNorm1d(h)
+        
+        self.fc4 = nn.Linear(h, h // 2)
+        self.bn4 = nn.BatchNorm1d(h // 2)
+        
+        self.fc5 = nn.Linear(h // 2, dim)
+        
+        self.act = nn.GELU()
     
     def forward(self, x_t: Tensor, t: Tensor, h: Tensor) -> Tensor:
         # Accept either flattened signals (B, 3*Y_LENGTH) or channel-first (B, 3, Y_LENGTH).
         if h.dim() == 3:
             h = h.view(h.size(0), -1)
 
-        h_encoded = self.signal_encoder(h)
-        return self.net(torch.cat((t, x_t, h_encoded), -1))
+        # Deeper signal encoder with batch norm
+        h_encoded = self.signal_fc1(h)
+        h_encoded = self.signal_bn1(h_encoded)
+        h_encoded = self.act(h_encoded)
+        
+        h_encoded = self.signal_fc2(h_encoded)
+        h_encoded = self.signal_bn2(h_encoded)
+        h_encoded = self.act(h_encoded)
+        
+        h_encoded = self.signal_fc3(h_encoded)
+        h_encoded = self.signal_bn3(h_encoded)
+        h_encoded = self.act(h_encoded)
+        
+        # Deeper main network with batch norm
+        combined = torch.cat((t, x_t, h_encoded), -1)
+        
+        out = self.fc1(combined)
+        out = self.bn1(out)
+        out = self.act(out)
+        
+        out = self.fc2(out)
+        out = self.bn2(out)
+        out = self.act(out)
+        
+        out = self.fc3(out)
+        out = self.bn3(out)
+        out = self.act(out)
+        
+        out = self.fc4(out)
+        out = self.bn4(out)
+        out = self.act(out)
+        
+        out = self.fc5(out)
+        
+        return out
     
     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
         # Ensure t_start and t_end are on the same device as x_t
@@ -44,28 +98,44 @@ class FlowFCL(nn.Module):
 
 
 # class FlowCNN(nn.Module):
-#     """Convolutional Neural Network version of Flow."""
+#     """Convolutional Neural Network version of Flow with batch normalization and deeper architecture.
+#     
+#     Improvements:
+#     - Batch normalization after each layer for training stability
+#     - Deeper convolutional encoder
+#     - Deeper fully connected network
+#     """
 #     def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM, num_channels: int = 3):
 #         super().__init__()
 #         self.num_channels = num_channels
 #         self.signal_length = signal_dim // num_channels
         
-#         # 1D Convolutional encoder for multi-channel signals
-#         self.signal_encoder = nn.Sequential(
-#             nn.Conv1d(num_channels, h // 2, kernel_size=3, padding=1), nn.GELU(),
-#             nn.Conv1d(h // 2, h // 4, kernel_size=3, padding=1), nn.GELU(),
-#             nn.AdaptiveAvgPool1d(1)  # Global average pooling
-#         )
+#         # Deeper 1D Convolutional encoder with batch normalization
+#         self.conv1 = nn.Conv1d(num_channels, h // 2, kernel_size=3, padding=1)
+#         self.bn1 = nn.BatchNorm1d(h // 2)
         
-#         # Compute the flattened size after CNN
+#         self.conv2 = nn.Conv1d(h // 2, h // 2, kernel_size=3, padding=1)
+#         self.bn2 = nn.BatchNorm1d(h // 2)
+        
+#         self.conv3 = nn.Conv1d(h // 2, h // 4, kernel_size=3, padding=1)
+#         self.bn3 = nn.BatchNorm1d(h // 4)
+#         
+#         self.pool = nn.AdaptiveAvgPool1d(1)  # Global average pooling
 #         cnn_out_dim = h // 4
         
-#         # Then combine with parameters
-#         self.net = nn.Sequential(
-#             nn.Linear(dim + 1 + cnn_out_dim, h), nn.GELU(),
-#             nn.Linear(h, h), nn.GELU(),
-#             nn.Linear(h, dim)
-#         )
+#         # Deeper main network with batch normalization
+#         self.fc1 = nn.Linear(dim + 1 + cnn_out_dim, h)
+#         self.bn_fc1 = nn.BatchNorm1d(h)
+        
+#         self.fc2 = nn.Linear(h, h)
+#         self.bn_fc2 = nn.BatchNorm1d(h)
+        
+#         self.fc3 = nn.Linear(h, h // 2)
+#         self.bn_fc3 = nn.BatchNorm1d(h // 2)
+        
+#         self.fc4 = nn.Linear(h // 2, dim)
+        
+#         self.act = nn.GELU()
     
 #     def forward(self, x_t: Tensor, t: Tensor, h: Tensor) -> Tensor:
 #         # Reshape to channel-first format (B, C, L) for Conv1d
@@ -73,9 +143,40 @@ class FlowFCL(nn.Module):
 #             # If flattened (B, 3*Y_LENGTH), reshape to (B, 3, Y_LENGTH)
 #             h = h.view(h.size(0), self.num_channels, self.signal_length)
         
-#         # h should now be (B, C, L) for Conv1d
-#         h_encoded = self.signal_encoder(h).view(h.size(0), -1)  # Flatten after pooling
-#         return self.net(torch.cat((t, x_t, h_encoded), -1))
+#         # Deeper conv encoder with batch norm
+#         h = self.conv1(h)
+#         h = self.bn1(h)
+#         h = self.act(h)
+        
+#         h = self.conv2(h)
+#         h = self.bn2(h)
+#         h = self.act(h)
+        
+#         h = self.conv3(h)
+#         h = self.bn3(h)
+#         h = self.act(h)
+        
+#         h = self.pool(h)
+#         h_encoded = h.view(h.size(0), -1)
+        
+#         # Deeper main network with batch norm
+#         combined = torch.cat((t, x_t, h_encoded), -1)
+        
+#         out = self.fc1(combined)
+#         out = self.bn_fc1(out)
+#         out = self.act(out)
+        
+#         out = self.fc2(out)
+#         out = self.bn_fc2(out)
+#         out = self.act(out)
+        
+#         out = self.fc3(out)
+#         out = self.bn_fc3(out)
+#         out = self.act(out)
+        
+#         out = self.fc4(out)
+        
+#         return out
     
 #     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
 #         # Ensure t_start and t_end are on the same device as x_t

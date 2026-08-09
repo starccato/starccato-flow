@@ -149,6 +149,76 @@ def _stars_and_magnitudes() -> dict[int, tuple[float, float, float]]:
 
     return stars
 
+# Greek letters for Bayer designation
+_GREEK_LETTERS = [
+    'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'σ', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω'
+]
+
+def _get_greek_letter_stars(max_stars_per_constellation: int = 5) -> dict[str, list[tuple[float, float, str]]]:
+    """Assign Greek letters to the brightest stars in each constellation based on Rey.
+    
+    Returns a dict mapping constellation_name -> [(ra_deg, dec_deg, greek_label), ...]
+    sorted by brightness (brightest first).
+    Only stars that appear in Rey's constellation boundaries are labeled.
+    Limited to max_stars_per_constellation to avoid duplicate letters across hemispheres.
+    """
+    if not _ASTROPY_AVAILABLE:
+        return {}
+    
+    # Load HIP lookup with magnitudes
+    hip_lookup = _hip_lookup_table_with_mag()
+    
+    # Read Rey constellation file and extract all HIP IDs per constellation
+    constellation_stars = {}
+    filepath = os.path.join(SKY_MAP_ROOT, "constellations_rey.txt")
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            for line in f:
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                const_abbr = parts[0]
+                try:
+                    # Skip the count (parts[1]) and convert remaining parts to ints
+                    hip_ids = [int(p) for p in parts[2:]]
+                except (ValueError, IndexError):
+                    continue
+                
+                if not hip_ids:
+                    continue
+                
+                # Use a set to ensure unique HIP IDs per constellation
+                unique_hip_ids = set(hip_ids)
+                
+                # Collect star data for this constellation (no magnitude filter - use all Rey stars)
+                stars_in_const = []
+                for hip_id in unique_hip_ids:
+                    if hip_id in hip_lookup:
+                        ra, dec, vmag = hip_lookup[hip_id]
+                        if np.isfinite(vmag):
+                            stars_in_const.append((vmag, ra, dec, hip_id))
+                
+                if stars_in_const:
+                    constellation_stars[const_abbr] = stars_in_const
+    
+    # Assign Greek letters to brightest stars in each constellation
+    greek_labels = {}
+    for const_abbr, star_list in constellation_stars.items():
+        if not star_list:
+            continue
+        
+        # Sort by magnitude and limit to max_stars_per_constellation
+        sorted_stars = sorted(star_list, key=lambda x: x[0])[:max_stars_per_constellation]
+        
+        # Assign Greek letters
+        greek_labels[const_abbr] = []
+        for greek_idx, (vmag, ra, dec, hip_id) in enumerate(sorted_stars):
+            if greek_idx < len(_GREEK_LETTERS):
+                greek_letter = _GREEK_LETTERS[greek_idx]
+                greek_labels[const_abbr].append((float(ra), float(dec), greek_letter))
+    
+    return greek_labels
+
 def _constellation_stick_segments(thesis_rotate: bool = False):
     filename = os.path.join(SKY_MAP_ROOT, "constellations_rey.txt")
     hip_ids = _read_constellation_hip_ids(filename)
@@ -273,35 +343,36 @@ def _constellation_border_segments(thesis_rotate: bool = False):
 
     return north_lines, south_lines
 
-# Mapping of 3-letter IAU constellation abbreviations to (full_name, dec_offset_deg)
-# The dec_offset_deg allows manual adjustment of constellation label latitude
-# Positive values move labels toward the north pole, negative toward the south pole
+# Mapping of 3-letter IAU constellation abbreviations to (full_name, dec_offset_deg, ra_offset_deg)
+# dec_offset_deg: positive moves toward north pole, negative toward south pole
+# ra_offset_deg: positive moves toward increasing RA (counterclockwise from north pole)
 _CONSTELLATION_FULL_NAMES = {
-    "And": ("Andromeda", 0.0), "Ant": ("Antlia", 0.0), "Aps": ("Apus", 0.0), "Aqr": ("Aquarius", 0.0),
-    "Aql": ("Aquila", 0.0), "Ara": ("Ara", 0.0), "Ari": ("Aries", 0.0), "Aur": ("Auriga", 0.0),
-    "Boo": ("Boötes", 0.0), "Cae": ("Caelum", 0.0), "Cam": ("Camelopardalis", 0.0), "Cnc": ("Cancer", 0.0),
-    "CVn": ("Canes Venatici", 0.0), "CMa": ("Canis Major", 0.0), "CMi": ("Canis Minor", 0.0),
-    "Cap": ("Capricornus", 0.0), "Car": ("Carina", 0.0), "Cas": ("Cassiopeia", 0.0), "Cen": ("Centaurus", 0.0),
-    "Cep": ("Cepheus", 0.0), "Cet": ("Cetus", 0.0), "Cha": ("Chamaeleon", 0.0), "Cir": ("Circinus", 0.0),
-    "Col": ("Columba", 0.0), "Com": ("Coma Berenices", 0.0), "CrA": ("Corona /n Australis", 0.0),
-    "CrB": ("Corona Borealis", 0.0), "Crv": ("Corvus", 0.0), "Crt": ("Crater", 0.0), "Cru": ("Crux", 0.0),
-    "Cyg": ("Cygnus", 0.0), "Del": ("Delphinus", 0.0), "Dor": ("Dorado", 0.0), "Dra": ("Draco", 0.0),
-    "Equ": ("Equuleus", 0.0), "Eri": ("Eridanus", 10.0), "For": ("Fornax", 0.0), "Gem": ("Gemini", 0.0),
-    "Gru": ("Grus", 0.0), "Her": ("Hercules", 0.0), "Hor": ("Horologium", 0.0), "Hya": ("Hydra", 0.0),
-    "Hyi": ("Hydrus", 0.0), "Ind": ("Indus", 0.0), "Lac": ("Lacerta", 0.0), "Leo": ("Leo", 0.0),
-    "LMi": ("Leo Minor", 0.0), "Lep": ("Lepus", 0.0), "Lib": ("Libra", 0.0), "Lup": ("Lupus", 0.0),
-    "Lyn": ("Lynx", 0.0), "Lyr": ("Lyra", 0.0), "Men": ("Mensa", 0.0), "Mic": ("Microscopium", 0.0),
-    "Mil": ("Miletus", 0.0), "Mon": ("Monoceros", 0.0), "Mus": ("Musca", 0.0), "Nor": ("Norma", 0.0),
-    "Oct": ("Octans", 0.0), "Oph": ("Ophiuchus", 0.0), "Ori": ("Orion", 0.0), "Pav": ("Pavo", 0.0),
-    "Peg": ("Pegasus", 0.0), "Per": ("Perseus", 0.0), "Phe": ("Phoenix", 0.0), "Pic": ("Pictor", 0.0),
-    "Psc": ("Pisces", 0.0), "PsA": ("Piscis Austrinus", 0.0), "Pup": ("Puppis", 0.0), "Pyx": ("Pyxis", 0.0),
-    "Ret": ("Reticulum", 0.0), "Sge": ("Sagitta", 0.0), "Sgr": ("Sagittarius", 0.0), "Sco": ("Scorpius", 0.0),
-    "Scl": ("Sculptor", 0.0), "Sct": ("Scutum", 0.0), "Ser": ("Serpens", 0.0), "Sex": ("Sextans", 0.0),
-    "Tau": ("Taurus", 0.0), 
-    "TrA": ("Triangulum \n Australe", 0.0), 
-    "Tri": ("Triangulum", 0.0), "Tuc": ("Tucana", 0.0),
-    "UMa": ("Ursa Major", 0.0), "UMi": ("Ursa Minor", 0.0), "Vel": ("Vela", 0.0), "Vir": ("Virgo", 0.0),
-    "Vol": ("Volans", 0.0), "Vul": ("Vulpecula", 0.0),
+    "And": ("Andromeda", -5.0, 0.0), "Ant": ("Antlia", 0.0, 0.0), "Aps": ("Apus", 0.0, 0.0), "Aqr": ("Aquarius", 0.0, 0.0),
+    "Aql": ("Aquila", 0.0, 0.0), "Ara": ("Ara", 0.0, 0.0), "Ari": ("Aries", 0.0, 0.0), "Aur": ("Auriga", 0.0, 0.0),
+    "Boo": ("Boötes", 0.0, 0.0), "Cae": ("Caelum", 0.0, 0.0), "Cam": ("Camelopardalis", 2.5, -10.0), "Cnc": ("Cancer", 0.0, 0.0),
+    "CVn": ("Canes Venatici", 0.0, 0.0), "CMa": ("Canis Major", -5.0, 0.0), "CMi": ("Canis Minor", 0.0, 0.0),
+    "Cap": ("Capricornus", 0.0, 0.0), "Car": ("Carina", 0.0, 0.0), "Cas": ("Cassiopeia", 0.0, 0.0), "Cen": ("Centaurus", 0.0, 0.0),
+    "Cep": ("Cepheus", 0.0, -30.0), "Cet": ("Cetus", 0.0, 0.0), "Cha": ("Chamaeleon", 0.0, 0.0), "Cir": ("Circinus", 0.0, 0.0),
+    "Col": ("Columba", 0.0, 0.0), "Com": ("Coma Berenices", 0.0, 0.0), "CrA": ("Corona\nAustralis", 0.0, 0.0),
+    "CrB": ("Corona\nBorealis", 0.0, 0.0), "Crv": ("Corvus", 0.0, 0.0), "Crt": ("Crater", 0.0, 0.0), "Cru": ("Crux", 0.0, 0.0),
+    "Cyg": ("Cygnus", 0.0, 0.0), "Del": ("Delphinus", -1.0, -1.5), "Dor": ("Dorado", -5.0, 5.0), "Dra": ("Draco", 0.0, 0.0),
+    "Equ": ("Equuleus", 0.0, 0.0), "Eri": ("Eridanus", 10.0, 0.0), "For": ("Fornax", 0.0, 0.0), "Gem": ("Gemini", 0.0, 0.0),
+    "Gru": ("Grus", 0.0, 0.0), "Her": ("Hercules", 0.0, 0.0), "Hor": ("Horologium", 0.0, 0.0), "Hya": ("Hydra", 0.0, 0.0),
+    "Hyi": ("Hydrus", 0.0, 0.0), "Ind": ("Indus", 5.0, 0.0), "Lac": ("Lacerta", -5.0, 0.0), "Leo": ("Leo", 0.0, 0.0),
+    "LMi": ("Leo Minor", 0.0, 0.0), "Lep": ("Lepus", 0.0, 0.0), "Lib": ("Libra", 0.0, 0.0), "Lup": ("Lupus", 0.0, 0.0),
+    "Lyn": ("Lynx", 0.0, 0.0), "Lyr": ("Lyra", 0.0, 0.0), "Men": ("Mensa", 0.0, 0.0), "Mic": ("Microscopium", 0.0, 0.0),
+    "Mil": ("Miletus", 0.0, 0.0), "Mon": ("Monoceros", 0.0, 0.0), "Mus": ("Musca", -2.5, 0.0), "Nor": ("Norma", 0.0, 0.0),
+    "Oct": ("Octans", 0.0, 0.0), "Oph": ("Ophiuchus", 0.0, 0.0), "Ori": ("Orion", 0.0, 0.0), "Pav": ("Pavo", 0.0, 0.0),
+    "Peg": ("Pegasus", 0.0, 0.0), "Per": ("Perseus", 0.0, 0.0), "Phe": ("Phoenix", 0.0, 0.0), "Pic": ("Pictor", 0.0, 0.0),
+    "Psc": ("Pisces", 0.0, 0.0), "PsA": ("Piscis Austrinus", 0.0, 0.0), "Pup": ("Puppis", 0.0, 0.0), "Pyx": ("Pyxis", 0.0, 0.0),
+    "Ret": ("Reticulum", 0.0, 0.0), "Sge": ("Sagitta", 0.0, 0.0), "Sgr": ("Sagittarius", 0.0, 0.0), "Sco": ("Scorpius", 0.0, 0.0),
+    "Scl": ("Sculptor", 0.0, 0.0), "Sct": ("Scutum", 0.0, 0.0), "Ser": ("Serpens", 0.0, -10.0), "Sex": ("Sextans", 0.0, 0.0),
+    "Tau": ("Taurus", 0.0, 0.0),
+    "Tel": ("Telescopium", 0.0, 0.0),
+    "TrA": ("Triangulum \n Australe", 0.0, 0.0), 
+    "Tri": ("Triangulum", 0.0, 0.0), "Tuc": ("Tucana", 0.0, 0.0),
+    "UMa": ("Ursa Major", 0.0, 0.0), "UMi": ("Ursa Minor", 0.0, 0.0), "Vel": ("Vela", 0.0, 0.0), "Vir": ("Virgo", 0.0, 0.0),
+    "Vol": ("Volans", 0.0, 0.0), "Vul": ("Vulpecula", 0.0, 0.0),
 }
 
 @lru_cache(maxsize=8)
@@ -1126,13 +1197,17 @@ def plot_galactic_supernovae_polar_hemispheres(
             # Only plot if within the hemisphere circle
             if np.sqrt(x**2 + y**2) <= 1.0:
                 ax = ax_l if panel == "north" else ax_r
-                # Get full constellation name and declination offset
-                constellation_data = _CONSTELLATION_FULL_NAMES.get(const_name, (const_name, 0.0))
+                # Get full constellation name and offsets
+                constellation_data = _CONSTELLATION_FULL_NAMES.get(const_name, (const_name, 0.0, 0.0))
                 if isinstance(constellation_data, tuple):
-                    full_name, dec_offset = constellation_data
+                    if len(constellation_data) == 2:
+                        full_name, dec_offset = constellation_data
+                        ra_offset = 0.0
+                    else:
+                        full_name, dec_offset, ra_offset = constellation_data
                 else:
                     # Fallback for legacy string format
-                    full_name, dec_offset = constellation_data, 0.0
+                    full_name, dec_offset, ra_offset = constellation_data, 0.0, 0.0
                 # Use smaller font size (50% of constellation font size)
                 const_fontsize = fontsize_constellation * 0.5
                 # Draw constellation name with curved text rendering along declination arc
@@ -1144,7 +1219,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                     alpha=0.7,
                     thesis_rotate=thesis_rotate,
                     zorder=10,
-                    dec_offset_deg=dec_offset
+                    dec_offset_deg=dec_offset,
+                    ra_offset_deg=ra_offset
                 )
 
     if show_stars:
@@ -1190,6 +1266,47 @@ def plot_galactic_supernovae_polar_hemispheres(
             alpha=1.0,
             zorder=5,
         )
+        
+        # Add Greek letter labels for the brightest stars
+        greek_labels = _get_greek_letter_stars()
+        for const_abbr, star_labels in greek_labels.items():
+            for label_ra, label_dec, greek_label in star_labels:
+                hemi, label_x, label_y = _project_to_hemisphere(
+                    np.deg2rad(label_ra), np.deg2rad(label_dec), thesis_rotate=thesis_rotate
+                )
+                
+                # Check for valid, finite coordinates
+                if not (np.isfinite(label_x) and np.isfinite(label_y)):
+                    continue
+                
+                # Only label if within the hemisphere
+                if np.sqrt(label_x**2 + label_y**2) > 1.0:
+                    continue
+                
+                ax = ax_l if hemi == "north" else ax_r
+                
+                # Small radial offset to avoid overlapping with star or constellation sticks
+                r = np.sqrt(label_x**2 + label_y**2)
+                if r > 0.01:
+                    # Radial offset: move label 3% further out
+                    offset_factor = 1.015
+                    label_x_display = label_x * offset_factor
+                    label_y_display = label_y * offset_factor
+                else:
+                    # At origin: use fixed offset
+                    label_x_display = label_x + 0.03
+                    label_y_display = label_y + 0.03
+                
+                ax.text(
+                    label_x_display, label_y_display, greek_label,
+                    color=text_color,
+                    fontsize=5,
+                    ha="center",
+                    va="center",
+                    alpha=0.8,
+                    zorder=6,
+                    fontfamily="DejaVu Sans",  # Use DejaVu Sans for Greek letter support
+                )
 
     if galaxy:
         # Keep Galactic Center fixed to the physical galactic center direction.
@@ -1998,27 +2115,58 @@ def _draw_constellation_name(
     thesis_rotate: bool = False,
     zorder: int = 7,
     dec_offset_deg: float = 0.0,
+    ra_offset_deg: float = 0.0,
 ) -> None:
     """Draw constellation name along a constant-declination circle, similar to RA labels.
     
     The constellation name is positioned at a fixed declination with letters
     spread along the RA direction, each rotated to follow the arc tangentially.
+    Supports multi-line names via \\n, which will be rendered as separate curved arcs.
     
     Args:
-        dec_offset_deg: Declination offset in degrees. Positive values move labels
-            toward the north pole, negative toward the south pole.
+        dec_offset_deg: Declination offset in degrees. Positive moves toward the north pole,
+            negative toward the south pole.
+        ra_offset_deg: Right ascension offset in degrees. Positive moves in the direction
+            of increasing RA (counterclockwise from the north pole).
     """
-    # Apply declination offset
+    # Apply declination and RA offsets
     center_dec_rad_adjusted = center_dec_rad + np.deg2rad(dec_offset_deg)
+    center_ra_rad_adjusted = center_ra_rad + np.deg2rad(ra_offset_deg)
     
-    # Calculate radius in plot coordinates for this declination
-    if panel == "north":
-        radius = (np.pi / 2 - center_dec_rad_adjusted) / (np.pi / 2)
+    # Split on newlines and draw each line as a separate curved arc
+    lines = const_name.split('\n')
+    n_lines = len(lines)
+    
+    # For multi-line names, offset each line radially to spread them out
+    # Adjust radius for each line based on its position
+    radius_adjustments = []
+    if n_lines > 1:
+        if panel == "north":
+            line_spacing = 0.08  # radial distance between lines
+        else:
+            line_spacing = -0.08  # radial distance between lines
+        for i in range(n_lines):
+            offset = (i - (n_lines - 1) / 2.0) * line_spacing
+            radius_adjustments.append(offset)
     else:
-        radius = (np.pi / 2 + center_dec_rad_adjusted) / (np.pi / 2)
+        radius_adjustments = [0.0]
+    
+    # Draw each line
+    for line_idx, line_text in enumerate(lines):
+        radius_adjustment = radius_adjustments[line_idx]
+        # For southern hemisphere, reverse the radial offset for multi-line names
+        # so text order appears correctly from the pole perspective
+        if panel == "south" and n_lines > 1:
+            radius_adjustment = -radius_adjustment
+    
+    # Calculate base radius in plot coordinates for this declination
+    if panel == "north":
+        base_radius = (np.pi / 2 - center_dec_rad_adjusted) / (np.pi / 2)
+    else:
+        base_radius = (np.pi / 2 + center_dec_rad_adjusted) / (np.pi / 2)
     
     # Skip if radius is too small (near pole)
-    if radius < 0.1:
+    if base_radius < 0.1:
         return
     
     fig = ax.figure
@@ -2028,91 +2176,96 @@ def _draw_constellation_name(
     pixels_per_data_unit = np.hypot(*(p1 - p0))
     points_per_data_unit = pixels_per_data_unit * 72.0 / fig.dpi
     
-    center_ang_deg = np.degrees(center_ra_rad)
+    center_ang_deg = np.degrees(center_ra_rad_adjusted)
     
-    # Helper to convert RA angle to plot coordinates
-    def _pos(ang_deg):
-        ang = np.deg2rad(ang_deg)
-        if panel == "north":
-            x, y = radius * np.sin(ang), radius * np.cos(ang)
-        else:
-            x, y = -radius * np.sin(ang), radius * np.cos(ang)
-        if thesis_rotate:
-            x, y = y, -x
-        return x, y
-    
-    # Helper to get rotation angle for character placement
-    def _travel_angle_deg(ang_deg):
-        ang = np.deg2rad(ang_deg)
-        if panel == "north":
-            dx, dy = np.cos(ang), -np.sin(ang)
-        else:
-            dx, dy = -np.cos(ang), -np.sin(ang)
-        if thesis_rotate:
-            dx, dy = dy, -dx
-        return np.degrees(np.arctan2(dy, dx))
-    
-    # Determine orientation based on center position
-    base_rot = _travel_angle_deg(center_ang_deg)
-    norm = ((base_rot + 180.0) % 360.0) - 180.0
-    flipped = norm > 90.0 or norm < -90.0
-    
-    # Build a circle arc at this declination for arc-length based positioning
-    # Sample angles around the center position with enough range for the constellation name
-    angle_range = 60  # degrees on each side of center
-    sample_angles = np.linspace(center_ang_deg - angle_range, center_ang_deg + angle_range, 400)
-    arc_points = np.array([_pos(ang) for ang in sample_angles])
-    
-    # Calculate arc length along this curve
-    d = np.sqrt(np.sum(np.diff(arc_points, axis=0)**2, axis=1))
-    s = np.concatenate([[0], np.cumsum(d)])
-    
-    # Place characters at equal arc-length intervals
-    arc_spacing = 0.0175  # Fixed arc distance between character centers
-    centre = 0.5 * s[-1]  # Center the text on the arc
-    
-    n = len(const_name)
-    letter_pos = centre + (np.arange(n) - (n - 1) / 2.0) * arc_spacing
-    if flipped:
-        letter_pos = letter_pos[::-1]
-    
-    # Draw each character at its arc-length position
-    for char, target_s in zip(const_name, letter_pos):
-        if target_s < 0 or target_s > s[-1]:
-            continue  # Skip if outside arc bounds
+    # Draw each line of the constellation name
+    for line_idx, line_text in enumerate(lines):
+        radius_adjustment = radius_adjustments[line_idx]
+        radius = base_radius + radius_adjustment
         
-        # Interpolate position along arc using arc length
-        idx = np.clip(np.searchsorted(s, target_s), 1, len(s) - 1)
-        if s[idx] == s[idx-1]:
-            continue  # Skip if segment has zero length
-        t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
-        x = (1 - t) * arc_points[idx-1, 0] + t * arc_points[idx, 0]
-        y = (1 - t) * arc_points[idx-1, 1] + t * arc_points[idx, 1]
+        # Helper to convert RA angle to plot coordinates
+        def _pos(ang_deg):
+            ang = np.deg2rad(ang_deg)
+            if panel == "north":
+                x, y = radius * np.sin(ang), radius * np.cos(ang)
+            else:
+                x, y = -radius * np.sin(ang), radius * np.cos(ang)
+            if thesis_rotate:
+                x, y = y, -x
+            return x, y
         
-        # Calculate rotation from tangent to the arc
-        dx = arc_points[idx, 0] - arc_points[idx-1, 0]
-        dy = arc_points[idx, 1] - arc_points[idx-1, 1]
-        rot = np.degrees(np.arctan2(dy, dx))
+        # Helper to get rotation angle for character placement
+        def _travel_angle_deg(ang_deg):
+            ang = np.deg2rad(ang_deg)
+            if panel == "north":
+                dx, dy = np.cos(ang), -np.sin(ang)
+            else:
+                dx, dy = -np.cos(ang), -np.sin(ang)
+            if thesis_rotate:
+                dx, dy = dy, -dx
+            return np.degrees(np.arctan2(dy, dx))
+        
+        # Determine orientation based on center position
+        base_rot = _travel_angle_deg(center_ang_deg)
+        norm = ((base_rot + 180.0) % 360.0) - 180.0
+        flipped = norm > 90.0 or norm < -90.0
+        
+        # Build a circle arc at this declination for arc-length based positioning
+        # Sample angles around the center position with enough range for the constellation name
+        angle_range = 60  # degrees on each side of center
+        sample_angles = np.linspace(center_ang_deg - angle_range, center_ang_deg + angle_range, 400)
+        arc_points = np.array([_pos(ang) for ang in sample_angles])
+        
+        # Calculate arc length along this curve
+        d = np.sqrt(np.sum(np.diff(arc_points, axis=0)**2, axis=1))
+        s = np.concatenate([[0], np.cumsum(d)])
+        
+        # Place characters at equal arc-length intervals
+        arc_spacing = 0.015  # Fixed arc distance between character centers
+        centre = 0.5 * s[-1]  # Center the text on the arc
+        
+        n = len(line_text)
+        letter_pos = centre + (np.arange(n) - (n - 1) / 2.0) * arc_spacing
         if flipped:
-            rot += 180.0
-        rot = ((rot + 180.0) % 360.0) - 180.0
+            letter_pos = letter_pos[::-1]
         
-        # Ensure positions are finite
-        if not (np.isfinite(x) and np.isfinite(y)):
-            continue
-        
-        ax.text(
-            x, y, char,
-            color=color,
-            fontsize=fontsize,
-            ha="center",
-            va="center",
-            rotation=rot,
-            rotation_mode="anchor",
-            alpha=alpha,
-            path_effects=[pe.withStroke(linewidth=1, foreground=outline_color)],
-            zorder=zorder,
-        )
+        # Draw each character at its arc-length position
+        for char, target_s in zip(line_text, letter_pos):
+            if target_s < 0 or target_s > s[-1]:
+                continue  # Skip if outside arc bounds
+            
+            # Interpolate position along arc using arc length
+            idx = np.clip(np.searchsorted(s, target_s), 1, len(s) - 1)
+            if s[idx] == s[idx-1]:
+                continue  # Skip if segment has zero length
+            t = (target_s - s[idx-1]) / (s[idx] - s[idx-1])
+            x = (1 - t) * arc_points[idx-1, 0] + t * arc_points[idx, 0]
+            y = (1 - t) * arc_points[idx-1, 1] + t * arc_points[idx, 1]
+            
+            # Calculate rotation from tangent to the arc
+            dx = arc_points[idx, 0] - arc_points[idx-1, 0]
+            dy = arc_points[idx, 1] - arc_points[idx-1, 1]
+            rot = np.degrees(np.arctan2(dy, dx))
+            if flipped:
+                rot += 180.0
+            rot = ((rot + 180.0) % 360.0) - 180.0
+            
+            # Ensure positions are finite
+            if not (np.isfinite(x) and np.isfinite(y)):
+                continue
+            
+            ax.text(
+                x, y, char,
+                color=color,
+                fontsize=fontsize,
+                ha="center",
+                va="center",
+                rotation=rot,
+                rotation_mode="anchor",
+                alpha=alpha,
+                path_effects=[pe.withStroke(linewidth=1, foreground=outline_color)],
+                zorder=zorder,
+            )
 
 _fp_cache = {}
 

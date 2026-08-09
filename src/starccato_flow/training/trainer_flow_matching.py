@@ -54,6 +54,8 @@ class FlowMatchingTrainer:
         train_data_path: str = None,  # Path to training data files (generated signals)
         val_data_path: str = None,  # Path to validation data files (real CVAE val set)
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization (Gabbard-inspired)
+        model_weights_fname: str = None,  # Full path + filename for saving model weights (e.g., "./outdir/flow_sky.pt")
+        loss_fname: str = None,  # Full path + filename for saving loss curves
     ):
         """Initialize FlowMatchingTrainer.
         
@@ -75,6 +77,9 @@ class FlowMatchingTrainer:
                 - Distance: log-space [0, 1] to ensure positive values
                 - Intrinsic params: linear [-1, 1]
                 If False, use original linear [-1, 1] normalization for all parameters.
+            model_weights_fname: Full path + filename for saving model weights.
+                Example: "./outdir/flow_sky.pt"
+                If None, defaults to "{outdir}/flow_intrinsic_sky_weights.pt"
                 
         Note: If both train_data_path and val_data_path are provided, they take precedence
         over custom_data.
@@ -98,6 +103,8 @@ class FlowMatchingTrainer:
             outdir = os.path.join(_starccato_flow_root, "outdir")
         
         self.outdir = outdir
+        self.model_weights_fname = model_weights_fname
+        self.loss_fname = loss_fname
         self.detector_noise_on = detector_noise_on
         self.max_grad_norm = max_grad_norm
         
@@ -892,7 +899,6 @@ class FlowMatchingTrainer:
         print("Plotting training/validation loss curves...")
         self.save_models()
         self.save_losses()
-        self.display_results(fname=os.path.join(self.outdir, "flow_matching", "training_validation_losses.png"))  
 
     def _plot_project_to_detectors_steps(self, signal_idx, f_name_h, f_name_h_delayed, f_name_h_delayed_rescaled, f_name_h_delayed_rescaled_noise=None, font_family="Serif", font_name="Times New Roman", figsize=tuple[float, float], fontsize_tick=float, fontsize_title=float, shortened_detector_labels=True):
         signal_raw = self.validation_dataset.signals[:, signal_idx:signal_idx+1]  # Raw signal, shape (Y_LENGTH, 1)
@@ -1779,7 +1785,9 @@ class FlowMatchingTrainer:
         
     @property
     def save_fname(self):
-        return f"{self.outdir}/flow_intrinsic_sky_weights.pt"
+        if self.model_weights_fname is not None:
+            return self.model_weights_fname
+        return f"{self.outdir}/flow_intrinsic_sky.pt"
     
     def save_models(self):
         torch.save(self.flow.state_dict(), self.save_fname)
@@ -1789,10 +1797,10 @@ class FlowMatchingTrainer:
         """Save training and validation losses to a CSV file (optional, for compatibility).
         
         Args:
-            fname: Output CSV filename. If None, saves to outdir/flow_matching/losses.csv
+            fname: Output CSV filename. If None, saves to outdir/flow_matching/intrinsic_sky_losses.csv
         """
         if fname is None:
-            fname = os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
+            fname = self.loss_fname if self.loss_fname is not None else os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
         
         os.makedirs(os.path.dirname(fname), exist_ok=True)
         
@@ -1818,7 +1826,7 @@ class FlowMatchingTrainer:
             Dictionary with keys 'train_loss' and 'val_loss' containing the loss arrays
         """
         if fname is None:
-            fname = os.path.join(self.outdir, "flow_matching", "losses.csv")
+            fname = self.loss_fname if self.loss_fname is not None else os.path.join(self.outdir, "flow_matching", "intrinsic_sky_losses.csv")
         
         if not os.path.exists(fname):
             print(f"Losses file not found at {fname}")
