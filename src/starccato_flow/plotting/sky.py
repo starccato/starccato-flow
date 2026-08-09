@@ -7,6 +7,7 @@ from typing import Iterable
 
 from matplotlib.pylab import norm
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.collections import LineCollection
@@ -272,32 +273,35 @@ def _constellation_border_segments(thesis_rotate: bool = False):
 
     return north_lines, south_lines
 
-# Mapping of 3-letter IAU constellation abbreviations to full names
+# Mapping of 3-letter IAU constellation abbreviations to (full_name, dec_offset_deg)
+# The dec_offset_deg allows manual adjustment of constellation label latitude
+# Positive values move labels toward the north pole, negative toward the south pole
 _CONSTELLATION_FULL_NAMES = {
-    "And": "Andromeda", "Ant": "Antlia", "Aps": "Apus", "Aqr": "Aquarius",
-    "Aql": "Aquila", "Ara": "Ara", "Ari": "Aries", "Aur": "Auriga",
-    "Boo": "Boötes", "Cae": "Caelum", "Cam": "Camelopardalis", "Cnc": "Cancer",
-    "CVn": "Canes Venatici", "CMa": "Canis Major", "CMi": "Canis Minor",
-    "Cap": "Capricornus", "Car": "Carina", "Cas": "Cassiopeia", "Cen": "Centaurus",
-    "Cep": "Cepheus", "Cet": "Cetus", "Cha": "Chamaeleon", "Cir": "Circinus",
-    "Col": "Columba", "Com": "Coma Berenices", "CrA": "Corona Australis",
-    "CrB": "Corona Borealis", "Crv": "Corvus", "Crt": "Crater", "Cru": "Crux",
-    "Cyg": "Cygnus", "Del": "Delphinus", "Dor": "Dorado", "Dra": "Draco",
-    "Equ": "Equuleus", "Eri": "Eridanus", "For": "Fornax", "Gem": "Gemini",
-    "Gru": "Grus", "Her": "Hercules", "Hor": "Horologium", "Hya": "Hydra",
-    "Hyi": "Hydrus", "Ind": "Indus", "Lac": "Lacerta", "Leo": "Leo",
-    "LMi": "Leo Minor", "Lep": "Lepus", "Lib": "Libra", "Lup": "Lupus",
-    "Lyn": "Lynx", "Lyr": "Lyra", "Men": "Mensa", "Mic": "Microscopium",
-    "Mil": "Miletus", "Mon": "Monoceros", "Mus": "Musca", "Nor": "Norma",
-    "Oct": "Octans", "Oph": "Ophiuchus", "Ori": "Orion", "Pav": "Pavo",
-    "Peg": "Pegasus", "Per": "Perseus", "Phe": "Phoenix", "Pic": "Pictor",
-    "Psc": "Pisces", "PsA": "Piscis Austrinus", "Pup": "Puppis", "Pyx": "Pyxis",
-    "Ret": "Reticulum", "Sge": "Sagitta", "Sgr": "Sagittarius", "Sco": "Scorpius",
-    "Scl": "Sculptor", "Sct": "Scutum", "Ser": "Serpens", "Sex": "Sextans",
-    "Sge": "Sagitta", "Sco": "Scorpius", "Scl": "Sculptor", "Sct": "Scutum",
-    "Tau": "Taurus", "TrA": "Triangulum Australe", "Tri": "Triangulum", "Tuc": "Tucana",
-    "UMa": "Ursa Major", "UMi": "Ursa Minor", "Vel": "Vela", "Vir": "Virgo",
-    "Vol": "Volans", "Vul": "Vulpecula",
+    "And": ("Andromeda", 0.0), "Ant": ("Antlia", 0.0), "Aps": ("Apus", 0.0), "Aqr": ("Aquarius", 0.0),
+    "Aql": ("Aquila", 0.0), "Ara": ("Ara", 0.0), "Ari": ("Aries", 0.0), "Aur": ("Auriga", 0.0),
+    "Boo": ("Boötes", 0.0), "Cae": ("Caelum", 0.0), "Cam": ("Camelopardalis", 0.0), "Cnc": ("Cancer", 0.0),
+    "CVn": ("Canes Venatici", 0.0), "CMa": ("Canis Major", 0.0), "CMi": ("Canis Minor", 0.0),
+    "Cap": ("Capricornus", 0.0), "Car": ("Carina", 0.0), "Cas": ("Cassiopeia", 0.0), "Cen": ("Centaurus", 0.0),
+    "Cep": ("Cepheus", 0.0), "Cet": ("Cetus", 0.0), "Cha": ("Chamaeleon", 0.0), "Cir": ("Circinus", 0.0),
+    "Col": ("Columba", 0.0), "Com": ("Coma Berenices", 0.0), "CrA": ("Corona /n Australis", 0.0),
+    "CrB": ("Corona Borealis", 0.0), "Crv": ("Corvus", 0.0), "Crt": ("Crater", 0.0), "Cru": ("Crux", 0.0),
+    "Cyg": ("Cygnus", 0.0), "Del": ("Delphinus", 0.0), "Dor": ("Dorado", 0.0), "Dra": ("Draco", 0.0),
+    "Equ": ("Equuleus", 0.0), "Eri": ("Eridanus", 10.0), "For": ("Fornax", 0.0), "Gem": ("Gemini", 0.0),
+    "Gru": ("Grus", 0.0), "Her": ("Hercules", 0.0), "Hor": ("Horologium", 0.0), "Hya": ("Hydra", 0.0),
+    "Hyi": ("Hydrus", 0.0), "Ind": ("Indus", 0.0), "Lac": ("Lacerta", 0.0), "Leo": ("Leo", 0.0),
+    "LMi": ("Leo Minor", 0.0), "Lep": ("Lepus", 0.0), "Lib": ("Libra", 0.0), "Lup": ("Lupus", 0.0),
+    "Lyn": ("Lynx", 0.0), "Lyr": ("Lyra", 0.0), "Men": ("Mensa", 0.0), "Mic": ("Microscopium", 0.0),
+    "Mil": ("Miletus", 0.0), "Mon": ("Monoceros", 0.0), "Mus": ("Musca", 0.0), "Nor": ("Norma", 0.0),
+    "Oct": ("Octans", 0.0), "Oph": ("Ophiuchus", 0.0), "Ori": ("Orion", 0.0), "Pav": ("Pavo", 0.0),
+    "Peg": ("Pegasus", 0.0), "Per": ("Perseus", 0.0), "Phe": ("Phoenix", 0.0), "Pic": ("Pictor", 0.0),
+    "Psc": ("Pisces", 0.0), "PsA": ("Piscis Austrinus", 0.0), "Pup": ("Puppis", 0.0), "Pyx": ("Pyxis", 0.0),
+    "Ret": ("Reticulum", 0.0), "Sge": ("Sagitta", 0.0), "Sgr": ("Sagittarius", 0.0), "Sco": ("Scorpius", 0.0),
+    "Scl": ("Sculptor", 0.0), "Sct": ("Scutum", 0.0), "Ser": ("Serpens", 0.0), "Sex": ("Sextans", 0.0),
+    "Tau": ("Taurus", 0.0), 
+    "TrA": ("Triangulum \n Australe", 0.0), 
+    "Tri": ("Triangulum", 0.0), "Tuc": ("Tucana", 0.0),
+    "UMa": ("Ursa Major", 0.0), "UMi": ("Ursa Minor", 0.0), "Vel": ("Vela", 0.0), "Vir": ("Virgo", 0.0),
+    "Vol": ("Volans", 0.0), "Vul": ("Vulpecula", 0.0),
 }
 
 @lru_cache(maxsize=8)
@@ -516,7 +520,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             "fontsize_tick": 12,
             "fontsize_small": 18,
             "fontsize_tiny": 12,
-            "fontsize_constellation": 18,
+            "fontsize_constellation": 16,
             "fontsize_object": 16,
         },
         "thesis": {
@@ -1122,18 +1126,25 @@ def plot_galactic_supernovae_polar_hemispheres(
             # Only plot if within the hemisphere circle
             if np.sqrt(x**2 + y**2) <= 1.0:
                 ax = ax_l if panel == "north" else ax_r
-                # Get full constellation name
-                full_name = _CONSTELLATION_FULL_NAMES.get(const_name, const_name)
+                # Get full constellation name and declination offset
+                constellation_data = _CONSTELLATION_FULL_NAMES.get(const_name, (const_name, 0.0))
+                if isinstance(constellation_data, tuple):
+                    full_name, dec_offset = constellation_data
+                else:
+                    # Fallback for legacy string format
+                    full_name, dec_offset = constellation_data, 0.0
                 # Use smaller font size (50% of constellation font size)
                 const_fontsize = fontsize_constellation * 0.5
                 # Draw constellation name with curved text rendering along declination arc
                 _draw_constellation_name(
                     ax, full_name, center_ra, center_dec, panel,
                     color=text_color,
+                    outline_color=fig_facecolor if fig_facecolor is not None else "white",
                     fontsize=const_fontsize,
                     alpha=0.7,
                     thesis_rotate=thesis_rotate,
-                    zorder=7
+                    zorder=10,
+                    dec_offset_deg=dec_offset
                 )
 
     if show_stars:
@@ -1981,21 +1992,30 @@ def _draw_constellation_name(
     center_dec_rad: float,
     panel: str,
     color: str,
+    outline_color: str,
     fontsize: float,
     alpha: float,
     thesis_rotate: bool = False,
     zorder: int = 7,
+    dec_offset_deg: float = 0.0,
 ) -> None:
     """Draw constellation name along a constant-declination circle, similar to RA labels.
     
     The constellation name is positioned at a fixed declination with letters
     spread along the RA direction, each rotated to follow the arc tangentially.
+    
+    Args:
+        dec_offset_deg: Declination offset in degrees. Positive values move labels
+            toward the north pole, negative toward the south pole.
     """
+    # Apply declination offset
+    center_dec_rad_adjusted = center_dec_rad + np.deg2rad(dec_offset_deg)
+    
     # Calculate radius in plot coordinates for this declination
     if panel == "north":
-        radius = (np.pi / 2 - center_dec_rad) / (np.pi / 2)
+        radius = (np.pi / 2 - center_dec_rad_adjusted) / (np.pi / 2)
     else:
-        radius = (np.pi / 2 + center_dec_rad) / (np.pi / 2)
+        radius = (np.pi / 2 + center_dec_rad_adjusted) / (np.pi / 2)
     
     # Skip if radius is too small (near pole)
     if radius < 0.1:
@@ -2090,6 +2110,7 @@ def _draw_constellation_name(
             rotation=rot,
             rotation_mode="anchor",
             alpha=alpha,
+            path_effects=[pe.withStroke(linewidth=1, foreground=outline_color)],
             zorder=zorder,
         )
 
