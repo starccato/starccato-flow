@@ -154,7 +154,7 @@ _GREEK_LETTERS = [
     'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'σ', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω'
 ]
 
-def _get_greek_letter_stars(max_stars_per_constellation: int = 5) -> dict[str, list[tuple[float, float, str]]]:
+def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, list[tuple[float, float, str]]]:
     """Assign Greek letters to the brightest stars in each constellation based on Rey.
     
     Returns a dict mapping constellation_name -> [(ra_deg, dec_deg, greek_label), ...]
@@ -1117,7 +1117,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
 
 
-
+    # # Draw curved RA title
+    # ra_title_radius = 1.08
+    # ra_title_text = "Right Ascension"
+    # _draw_curved_ra_label(ax_l, "north", 15.0, ra_title_radius, ra_title_text, text_color, fontsize_label, 1.0, thesis_rotate=thesis_rotate, char_alignment="bottom")
+    # _draw_curved_ra_label(ax_r, "south", 15.0, ra_title_radius, ra_title_text, text_color, fontsize_label, 1.0, thesis_rotate=thesis_rotate, char_alignment="bottom")
 
     # RA degree labels, curved tangent to each hemisphere panel, centered on the pole.
     ra_label_deg = np.arange(0, 360, 30) # every 45 degrees but not 180 (which is the seam)
@@ -1130,7 +1134,6 @@ def plot_galactic_supernovae_polar_hemispheres(
         _draw_curved_ra_label(ax_r, "south", ra_deg, ra_label_radius + 0.02, label, text_color, fontsize_small, 0.75, thesis_rotate=thesis_rotate)
 
     dec_abs_ticks = [80, 60, 40, 20]
-    # Place Dec ticks on the 0h/24h RA meridian (or rotated 0h for thesis).
     ang0 = np.deg2rad(0.0)
     ux = np.sin(ang0)
     uy = np.cos(ang0)
@@ -1301,7 +1304,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             color="white",
             edgecolors="none" if background == "black" else "#b1cbed",
             linewidths=0.2 if background == "white" else 0.0,
-            alpha=1.0,
+            alpha=0.7,
             zorder=5,
         )
 
@@ -1312,7 +1315,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             color="white",
             edgecolors="none" if background == "black" else "#b1cbed",
             linewidths=0.2 if background == "white" else 0.0,
-            alpha=1.0,
+            alpha=0.7,
             zorder=5,
         )
         
