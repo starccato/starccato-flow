@@ -187,19 +187,39 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 5) -> dict[str, l
                 if not hip_ids:
                     continue
                 
-                # Use a set to ensure unique HIP IDs per constellation
+                if const_abbr == "Col":
+                    print(f"\n=== COLUMBA RAW DATA FROM FILE ===")
+                    print(f"  Raw HIP IDs from this line: {hip_ids}")
+                
+                # Deduplicate HIP IDs FIRST (they're line segment vertices, some may repeat)
                 unique_hip_ids = set(hip_ids)
                 
-                # Collect star data for this constellation (no magnitude filter - use all Rey stars)
-                stars_in_const = []
-                for hip_id in unique_hip_ids:
-                    if hip_id in hip_lookup:
-                        ra, dec, vmag = hip_lookup[hip_id]
-                        if np.isfinite(vmag):
-                            stars_in_const.append((vmag, ra, dec, hip_id))
-                
-                if stars_in_const:
-                    constellation_stars[const_abbr] = stars_in_const
+                # Accumulate unique stars across all lines for this constellation
+                if const_abbr not in constellation_stars:
+                    constellation_stars[const_abbr] = set()
+                constellation_stars[const_abbr].update(unique_hip_ids)
+        
+        if "Col" in constellation_stars:
+            print(f"  Total unique HIP IDs for Columba across all lines: {len(constellation_stars['Col'])}")
+        
+        # Now load star data from HIP table for each unique HIP ID
+        for const_abbr in list(constellation_stars.keys()):
+            hip_ids_set = constellation_stars[const_abbr]
+            stars_in_const = []
+            for hip_id in hip_ids_set:
+                if hip_id in hip_lookup:
+                    ra, dec, vmag = hip_lookup[hip_id]
+                    if np.isfinite(vmag):
+                        stars_in_const.append((vmag, ra, dec, hip_id))
+            
+            if stars_in_const:
+                constellation_stars[const_abbr] = stars_in_const
+            else:
+                del constellation_stars[const_abbr]
+            
+            if const_abbr == "Col":
+                print(f"  After loading from HIP table: {len(stars_in_const)} stars")
+                print(f"=== END COLUMBA RAW DATA ===\n")
     
     # Assign Greek letters to brightest stars in each constellation
     greek_labels = {}
@@ -207,15 +227,38 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 5) -> dict[str, l
         if not star_list:
             continue
         
+        if const_abbr == "Col":
+            print(f"\n=== FINAL CHECK BEFORE GREEK LETTER ASSIGNMENT ===")
+            print(f"  constellation_stars['Col'] type: {type(star_list)}")
+            print(f"  constellation_stars['Col'] length: {len(star_list)}")
+            print(f"  constellation_stars['Col'] contents:")
+            for item in star_list:
+                print(f"    {item}")
+        
         # Sort by magnitude and limit to max_stars_per_constellation
         sorted_stars = sorted(star_list, key=lambda x: x[0])[:max_stars_per_constellation]
+        
+        if const_abbr == "Col":  # Columba
+            print(f"\n=== ASSIGNING GREEK LETTERS FOR COLUMBA ===")
+            print(f"  Total stars in constellation_stars: {len(star_list)}")
+            print(f"  After sorting by magnitude and limiting to {max_stars_per_constellation}:")
+            for i, (vmag, ra, dec, hip_id) in enumerate(sorted_stars):
+                print(f"    {i}: vmag={vmag:.2f}, HIP={hip_id}, RA={ra:.2f}°, Dec={dec:.2f}°")
         
         # Assign Greek letters
         greek_labels[const_abbr] = []
         for greek_idx, (vmag, ra, dec, hip_id) in enumerate(sorted_stars):
             if greek_idx < len(_GREEK_LETTERS):
                 greek_letter = _GREEK_LETTERS[greek_idx]
+                if const_abbr == "Col":
+                    print(f"    Assigning {greek_letter} to HIP {hip_id}")
                 greek_labels[const_abbr].append((float(ra), float(dec), greek_letter))
+        
+        if const_abbr == "Col":
+            print(f"  Final greek_labels['Col'] contents:")
+            for item in greek_labels[const_abbr]:
+                print(f"    {item}")
+            print(f"=== DONE ASSIGNING COLUMBA GREEK LETTERS ===\n")
     
     return greek_labels
 
@@ -1182,6 +1225,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
         )
 
+    # Track which constellations have their names displayed
+    displayed_constellations = set()
+    
     if show_constellation_names and _ASTROPY_AVAILABLE:
         # Get constellation centers in RA/Dec coordinates
         constellation_centers = _constellation_centers_icrs_deg(n_ra=360, n_dec=180)
@@ -1196,6 +1242,9 @@ def plot_galactic_supernovae_polar_hemispheres(
             
             # Only plot if within the hemisphere circle
             if np.sqrt(x**2 + y**2) <= 1.0:
+                # Track this constellation as displayed
+                displayed_constellations.add(const_name)
+                
                 ax = ax_l if panel == "north" else ax_r
                 # Get full constellation name and offsets
                 constellation_data = _CONSTELLATION_FULL_NAMES.get(const_name, (const_name, 0.0, 0.0))
@@ -1268,19 +1317,39 @@ def plot_galactic_supernovae_polar_hemispheres(
         )
         
         # Add Greek letter labels for the brightest stars
+        # Only show Greek letters for constellations that have their names displayed
         greek_labels = _get_greek_letter_stars()
         for const_abbr, star_labels in greek_labels.items():
-            for label_ra, label_dec, greek_label in star_labels:
+            # Skip if this constellation name wasn't displayed
+            if not show_constellation_names or const_abbr not in displayed_constellations:
+                continue
+            
+            if const_abbr == "Col":  # Columba
+                print(f"\n=== DRAWING COLUMBA GREEK LETTERS ===")
+                print(f"  const_abbr: {const_abbr}")
+                print(f"  Found {len(star_labels)} stars with labels")
+            
+            for label_idx, (label_ra, label_dec, greek_label) in enumerate(star_labels):
+                if const_abbr == "Col":
+                    print(f"  Star {label_idx}: {greek_label} at ({label_ra:.2f}°, {label_dec:.2f}°)")
+                
                 hemi, label_x, label_y = _project_to_hemisphere(
                     np.deg2rad(label_ra), np.deg2rad(label_dec), thesis_rotate=thesis_rotate
                 )
                 
+                if const_abbr == "Col":
+                    print(f"    Projected: hemi={hemi}, x={label_x:.4f}, y={label_y:.4f}")
+                
                 # Check for valid, finite coordinates
                 if not (np.isfinite(label_x) and np.isfinite(label_y)):
+                    if const_abbr == "Col":
+                        print(f"    SKIPPED: non-finite coordinates")
                     continue
                 
                 # Only label if within the hemisphere
                 if np.sqrt(label_x**2 + label_y**2) > 1.0:
+                    if const_abbr == "Col":
+                        print(f"    SKIPPED: outside hemisphere circle (r={np.sqrt(label_x**2 + label_y**2):.4f})")
                     continue
                 
                 ax = ax_l if hemi == "north" else ax_r
@@ -1297,6 +1366,9 @@ def plot_galactic_supernovae_polar_hemispheres(
                     label_x_display = label_x + 0.03
                     label_y_display = label_y + 0.03
                 
+                if const_abbr == "Col":
+                    print(f"    PLOTTED: {greek_label} at display ({label_x_display:.4f}, {label_y_display:.4f})")
+                
                 ax.text(
                     label_x_display, label_y_display, greek_label,
                     color=text_color,
@@ -1307,6 +1379,15 @@ def plot_galactic_supernovae_polar_hemispheres(
                     zorder=6,
                     fontfamily="DejaVu Sans",  # Use DejaVu Sans for Greek letter support
                 )
+            
+            if const_abbr == "Col":
+                print(f"=== DONE WITH COLUMBA GREEK LETTERS ===\n")
+    
+    # Count total alphas plotted (should be much fewer now)
+    total_alphas = sum(1 for const_abbr, star_labels in greek_labels.items() 
+                       for label_ra, label_dec, greek_label in star_labels 
+                       if greek_label == "α")
+    print(f"\n*** TOTAL ALPHAS IN greek_labels (major constellations only): {total_alphas} ***\n")
 
     if galaxy:
         # Keep Galactic Center fixed to the physical galactic center direction.
@@ -1323,9 +1404,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     detector_markers = []
     if show_detectors:
         detector_markers = [
-            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), text_color),
-            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), text_color),
-            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), text_color),
+            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), "red" if format == "poster" else text_color),
+            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), "red" if format == "poster" else text_color),
+            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), "red" if format == "poster" else text_color),
         ]
 
     if galaxy:
@@ -1808,7 +1889,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 det_x + label_offset_x,
                 det_y + label_offset_y,
                 det_name,
-                color=text_color,
+                color=det_color,
                 fontsize=fontsize_constellation,
                 ha="left",
                 va="center",
@@ -1864,7 +1945,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             marker=l_marker_legend,
             linestyle="None",
             markersize=10,
-            markerfacecolor=text_color,
+            markerfacecolor=det_color,
             markeredgecolor=text_color,
             markeredgewidth=0.0,
             label="Gravitational Wave Detector" if format == "poster" else "Detector",
@@ -2129,6 +2210,15 @@ def _draw_constellation_name(
         ra_offset_deg: Right ascension offset in degrees. Positive moves in the direction
             of increasing RA (counterclockwise from the north pole).
     """
+    # Debug: Print for Columba
+    is_columba = "Columba" in const_name
+    if is_columba:
+        print(f"\n=== DRAWING COLUMBA ===")
+        print(f"  Input const_name: {const_name}")
+        print(f"  Panel: {panel}")
+        print(f"  center_ra_rad: {center_ra_rad}, center_dec_rad: {center_dec_rad}")
+        print(f"  dec_offset_deg: {dec_offset_deg}, ra_offset_deg: {ra_offset_deg}")
+    
     # Apply declination and RA offsets
     center_dec_rad_adjusted = center_dec_rad + np.deg2rad(dec_offset_deg)
     center_ra_rad_adjusted = center_ra_rad + np.deg2rad(ra_offset_deg)
@@ -2136,6 +2226,9 @@ def _draw_constellation_name(
     # Split on newlines and draw each line as a separate curved arc
     lines = const_name.split('\n')
     n_lines = len(lines)
+    
+    if is_columba:
+        print(f"  n_lines: {n_lines}, lines: {lines}")
     
     # For multi-line names, offset each line radially to spread them out
     # Adjust radius for each line based on its position
@@ -2150,14 +2243,6 @@ def _draw_constellation_name(
             radius_adjustments.append(offset)
     else:
         radius_adjustments = [0.0]
-    
-    # Draw each line
-    for line_idx, line_text in enumerate(lines):
-        radius_adjustment = radius_adjustments[line_idx]
-        # For southern hemisphere, reverse the radial offset for multi-line names
-        # so text order appears correctly from the pole perspective
-        if panel == "south" and n_lines > 1:
-            radius_adjustment = -radius_adjustment
     
     # Calculate base radius in plot coordinates for this declination
     if panel == "north":
@@ -2205,11 +2290,6 @@ def _draw_constellation_name(
                 dx, dy = dy, -dx
             return np.degrees(np.arctan2(dy, dx))
         
-        # Determine orientation based on center position
-        base_rot = _travel_angle_deg(center_ang_deg)
-        norm = ((base_rot + 180.0) % 360.0) - 180.0
-        flipped = norm > 90.0 or norm < -90.0
-        
         # Build a circle arc at this declination for arc-length based positioning
         # Sample angles around the center position with enough range for the constellation name
         angle_range = 60  # degrees on each side of center
@@ -2226,11 +2306,24 @@ def _draw_constellation_name(
         
         n = len(line_text)
         letter_pos = centre + (np.arange(n) - (n - 1) / 2.0) * arc_spacing
+        
+        # Determine orientation based on center position (location-based, not name-based)
+        base_rot = _travel_angle_deg(center_ang_deg)
+        norm = ((base_rot + 180.0) % 360.0) - 180.0
+        flipped = norm > 90.0 or norm < -90.0
+        
         if flipped:
             letter_pos = letter_pos[::-1]
         
+        if is_columba:
+            print(f"  Line {line_idx}: '{line_text}'")
+            print(f"    base_rot={base_rot}, norm={norm}, flipped={flipped}")
+            print(f"    letter_pos: {letter_pos}")
+        
         # Draw each character at its arc-length position
         for char, target_s in zip(line_text, letter_pos):
+            if is_columba:
+                print(f"      Drawing '{char}' at arc_s={target_s}")
             if target_s < 0 or target_s > s[-1]:
                 continue  # Skip if outside arc bounds
             
@@ -2266,6 +2359,9 @@ def _draw_constellation_name(
                 path_effects=[pe.withStroke(linewidth=1, foreground=outline_color)],
                 zorder=zorder,
             )
+    
+    if is_columba:
+        print(f"=== DONE DRAWING COLUMBA ===\n")
 
 _fp_cache = {}
 
