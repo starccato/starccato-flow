@@ -486,6 +486,69 @@ class ConditionalVAETrainer:
 
         print(f"Saved latent space plot to {fname}")
 
+    def _compute_mmd(self, signals1: np.ndarray, signals2: np.ndarray, sigma: float = None) -> float:
+        """Compute Maximum Mean Discrepancy (MMD) between two sets of signals.
+        
+        MMD is a distance metric between distributions. It's computed as:
+        MMD(X, Y) = E[k(X, X)] + E[k(Y, Y)] - 2*E[k(X, Y)]
+        
+        where k is a kernel function (RBF kernel used here).
+        
+        Signals are used in raw form, preserving amplitude information for comparison.
+        
+        Args:
+            signals1: Signals array of shape (signal_length, num_samples1)
+            signals2: Signals array of shape (signal_length, num_samples2)
+            sigma: Bandwidth parameter for RBF kernel. If None, uses median heuristic.
+        
+        Returns:
+            float: MMD value (always non-negative)
+        """
+        # Use raw signals (no normalization) to preserve amplitude information
+        X = signals1.T  # (num_samples1, signal_length)
+        Y = signals2.T  # (num_samples2, signal_length)
+        
+        n, m = X.shape[0], Y.shape[0]
+        
+        # Compute pairwise Euclidean distances using raw signals
+        X_sqnorms = np.sum(X ** 2, axis=1, keepdims=True)  # (n, 1)
+        Y_sqnorms = np.sum(Y ** 2, axis=1, keepdims=True)  # (m, 1)
+        
+        # X_i - Y_j squared distances
+        XY = 2 * np.dot(X, Y.T)  # (n, m)
+        XY_dist_sq = X_sqnorms + Y_sqnorms.T - XY  # (n, m)
+        
+        # X_i - X_j squared distances
+        XX_dist_sq = X_sqnorms + X_sqnorms.T - 2 * np.dot(X, X.T)  # (n, n)
+        
+        # Y_i - Y_j squared distances
+        YY_dist_sq = Y_sqnorms + Y_sqnorms.T - 2 * np.dot(Y, Y.T)  # (m, m)
+        
+        # Adaptive bandwidth: use median heuristic if sigma not provided
+        if sigma is None:
+            # Use median distance as bandwidth (common heuristic)
+            # Add small epsilon to avoid division by zero
+            median_dist_sq = np.median(XY_dist_sq)
+            sigma = np.sqrt(median_dist_sq + 1e-10) if median_dist_sq > 0 else 1.0
+        
+        # RBF kernel: k(x, y) = exp(-||x - y||^2 / (2 * sigma^2))
+        gamma = 1.0 / (2.0 * sigma ** 2)
+        
+        # Compute kernel values with clipping to prevent underflow
+        KXX = np.exp(-gamma * np.clip(XX_dist_sq, 0, 100))  # Clip to prevent underflow
+        KYY = np.exp(-gamma * np.clip(YY_dist_sq, 0, 100))  # Clip to prevent underflow
+        KXY = np.exp(-gamma * np.clip(XY_dist_sq, 0, 100))  # Clip to prevent underflow
+        
+        # Compute MMD: E[k(X,X)] + E[k(Y,Y)] - 2*E[k(X,Y)]
+        # Diagonal terms don't count in E[k(X,X)] (comparing different samples)
+        mmd_xx = (np.sum(KXX) - n) / (n * (n - 1)) if n > 1 else 0  # Exclude diagonal
+        mmd_yy = (np.sum(KYY) - m) / (m * (m - 1)) if m > 1 else 0  # Exclude diagonal
+        mmd_xy = np.sum(KXY) / (n * m)
+        
+        mmd = np.sqrt(max(0, mmd_xx + mmd_yy - 2 * mmd_xy))
+        
+        return mmd
+
     def display_results(self, background="black", fname_total=None, fname_recon=None, fname_kld=None, font_family="Serif", font_name="Times New Roman"):
         """Display training results."""        
         # Plot total losses
@@ -657,8 +720,12 @@ class ConditionalVAETrainer:
         beta_min: float = 0.0,
         beta_max: float = 0.25,
         figsize: tuple[float, float] = (14.5, 10)
-    ) -> np.ndarray:
-
+    ) -> dict:
+        """Compare generated and real signal distributions using MMD.
+        
+        Returns:
+            dict: Contains 'mmd', 'mmd_normalized', 'generated_signals', 'target_signals'
+        """
         from ..utils.defaults_plotting import CM_TO_INCHES  # or wherever this lives
 
         individual_fig_size = (figsize[0] / 2, figsize[1])
@@ -670,7 +737,8 @@ class ConditionalVAETrainer:
         )
         fig.subplots_adjust(left=0.08, right=0.98, wspace=0.15)
 
-        self.generate_and_plot_signal_distribution(
+        # Generate signals and get return value
+        generated_signals = self.generate_and_plot_signal_distribution(
             num_samples=num_samples,
             background=background,
             font_family=font_family,
@@ -691,9 +759,76 @@ class ConditionalVAETrainer:
             font_family=font_family
         )
 
+        # Get target signals filtered by beta range
+        target_signals = self.full_dataset.signals  # shape: (signal_length, num_signals)
+        target_params = self.full_dataset.parameters  # shape: (num_signals, param_dim)
+        
+        beta = target_params[:, self.beta_param_index]
+        mask = (beta >= beta_min) & (beta <= beta_max)
+        target_signals_filtered = target_signals[:, mask]  # (signal_length, num_filtered)
+        
+        # No scaling needed - z-score normalization in MMD handles scale automatically
+        # Both generated_signals and target_signals come pre-scaled from their respective datasets
+        mmd_value = self._compute_mmd(
+            generated_signals,  # (signal_length, num_samples), scaled by training_dataset.shared_max_strain
+            target_signals_filtered  # (signal_length, num_filtered), in raw form from full_dataset
+        )
+        
+        # Compute baseline MMD using multiple bootstrap splits for robustness
+        # This provides a noise floor estimate - the MMD we'd see between two independent samples from the same distribution
+        n_target = target_signals_filtered.shape[1]
+        num_bootstrap = 30  # Multiple splits for stable estimate (higher resolution for reliable noise floor)
+        mmd_target_list = []
+        
+        for _ in range(num_bootstrap):
+            perm = np.random.permutation(n_target)
+            half = n_target // 2
+            target_a = target_signals_filtered[:, perm[:half]]
+            target_b = target_signals_filtered[:, perm[half:]]
+            mmd_val = self._compute_mmd(target_a, target_b)
+            
+            # Skip NaN/Inf values that can arise from numerical edge cases
+            if np.isfinite(mmd_val) and mmd_val > 0:
+                mmd_target_list.append(mmd_val)
+        
+        # If no valid values, use the computed values anyway (rare edge case)
+        if len(mmd_target_list) == 0:
+            mmd_target_list = [1e-6]  # Fallback to avoid division by zero
+        
+        mmd_target_mean = np.mean(mmd_target_list)
+        mmd_target_std = np.std(mmd_target_list)
+        
+        # Normalized MMD ratio
+        mmd_normalized = mmd_value / mmd_target_mean if mmd_target_mean > 0 else mmd_value
+        
+        print(f"\n{'='*60}")
+        print(f"MMD Analysis (beta_min={beta_min}, beta_max={beta_max}):")
+        print(f"{'='*60}")
+        print(f"MMD(generated, target) = {mmd_value:.6f}")
+        print(f"MMD(target_a, target_b) [noise floor, {len(mmd_target_list)}/{num_bootstrap} valid splits]")
+        print(f"  Mean  = {mmd_target_mean:.6f}")
+        print(f"  Std   = {mmd_target_std:.6f}")
+        print(f"Normalized MMD         = {mmd_normalized:.6f}")
+        print(f"  (generated vs target MMD divided by target noise floor)")
+        print(f"Number of generated samples: {generated_signals.shape[1]}")
+        print(f"Number of target samples:    {target_signals_filtered.shape[1]}")
+        print(f"{'='*60}\n")
+
         plt.tight_layout()
         if fname:
             plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background == "black"))
+        
+        return {
+            'mmd': mmd_value,
+            'mmd_normalized': mmd_normalized,
+            'mmd_target_mean': mmd_target_mean,
+            'mmd_target_std': mmd_target_std,
+            'mmd_target_all': mmd_target_list,
+            'generated_signals': generated_signals,
+            'target_signals': target_signals_filtered,
+            'num_generated': generated_signals.shape[1],
+            'num_target': target_signals_filtered.shape[1]
+        }
 
     
     def generate_and_plot_signal_distribution(

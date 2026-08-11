@@ -4,82 +4,28 @@ from torch import Tensor
 from ..utils.defaults_general import Y_LENGTH, HIDDEN_DIM
 
 class FlowFCL(nn.Module):
-    """Fully Connected Layers version of Flow with batch normalization and deeper architecture.
-    
-    Improvements:
-    - Batch normalization after each layer for training stability
-    - Deeper network with more hidden layers
-    - Better capacity for learning complex signal-parameter mappings
-    """
+    """Fully Connected Layers version of Flow (original implementation)."""
     def __init__(self, dim: int = 8, signal_dim: int = 3 * Y_LENGTH, h: int = HIDDEN_DIM):
         super().__init__()
-        # Deeper signal encoder with batch normalization
-        self.signal_fc1 = nn.Linear(signal_dim, h)
-        self.signal_bn1 = nn.BatchNorm1d(h)
-        
-        self.signal_fc2 = nn.Linear(h, h)
-        self.signal_bn2 = nn.BatchNorm1d(h)
-        
-        self.signal_fc3 = nn.Linear(h, h // 2)
-        self.signal_bn3 = nn.BatchNorm1d(h // 2)
-        
-        # Deeper main network with batch normalization
-        self.fc1 = nn.Linear(dim + 1 + h // 2, h)
-        self.bn1 = nn.BatchNorm1d(h)
-        
-        self.fc2 = nn.Linear(h, h)
-        self.bn2 = nn.BatchNorm1d(h)
-        
-        self.fc3 = nn.Linear(h, h)
-        self.bn3 = nn.BatchNorm1d(h)
-        
-        self.fc4 = nn.Linear(h, h // 2)
-        self.bn4 = nn.BatchNorm1d(h // 2)
-        
-        self.fc5 = nn.Linear(h // 2, dim)
-        
-        self.act = nn.GELU()
+        # Encode signal separately first
+        self.signal_encoder = nn.Sequential(
+            nn.Linear(signal_dim, h), nn.GELU(),
+            nn.Linear(h, h // 2), nn.GELU()
+        )
+        # Then combine with parameters
+        self.net = nn.Sequential(
+            nn.Linear(dim + 1 + h // 2, h), nn.GELU(),
+            nn.Linear(h, h), nn.GELU(),
+            nn.Linear(h, dim)
+        )
     
     def forward(self, x_t: Tensor, t: Tensor, h: Tensor) -> Tensor:
         # Accept either flattened signals (B, 3*Y_LENGTH) or channel-first (B, 3, Y_LENGTH).
         if h.dim() == 3:
             h = h.view(h.size(0), -1)
 
-        # Deeper signal encoder with batch norm
-        h_encoded = self.signal_fc1(h)
-        h_encoded = self.signal_bn1(h_encoded)
-        h_encoded = self.act(h_encoded)
-        
-        h_encoded = self.signal_fc2(h_encoded)
-        h_encoded = self.signal_bn2(h_encoded)
-        h_encoded = self.act(h_encoded)
-        
-        h_encoded = self.signal_fc3(h_encoded)
-        h_encoded = self.signal_bn3(h_encoded)
-        h_encoded = self.act(h_encoded)
-        
-        # Deeper main network with batch norm
-        combined = torch.cat((t, x_t, h_encoded), -1)
-        
-        out = self.fc1(combined)
-        out = self.bn1(out)
-        out = self.act(out)
-        
-        out = self.fc2(out)
-        out = self.bn2(out)
-        out = self.act(out)
-        
-        out = self.fc3(out)
-        out = self.bn3(out)
-        out = self.act(out)
-        
-        out = self.fc4(out)
-        out = self.bn4(out)
-        out = self.act(out)
-        
-        out = self.fc5(out)
-        
-        return out
+        h_encoded = self.signal_encoder(h)
+        return self.net(torch.cat((t, x_t, h_encoded), -1))
     
     def step(self, x_t: Tensor, t_start: Tensor, t_end: Tensor, h: Tensor) -> Tensor:
         # Ensure t_start and t_end are on the same device as x_t

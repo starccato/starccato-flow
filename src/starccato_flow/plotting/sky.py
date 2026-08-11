@@ -581,7 +581,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     show_constellation_borders: bool = False,
     show_constellation_names: bool = False,
     constellations: bool = True,
-    show_stars: bool = True,
+    show_stars: bool = False,
     galactic_contour: bool = True,
     galaxy: bool = True,
     background: str = "black",
@@ -1275,6 +1275,9 @@ def plot_galactic_supernovae_polar_hemispheres(
                     ra_offset_deg=ra_offset
                 )
 
+    # Initialize greek_labels (will be populated if show_stars is True)
+    greek_labels = {}
+    
     if show_stars:
         stars = _stars_and_magnitudes()
 
@@ -1386,12 +1389,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             if const_abbr == "Col":
                 print(f"=== DONE WITH COLUMBA GREEK LETTERS ===\n")
     
-    # Count total alphas plotted (should be much fewer now)
-    total_alphas = sum(1 for const_abbr, star_labels in greek_labels.items() 
-                       for label_ra, label_dec, greek_label in star_labels 
-                       if greek_label == "α")
-    print(f"\n*** TOTAL ALPHAS IN greek_labels (major constellations only): {total_alphas} ***\n")
-
     if galaxy:
         # Keep Galactic Center fixed to the physical galactic center direction.
         gc_ra, gc_dec = ccsn.get_galactic_center_direction()

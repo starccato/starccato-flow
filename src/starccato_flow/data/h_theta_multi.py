@@ -60,10 +60,12 @@ class hThetaMulti(Dataset):
         intrinsic_param_names: Optional[List[str]] = None,
         use_physics_aware_norm: bool = True,  # Use parameter-specific normalization
         use_measured_psd: bool = True,  # Use measured sensitivity curves for noise generation
+        log: bool = True,  # Control verbose logging during initialization
     ):
         """Initialize multi-channel CCSN dataset with generated data."""
         self.batch_size = batch_size
         self.detector_noise_on = detector_noise_on
+        self.log = log  # Store logging flag
         self.s = self._coerce_signal_matrix(s)
         self.shared_max_strain = shared_max_strain
         self.theta = self._coerce_theta_matrix(theta)
@@ -132,27 +134,28 @@ class hThetaMulti(Dataset):
             )
 
         # Print parameter bounds
-        print(f"\n{'='*70}")
-        print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.shared_min_theta)} parameters)")
-        print(f"{'='*70}")
-        print("INTRINSIC PARAMETERS:")
-        # Use provided intrinsic parameter names, or fall back to generic labels
-        if self.intrinsic_param_names:
-            intrinsic_labels = self.intrinsic_param_names
-        else:
-            intrinsic_labels = ['beta1_IC_b', 'omega_0(rad|s)', 'A(km)', 'Ye_c_b']
-        
-        for i in range(theta_dim):
-            param_label = intrinsic_labels[i] if i < len(intrinsic_labels) else f'theta_{i}'
-            print(f"  {param_label:20s}: [{self.shared_min_theta[i]:12.6f}, {self.shared_max_theta[i]:12.6f}]")
-        
-        print("\nEXTRINSIC (SKY) PARAMETERS:")
-        extrinsic_labels = ['ra', 'dec', 'd', 'psi']
-        for i, label in enumerate(extrinsic_labels):
-            idx = theta_dim + i
-            if idx < len(self.shared_min_theta):
-                print(f"  {label:20s}: [{self.shared_min_theta[idx]:12.6f}, {self.shared_max_theta[idx]:12.6f}]")
-        print(f"{'='*70}\n")
+        if self.log:
+            print(f"\n{'='*70}")
+            print(f"hThetaMulti Dataset - Parameter Bounds ({len(self.shared_min_theta)} parameters)")
+            print(f"{'='*70}")
+            print("INTRINSIC PARAMETERS:")
+            # Use provided intrinsic parameter names, or fall back to generic labels
+            if self.intrinsic_param_names:
+                intrinsic_labels = self.intrinsic_param_names
+            else:
+                intrinsic_labels = ['beta1_IC_b', 'omega_0(rad|s)', 'A(km)', 'Ye_c_b']
+            
+            for i in range(theta_dim):
+                param_label = intrinsic_labels[i] if i < len(intrinsic_labels) else f'theta_{i}'
+                print(f"  {param_label:20s}: [{self.shared_min_theta[i]:12.6f}, {self.shared_max_theta[i]:12.6f}]")
+            
+            print("\nEXTRINSIC (SKY) PARAMETERS:")
+            extrinsic_labels = ['ra', 'dec', 'd', 'psi']
+            for i, label in enumerate(extrinsic_labels):
+                idx = theta_dim + i
+                if idx < len(self.shared_min_theta):
+                    print(f"  {label:20s}: [{self.shared_min_theta[idx]:12.6f}, {self.shared_max_theta[idx]:12.6f}]")
+            print(f"{'='*70}\n")
 
         if self.shared_max_strain is None:
             self.shared_max_strain = np.max(np.abs(self.s))
@@ -177,14 +180,15 @@ class hThetaMulti(Dataset):
         self.multi_channel_signals = self._project_to_detectors()        
         self.param_dim = self.parameters.shape[1]
         
-        print(f"\n=== Multi-Channel Dataset Info ===")
-        print(f"Detectors: {', '.join(self.detectors)} ({self.num_detectors} channels)")
-        print(f"Signals per channel: {self.s.shape[1]}")
-        print(f"Multi-channel shape: {self.multi_channel_signals.shape}")
-        print(f"Parameter dimension: {self.param_dim}")
-        if self.include_sky_params:
-            print(f"Parameters include theta + sky: [ra, dec, d, polar_angle]")
-        print("=" * 50)
+        if self.log:
+            print(f"\n=== Multi-Channel Dataset Info ===")
+            print(f"Detectors: {', '.join(self.detectors)} ({self.num_detectors} channels)")
+            print(f"Signals per channel: {self.s.shape[1]}")
+            print(f"Multi-channel shape: {self.multi_channel_signals.shape}")
+            print(f"Parameter dimension: {self.param_dim}")
+            if self.include_sky_params:
+                print(f"Parameters include theta + sky: [ra, dec, d, polar_angle]")
+            print("=" * 50)
 
     @staticmethod
     def _coerce_signal_matrix(s):

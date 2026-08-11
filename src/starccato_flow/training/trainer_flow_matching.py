@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 
 from ..data.s_theta import sTheta
 from ..data.h_theta_multi import hThetaMulti
@@ -606,6 +607,7 @@ class FlowMatchingTrainer:
             fontsize_title=fontsize_title,
             figsize=figsize_detector_signals
         )
+        plt.close('all')
         # Generate posterior samples once and reuse for both plots
         posterior_samples_denorm, true_param_denorm, _ = self._generate_posterior_samples(
             case, active_h_theta_multi, num_samples=num_samples, n_steps=20
@@ -623,6 +625,7 @@ class FlowMatchingTrainer:
             fontsize_title=fontsize_title,
             fontsize_tick=fontsize_tick
         )
+        plt.close('all')
         # Debug: print true parameters being plotted
         print(f"\nTrue parameters to plot:")
         for i, param in enumerate(self.parameters_to_estimate):
@@ -641,10 +644,11 @@ class FlowMatchingTrainer:
             transparent=True,
             format=format,
             background=background,
-            constellations=True,
+            constellations=False,
             show_stars=False,
             coastline=False,
         )
+        plt.close('all')
         # self.plot_sky_localisation_sampled_signal(
         #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
         #     font_family=font_family,
@@ -652,25 +656,27 @@ class FlowMatchingTrainer:
         #     transparent=True
         # )
         # Plot zoomed version (10 kpc around sun) - transparent
-        self.plot_galactic_distribution_with_posterior_zoom(
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom.svg"),
-            posterior_samples_denorm=posterior_samples_denorm,
-            true_param_denorm=true_param_denorm,
-            font_family=font_family,
-            font_name=font_name,
-            transparent=transparent,
-            background=background
-        )
+        # self.plot_galactic_distribution_with_posterior_zoom(
+        #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom.svg"),
+        #     posterior_samples_denorm=posterior_samples_denorm,
+        #     true_param_denorm=true_param_denorm,
+        #     font_family=font_family,
+        #     font_name=font_name,
+        #     transparent=transparent,
+        #     background=background
+        # )
+        plt.close('all')
         # Plot zoomed version (10 kpc around sun) - navy background
-        self.plot_galactic_distribution_with_posterior_zoom(
-            fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom_navy.svg"),
-            posterior_samples_denorm=posterior_samples_denorm,
-            true_param_denorm=true_param_denorm,
-            font_family=font_family,
-            font_name=font_name,
-            transparent=False,
-            background="#00001e"
-        )
+        # self.plot_galactic_distribution_with_posterior_zoom(
+        #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_galactic_zoom.png") if fname_posterior_galactic is None else fname_posterior_galactic.replace(".svg", "_zoom_navy.svg"),
+        #     posterior_samples_denorm=posterior_samples_denorm,
+        #     true_param_denorm=true_param_denorm,
+        #     font_family=font_family,
+        #     font_name=font_name,
+        #     transparent=False,
+        #     background="#00001e"
+        # )
+        plt.close('all')
         # export each channel of the signal as a separate .txt file for external analysis
         if export_on:
             export_dir = os.path.join(self.outdir, "exported_signals")
@@ -733,7 +739,8 @@ class FlowMatchingTrainer:
                 font_name=font_name,
                 figsize=(14.5, 8),
                 fname=os.path.join(epoch_data_dir, f"{filename_suffix}_eos_ye.png") if fname_eos_ye is None else fname_eos_ye,
-            ) 
+            )
+            plt.close('all') 
 
     def train(self):
         t0 = time.time()
@@ -853,12 +860,13 @@ class FlowMatchingTrainer:
                     random_polarization=True,
                     seed=epoch + 1000,  # Different seed range for validation set
                     intrinsic_param_names=self.intrinsic_params,
-                    use_physics_aware_norm=self.use_physics_aware_norm
+                    use_physics_aware_norm=self.use_physics_aware_norm,
+                    log=False
                 )
                 self.h_theta_multi_val_loader = DataLoader(
                     self.h_theta_multi_val,
                     shuffle=False,
-                    **loader_kwargs,
+                    **loader_kwargs
                 )
 
                 for val_signal, val_noisy_signal, val_params in self.h_theta_multi_val_loader:
@@ -1005,7 +1013,8 @@ class FlowMatchingTrainer:
                 random_polarization=True,
                 seed=1000,
                 intrinsic_param_names=self.intrinsic_params,
-                use_physics_aware_norm=self.use_physics_aware_norm
+                use_physics_aware_norm=self.use_physics_aware_norm,
+                log=False
             )
             print(f"✓ Created validation dataset with {len(h_theta_multi_val)} signals")
                 
@@ -1020,7 +1029,7 @@ class FlowMatchingTrainer:
         
         posterior_samples_list = []
         true_params_list = []
-        credible_areas = {0.50: [], 0.68: [], 0.90: [], 0.95: []}
+        credible_areas = {0.68: [], 0.90: [], 0.95: []}
         d_true_list = []  # Track true distance for each signal
         angular_error_list = []  # Track angular error for each signal
         
@@ -1124,7 +1133,7 @@ class FlowMatchingTrainer:
                         dec_samples = samples_denorm_all[i, :, dec_idx]
                         
                         # Compute credible areas for this signal
-                        areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])])
+                        areas = self.compute_sky_localization_credible_areas([np.column_stack([ra_samples, dec_samples])], credible_levels=(0.68, 0.90, 0.95))
                         for level, area in areas.items():
                             credible_areas[level].append(area[0])
                         
@@ -1175,10 +1184,10 @@ class FlowMatchingTrainer:
             )
 
         if d_idx >= 0 and len(d_true_list) > 0:
-            # Plot sky area vs true distance for 50% credible level
+            # Plot sky area vs true distance for 68% credible level
             plot_distance_credible_intervals(
                 d_true_list=np.array(d_true_list),
-                area_50cl=np.array(credible_areas[0.50]),
+                area_50cl=np.array(credible_areas[0.68]),
                 fname=fname_distance_credible_intervals if fname_distance_credible_intervals is not None else os.path.join(outdir, "distance_credible_intervals.pdf"),
                 show=False,
                 font_family=font_family,
@@ -1747,7 +1756,8 @@ class FlowMatchingTrainer:
             random_polarization=True,
             seed=1000,
             intrinsic_param_names=self.intrinsic_params,
-            use_physics_aware_norm=self.use_physics_aware_norm
+            use_physics_aware_norm=self.use_physics_aware_norm,
+            log=False
         )
 
         computation_times = []
@@ -1955,7 +1965,8 @@ class FlowMatchingTrainer:
             random_polarization=True,
             seed=1,
             intrinsic_param_names=self.intrinsic_params,
-            use_physics_aware_norm=self.use_physics_aware_norm
+            use_physics_aware_norm=self.use_physics_aware_norm,
+            log=False
         )
         
         # Get the multi-channel signals
