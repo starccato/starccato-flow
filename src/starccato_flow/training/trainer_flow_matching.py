@@ -1176,7 +1176,7 @@ class FlowMatchingTrainer:
                 credible_areas,
                 fname=fname_area_v_probability if fname_area_v_probability is not None else os.path.join(outdir, "sky_localization_credible_areas.png"),
                 show=False,
-                figsize=(14.5, 14.5),
+                figsize=(10.0, 14.5),
                 background=background,
                 font_family=font_family,
                 font_name=font_name,
