@@ -593,6 +593,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     n_background_supernovae: int = 20000,
     coastline: bool = False,
     figsize: tuple[float, float] | None = None,
+    credible_area_labels: dict | None = None,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -641,7 +642,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             "figsize_mm": (145, 190),  # 14.5 x 19 cm portrait
             "fontsize_title": 11,
             "fontsize_milky_way": 7,
-            "fontsize_main": 11,
+            "fontsize_main": 9,
             "fontsize_label": 11,
             "fontsize_tick": 11,
             "fontsize_small": 7,
@@ -1532,28 +1533,33 @@ def plot_galactic_supernovae_polar_hemispheres(
                 zorder=20
             )
 
+            # Build legend labels with optional credible area information
+            label_95 = credible_area_labels[0.95] if credible_area_labels else "95%"
+            label_90 = credible_area_labels[0.90] if credible_area_labels else "90%"
+            label_68 = credible_area_labels[0.68] if credible_area_labels else "68%"
+
             posterior_legend_handles = [
                 Patch(
                     facecolor=red_fill_colors[0],
                     edgecolor="none",
-                    label="95%",
+                    label=label_95,
                 ),
                 Patch(
                     facecolor=red_fill_colors[1],
                     edgecolor="none",
-                    label="90%",
+                    label=label_90,
                 ),
                 Patch(
                     facecolor=red_fill_colors[2],
                     edgecolor="none",
-                    label="68%",
+                    label=label_68,
                 ),
             ]
             if format == "thesis":
                 # Use a blank-handle entry for "Credible Intervals:" instead of the legend's
                 # `title=` row - a separate title row adds height above the axes and was
                 # getting clipped against the figure edge. This keeps everything on one line.
-                inline_title_handle = Patch(facecolor="none", edgecolor="none", label="Credible Intervals:")
+                inline_title_handle = Patch(facecolor="none", edgecolor="none", label="Credible Levels:")
                 ci_legend = ax_l.legend(
                     handles=[inline_title_handle] + posterior_legend_handles,
                     loc="lower center",
@@ -1582,7 +1588,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                     handletextpad=0.5,
                     columnspacing=0.8,
                     borderaxespad=0.0,
-                    title="Credible Intervals",
+                    title="Credible Levels",
                     title_fontsize=fontsize_main,
                 )
 

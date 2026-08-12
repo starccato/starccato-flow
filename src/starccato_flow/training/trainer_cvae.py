@@ -17,7 +17,7 @@ from ..utils.defaults_general import TEN_KPC, Y_LENGTH, HIDDEN_DIM, Z_DIM, BATCH
 from . import create_train_val_split         
 from ..plotting import plot_loss
 from ..plotting.signals import plot_reconstruction, plot_signal_distribution, plot_signal_grid
-from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down
+from ..plotting.latent import plot_latent_space_2d_3d, plot_latent_morphs, plot_latent_morph_up_and_down, plot_latent_space_2d_3d_stacked
 from ..utils.defaults_plotting import PARAMETER_LABELS
 
 def _set_seed(seed: int):
@@ -485,6 +485,62 @@ class ConditionalVAETrainer:
         )
 
         print(f"Saved latent space plot to {fname}")
+
+    def _plot_latent_space_stacked(self, fname=None, epoch=None, figsize=tuple[float, float], font_family="Serif", font_name="Times New Roman"):
+        """Plot the latent space of the validation set coloured by rotation class with plots stacked vertically."""
+        self.cvae.eval()
+
+        latent_means_list = []
+        param_list = []
+
+        with torch.no_grad():
+            for batch_idx in range(len(self.val_loader.dataset)):
+                _, noisy_signal, params = self.val_loader.dataset.__getitem__(batch_idx)
+
+                noisy_signal = noisy_signal.view(1, -1).to(DEVICE)
+                params = params.view(1, -1).to(DEVICE)
+
+                mean, _ = self.cvae.encoder(noisy_signal, params)
+
+                latent_means_list.append(mean.cpu().numpy())
+                param_list.append(params.cpu().numpy())
+
+        latent_means = np.vstack(latent_means_list)
+        param_denorm = self.validation_dataset.denormalize_parameters(
+            np.vstack(param_list)
+        )
+
+        point_colors = None
+
+        if self.beta_param_index is not None:
+            beta_values = param_denorm[:, self.beta_param_index]
+
+            point_colors = np.empty(len(beta_values), dtype=object)
+
+            point_colors[np.isclose(beta_values, 0.0)] = "grey"
+            point_colors[(beta_values > 0.0) & (beta_values <= 0.06)] = "#6baed6"
+            point_colors[(beta_values > 0.06) & (beta_values <= 0.17)] = "#fdae6b"
+            point_colors[beta_values > 0.17] = "#de2d26"
+
+        if fname is None:
+            fname = os.path.join(
+                self.outdir,
+                "cvae",
+                "cvae_latent_space_stacked.svg",
+            )
+
+        plot_latent_space_2d_3d_stacked(
+            latent_means=latent_means,
+            fname=fname,
+            background="white",
+            point_colors=point_colors,
+            figsize=figsize,
+            fontsize_title=11,
+            fontsize_tick=9,
+            font_name=font_name
+        )
+
+        print(f"Saved latent space stacked plot to {fname}")
 
     def _compute_mmd(self, signals1: np.ndarray, signals2: np.ndarray, sigma: float = None) -> float:
         """Compute Maximum Mean Discrepancy (MMD) between two sets of signals.

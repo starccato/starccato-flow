@@ -895,3 +895,142 @@ def plot_latent_space_2d_3d(
         )
 
     plt.close()
+
+
+def plot_latent_space_2d_3d_stacked(
+    latent_means: np.ndarray,
+    fname: Optional[str] = None,
+    background: str = "white",
+    point_colors: Optional[np.ndarray] = None,
+    figsize: Tuple[float, float] = (14.5, 14.5),
+    fontsize_title: float = 11,
+    fontsize_tick: float = 11,
+    font_name="Times New Roman",
+):
+    """Plot three 2D projections of the latent space in a 2x2 grid with legend in fourth quadrant."""
+
+    n_samples = min(2000, len(latent_means))
+    sample_indices = np.random.choice(
+        len(latent_means),
+        n_samples,
+        replace=False,
+    )
+
+    latent_sample = latent_means[sample_indices]
+    colours = (
+        point_colors[sample_indices]
+        if point_colors is not None
+        else "tab:blue"
+    )
+
+    text_colour = "white" if background == "black" else "black"
+
+    fig = plt.figure(figsize=(figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES), facecolor=background)
+    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+
+    projections = [
+        (0, 1),
+        (1, 2),
+        (0, 2),
+    ]
+
+    # Plot three projections in 2x2 grid (top-left, top-right, bottom-left)
+    positions = [(0, 0), (0, 1), (1, 0)]
+
+    for idx, ((dim1, dim2), (row, col)) in enumerate(zip(projections, positions)):
+
+        ax = fig.add_subplot(gs[row, col], facecolor=background)
+
+        ax.scatter(
+            latent_sample[:, dim1],
+            latent_sample[:, dim2],
+            c=colours,
+            s=5,
+            alpha=0.7,
+            edgecolors="none",
+        )
+
+        ax.set_xlabel(f"Latent Dimension {dim1}", fontsize=fontsize_title, font=font_name)
+        ax.set_ylabel(f"Latent Dimension {dim2}", fontsize=fontsize_title, font=font_name)
+
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-4, 4)
+        ax.set_aspect("equal")
+
+        ax.tick_params(
+            colors=text_colour,
+            labelsize=fontsize_tick,
+            labelfontfamily=font_name
+        )
+
+        ax.xaxis.label.set_color(text_colour)
+        ax.yaxis.label.set_color(text_colour)
+
+        for spine in ax.spines.values():
+            spine.set_color(text_colour)
+            spine.set_linewidth(0.5)
+
+    # Add legend in the fourth quadrant (bottom-right)
+    ax_legend = fig.add_subplot(gs[1, 1], facecolor=background)
+    ax_legend.axis("off")  # Hide the axes for this quadrant
+
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="grey",
+            markeredgecolor="none",
+            markersize=8,
+            label="No rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#6baed6",
+            markeredgecolor="none",
+            markersize=8,
+            label="Slow rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#fdae6b",
+            markeredgecolor="none",
+            markersize=8,
+            label="Rapid rotation",
+        ),
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor="#de2d26",
+            markeredgecolor="none",
+            markersize=8,
+            label="Extreme rotation",
+        ),
+    ]
+
+    ax_legend.legend(
+        handles=legend_elements,
+        loc="center",
+        frameon=False,
+        fontsize=fontsize_tick,
+        labelcolor=text_colour,
+        handletextpad=0.8,
+        prop={'family': font_name}
+    )
+
+    if fname is not None:
+        plt.savefig(
+            fname,
+            dpi=300,
+            bbox_inches="tight",
+            facecolor=background,
+        )
+
+    plt.close()

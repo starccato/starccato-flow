@@ -450,16 +450,24 @@ def plot_sky_localization_cumulative_areas(
         areas_sorted = np.sort(areas)
         cumulative_frac = np.arange(1, len(areas_sorted) + 1) / len(areas_sorted)
         
+        # Calculate and print median
+        median_area = np.median(areas)
+        print(f"{int(100*level)}% Credible Level: Median area = {median_area:.2f} deg²")
+        
         ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% Credible Level", 
                 color=colors[level], linewidth=2)
     
     ax.set_xlabel('Sky Area (deg²)', fontsize=11)
     ax.set_ylabel('Cumulative Fraction of Signals', fontsize=11)
     ax.set_ylim(0, 1)
+    ax.axvline(9.6, color='grey', linestyle='--', linewidth=1)
+    ax.text(9.6, 0.5, 'Vera Rubin FOV (9.6 deg²)', fontsize=9, 
+            color='grey', ha='right', va='center', rotation=90)
+    ax.legend(loc='upper left', fontsize=10)
     ax.tick_params(labelsize=11)
     ax.set_xscale('log')
+    ax.set_xlim(1, 1000)
     ax.grid(True, alpha=0.3)
-    ax.legend()
     plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
     if show:
         plt.show()

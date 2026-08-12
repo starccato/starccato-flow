@@ -1526,7 +1526,8 @@ class FlowMatchingTrainer:
         background: str = "white",
         constellations: bool = False,
         show_stars: bool = True,
-        coastline: bool = True
+        coastline: bool = True,
+        calculate_credible_area: bool = True
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot or background skymap.
         
@@ -1538,12 +1539,15 @@ class FlowMatchingTrainer:
             font_name: Font name for plot text
             transparent: Whether to save with transparent background
             format: Layout format - "poster" or "thesis"
+            calculate_credible_area: If True, compute and display credible areas in legend
             
         If both posterior_samples_denorm and true_param_denorm are None, plots just the 
         background supernova skymap without posterior overlays or true location.
         """
         # Check if we have posterior samples and true parameters
         has_posterior = posterior_samples_denorm is not None and true_param_denorm is not None
+        
+        credible_area_labels = None
         
         if has_posterior:
             # Extract RA and Dec indices from the parameters_to_estimate list
@@ -1569,6 +1573,23 @@ class FlowMatchingTrainer:
                     ra_samples = (ra_samples + np.pi) % (2.0 * np.pi) - np.pi
                 print(f"  true_ra: {true_ra:.6f} rad = {np.rad2deg(true_ra):.2f}°")
                 print(f"  true_dec: {true_dec:.6f} rad = {np.rad2deg(true_dec):.2f}°")
+                
+                # Calculate credible areas if requested
+                if calculate_credible_area:
+                    ra_samples_orig = posterior_samples_denorm[:, ra_idx]
+                    dec_samples_orig = posterior_samples_denorm[:, dec_idx]
+                    areas = self.compute_sky_localization_credible_areas(
+                        [np.column_stack([ra_samples_orig, dec_samples_orig])],
+                        credible_levels=(0.68, 0.90, 0.95)
+                    )
+                    credible_area_labels = {
+                        0.68: f"68% : {areas[0.68][0]:.1f} deg²",
+                        0.90: f"90% : {areas[0.90][0]:.1f} deg²",
+                        0.95: f"95% : {areas[0.95][0]:.1f} deg²"
+                    }
+                    print(f"\nCredible Levels:")
+                    for level, label in credible_area_labels.items():
+                        print(f"  {label}")
                 
                 # For SVG output, use a reduced sample size to keep file size manageable
                 # SVG files with many points can become very large; 500-800 points provides good density visualization
@@ -1631,7 +1652,8 @@ class FlowMatchingTrainer:
             format=format,
             constellations=constellations,
             show_stars=show_stars,
-            coastline=coastline
+            coastline=coastline,
+            credible_area_labels=credible_area_labels
         )
         
         # Compress SVG files to .svgz format for ~75% size reduction while keeping all visual elements
@@ -1645,7 +1667,7 @@ class FlowMatchingTrainer:
             import os
             svg_size = os.path.getsize(fname) / 1024  # KB
             svgz_size = os.path.getsize(svgz_fname) / 1024  # KB
-            print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svgz_size/svg_size:.0f}%)")
+            print(f"  SVG compression: {svg_size:.0f} KB → {svgz_size:.0f} KB ({100*svgz_size/svg_size:.0f}%)")
 
     def plot_galactic_distribution_with_posterior_zoom(
         self,
