@@ -1559,7 +1559,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 # Use a blank-handle entry for "Credible Intervals:" instead of the legend's
                 # `title=` row - a separate title row adds height above the axes and was
                 # getting clipped against the figure edge. This keeps everything on one line.
-                inline_title_handle = Patch(facecolor="none", edgecolor="none", label="Credible Levels:")
+                inline_title_handle = Patch(facecolor="none", edgecolor="none", label="Credible Level:")
                 ci_legend = ax_l.legend(
                     handles=[inline_title_handle] + posterior_legend_handles,
                     loc="lower center",

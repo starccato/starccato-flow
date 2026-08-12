@@ -452,7 +452,7 @@ def plot_sky_localization_cumulative_areas(
         
         # Calculate and print median
         median_area = np.median(areas)
-        print(f"{int(100*level)}% Credible Level: Median area = {median_area:.2f} deg²")
+        print(f"{int(100*level)}% Credible Interval: Median area = {median_area:.2f} deg²")
         
         ax.plot(areas_sorted, cumulative_frac, label=f"{int(100*level)}% Credible Level", 
                 color=colors[level], linewidth=2)
