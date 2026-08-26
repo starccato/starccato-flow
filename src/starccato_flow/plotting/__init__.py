@@ -104,6 +104,10 @@ from .sky import (
     plot_galactic_supernovae_polar_hemispheres,
 )
 
+from .sky_flat import (
+    plot_galactic_supernovae_flat_contour,
+)
+
 __all__ = [
     # Utility functions
     'set_plot_style',
@@ -135,4 +139,5 @@ __all__ = [
     'plot_sky_localisation',
     # Sky
     'plot_galactic_supernovae_polar_hemispheres',
+    'plot_galactic_supernovae_flat_contour',
 ]

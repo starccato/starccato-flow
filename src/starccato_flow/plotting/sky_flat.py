@@ -27,8 +27,10 @@ def _check_ra_wrapping(ra1, ra2, threshold=180):
 def _constellation_stick_segments_flat():
     """Get constellation stick figure segments for flat equirectangular projection.
     
-    Similar to sky.py's _constellation_stick_segments but for flat RA/Dec coordinates.
-    Returns line segments that avoid RA wrapping artifacts at 0/360° boundary.
+    Properly handles RA wrapping by:
+    1. Using shortest angular path to determine intended direction
+    2. If wrapping occurs, interpolates split point at boundary
+    3. Draws segments on both sides of boundary for visual continuity
     
     Returns
     -------
@@ -60,11 +62,35 @@ def _constellation_stick_segments_flat():
                 ra1, dec1, _ = hip_lookup[hip1]
                 ra2, dec2, _ = hip_lookup[hip2]
                 
-                # Skip segment if it crosses RA boundary (0/360 wraparound)
-                if _check_ra_wrapping(ra1, ra2):
-                    continue
+                # Use shortest angular path (from sky.py line 316-317)
+                delta_ra = ((ra2 - ra1 + 180.0) % 360.0) - 180.0
                 
-                segments.append(np.array([[ra1, dec1], [ra2, dec2]]))
+                # Simple case: no boundary crossing
+                if abs(delta_ra) <= 180 and 0 <= ra1 + delta_ra <= 360:
+                    segments.append(np.array([[ra1, dec1], [ra1 + delta_ra, dec2]]))
+                else:
+                    # Wrapping case: segment crosses the 0/360 boundary
+                    # Find where it crosses (0 or 360)
+                    if delta_ra > 0:
+                        # Going forward through 360 boundary
+                        crossing = 360
+                        t = (crossing - ra1) / delta_ra
+                    else:
+                        # Going backward through 0 boundary  
+                        crossing = 0
+                        t = (crossing - ra1) / delta_ra
+                    
+                    # Interpolated Dec at crossing point
+                    dec_cross = dec1 + t * (dec2 - dec1)
+                    
+                    # Draw segment from ra1 to boundary
+                    segments.append(np.array([[ra1, dec1], [crossing, dec_cross]]))
+                    
+                    # Draw segment from opposite boundary to ra2
+                    # Map ra2 back to [0, 360] if needed
+                    ra2_mapped = ra2 % 360
+                    opposite = 0 if crossing == 360 else 360
+                    segments.append(np.array([[opposite, dec_cross], [ra2_mapped, dec2]]))
     
     return segments
 
@@ -79,6 +105,8 @@ def plot_flat_constellation_projection(
     font_name="Futura",
     mag_limit=6.0,
     plot_stars=True,
+    supernovae=None,
+    n_supernova_contours=4,
 ):
     """Generate a flat equirectangular all-sky constellation projection.
     
@@ -100,6 +128,10 @@ def plot_flat_constellation_projection(
         Font name (default: 'Futura')
     mag_limit : float
         Magnitude limit for stars to display (default: 3.0, lower = brighter)
+    supernovae : Supernovae, optional
+        Optional Supernovae instance to overlay galactic contours (default: None)
+    n_supernova_contours : int
+        Number of contour levels for supernovae (default: 4)
     
     Returns
     -------
@@ -131,6 +163,122 @@ def plot_flat_constellation_projection(
     
     # Remove axes frame and labels
     ax.axis('off')
+    
+    # Plot galactic supernovae contours if provided (at bottom layer)
+    if supernovae is not None:
+        try:
+            from matplotlib.colors import to_rgba
+            from astropy.coordinates import SkyCoord, Galactic, CartesianRepresentation
+            import astropy.units as u
+            
+            gal_coords = supernovae.galactic_coords
+            if gal_coords is not None:
+                # Convert galactic Cartesian (x, y, z in kpc) to RA/Dec
+                x_gal = gal_coords[:, 0]
+                y_gal = gal_coords[:, 1]
+                z_gal = gal_coords[:, 2]
+                
+                # Create SkyCoord in galactic frame using Cartesian coordinates
+                coords_gal = SkyCoord(
+                    CartesianRepresentation(
+                        x=x_gal * u.kpc,
+                        y=y_gal * u.kpc,
+                        z=z_gal * u.kpc
+                    ),
+                    frame=Galactic,
+                )
+                
+                # Transform to ICRS (J2000)
+                coords_icrs = coords_gal.transform_to("icrs")
+                ra_deg = coords_icrs.ra.deg
+                dec_deg = coords_icrs.dec.deg
+                
+                # Sample only the N closest supernovae (like in sky.py)
+                n_background_supernovae = 20000
+                if hasattr(supernovae, 'distance') and supernovae.distance is not None:
+                    distances = np.asarray(supernovae.distance)
+                    sorted_indices = np.argsort(distances)
+                    n_sample = min(n_background_supernovae, len(sorted_indices))
+                    sample_indices = sorted_indices[:n_sample]
+                    ra_deg = ra_deg[sample_indices]
+                    dec_deg = dec_deg[sample_indices]
+                    print(f"Sampled {n_sample} closest supernovae for contour")
+                else:
+                    print(f"Using all {len(ra_deg)} supernovae for contour (no distance data)")
+                
+                # Create 2D histogram in RA/Dec space (match sky.py: bins=320)
+                bins = 320
+                hist_range = [[0, 360], [-90, 90]]
+                h, ra_edges, dec_edges = np.histogram2d(ra_deg, dec_deg, bins=bins, range=hist_range)
+                
+                # Smooth with Gaussian kernel
+                k_radius = 3
+                k_sigma = 1.2
+                k_axis = np.arange(-k_radius, k_radius + 1)
+                kernel = np.exp(-(k_axis**2) / (2.0 * k_sigma**2))
+                kernel /= kernel.sum()
+                
+                h_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=0, arr=h)
+                h_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=1, arr=h_smooth)
+                
+                ra_centers = 0.5 * (ra_edges[:-1] + ra_edges[1:])
+                dec_centers = 0.5 * (dec_edges[:-1] + dec_edges[1:])
+                ra_grid, dec_grid = np.meshgrid(ra_centers, dec_centers)
+                
+                # Compute contour levels from density quantiles (match sky.py: [0.995, 0.80, 0.50, 0.25])
+                h_flat = h_smooth.ravel()
+                h_flat = h_flat[h_flat > 0]
+                
+                if h_flat.size > 0:
+                    blue_probs = [0.995, 0.80, 0.50, 0.25]
+                    vals = np.sort(h_flat)[::-1]
+                    cdf = np.cumsum(vals) / np.sum(vals)
+                    
+                    thr_shared = []
+                    for p in blue_probs:
+                        idx = np.searchsorted(cdf, p, side="left")
+                        idx = min(idx, vals.size - 1)
+                        thr_shared.append(float(vals[idx]))
+                    
+                    levels_shared = np.sort(np.array(thr_shared, dtype=float))
+                    top_shared = max(levels_shared[-1] * 1.001, np.max(h_flat) * 1.001)
+                    fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
+                    
+                    # Define contour colors with smooth interpolation (match sky.py)
+                    blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
+                    fill_colors = [
+                        to_rgba(blue_bases[0], alpha=0.20),
+                        to_rgba(blue_bases[1], alpha=0.40),
+                        to_rgba(blue_bases[2], alpha=0.62),
+                        to_rgba(blue_bases[3], alpha=0.88),
+                    ]
+                    
+                    # Create smooth transitions by interpolating colors in RGBA space
+                    n_per_segment = 4  # Create 4 intermediate colors between each pair
+                    smooth_colors = []
+                    
+                    for i in range(len(fill_colors) - 1):
+                        color_a = np.array(fill_colors[i])
+                        color_b = np.array(fill_colors[i + 1])
+                        
+                        # Interpolate between current and next color
+                        for j in range(n_per_segment):
+                            alpha = j / n_per_segment
+                            interp_color = color_a * (1 - alpha) + color_b * alpha
+                            smooth_colors.append(tuple(interp_color))
+                    
+                    # Add the last color
+                    smooth_colors.append(fill_colors[-1])
+                    
+                    # Create levels to match the number of colors
+                    smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
+                    
+                    # Plot contours at bottom layer
+                    ax.contourf(ra_grid, dec_grid, h_smooth.T, levels=smooth_levels, colors=smooth_colors, 
+                                antialiased=True, zorder=0)
+                    print(f"✓ Plotted galactic supernovae contours with {len(blue_probs)} levels")
+        except Exception as e:
+            print(f"Warning: Could not plot supernovae contours: {e}")
     
     # Load Hipparcos data with magnitudes
     hip_lookup = _hip_lookup_table_with_mag()
@@ -258,50 +406,38 @@ def plot_flat_constellation_projection(
                 if len(current_ra) > 1:
                     borders_by_constellation[current_border] = (current_ra, current_dec)
                 
-                # Build continuous paths with NaN separators to maintain dash consistency
+                # Build constellation borders: unwrap RA, render segments individually
+                # No polyline grouping - each segment is independent to avoid thickening artifacts
                 all_border_segments = []
+                
                 for constellation, (ras, decs) in borders_by_constellation.items():
-                    # Handle segments with RA wrapping by extending to edges
-                    constellation_path = []
-                    current_path = []
+                    ras_array = np.array(ras)
+                    decs_array = np.array(decs)
                     
-                    for j in range(len(ras) - 1):
-                        ra1, dec1 = ras[j], decs[j]
-                        ra2, dec2 = ras[j+1], decs[j+1]
+                    # Unwrap RA values using shortest angular path
+                    ras_unwrapped = np.zeros_like(ras_array)
+                    ras_unwrapped[0] = ras_array[0]
+                    
+                    for j in range(1, len(ras_array)):
+                        delta_ra = ((ras_array[j] - ras_unwrapped[j-1] + 180.0) % 360.0) - 180.0
+                        ras_unwrapped[j] = ras_unwrapped[j-1] + delta_ra
+                    
+                    # Add segments individually - no grouping
+                    for j in range(len(ras_unwrapped) - 1):
+                        ra1 = ras_unwrapped[j]
+                        ra2 = ras_unwrapped[j + 1]
+                        dec1 = decs_array[j]
+                        dec2 = decs_array[j + 1]
                         
-                        if not _check_ra_wrapping(ra1, ra2):
-                            # Normal segment - add to current path
-                            current_path.append([ra1, dec1])
-                        else:
-                            # RA wrap detected - extend to edges and create two segments
-                            if current_path:
-                                current_path.append([ra1, dec1])
-                                constellation_path.append(np.array(current_path))
-                                current_path = []
-                            
-                            # Add segment from ra1 to edge (RA=0 or 360)
-                            if ra1 > 180:
-                                # ra1 is near 360, extend to 360
-                                constellation_path.append(np.array([[ra1, dec1], [360, dec1]]))
-                                # Start new segment from 0
-                                current_path = [[0, dec2]]
-                            else:
-                                # ra1 is near 0, extend to 0
-                                constellation_path.append(np.array([[ra1, dec1], [0, dec1]]))
-                                # Start new segment from 360
-                                current_path = [[360, dec2]]
-                    
-                    # Add final point and finalize path
-                    if current_path:
-                        current_path.append([ras[-1], decs[-1]])
-                        constellation_path.append(np.array(current_path))
-                    
-                    # Add all paths for this constellation
-                    all_border_segments.extend(constellation_path)
+                        # Only include if both points are within [0, 360]
+                        if 0 <= ra1 <= 360 and 0 <= ra2 <= 360:
+                            # Skip tiny segments
+                            if abs(ra2 - ra1) > 0.01 or abs(dec2 - dec1) > 0.01:
+                                all_border_segments.append(np.array([[ra1, dec1], [ra2, dec2]]))
                 
                 # Add borders with dashes
                 if all_border_segments:
-                    print(f"DEBUG: Total border paths (consolidated): {len(all_border_segments)}")
+                    print(f"DEBUG: Total border segments: {len(all_border_segments)}")
                     ax.add_collection(LineCollection(all_border_segments, colors="#1e293b", 
                                                      alpha=0.35, linewidth=0.5, zorder=1,
                                                      linestyle=(0, (5, 5)),
@@ -370,5 +506,203 @@ def plot_flat_constellation_projection(
     fig.savefig(output_path, dpi=page_dpi, bbox_inches=None, 
                 facecolor=background, edgecolor='none', pad_inches=0)
     print(f"✓ Flat sky projection saved to: {output_path}")
+    
+    return fig, ax
+
+
+def plot_galactic_supernovae_flat_contour(
+    supernovae,
+    output_path=None,
+    figsize=(14.5, 19.0),
+    page_dpi=300,
+    background="white",
+    font_family="sans-serif",
+    font_name="Futura",
+    n_contours=4,
+    cmap_colors=None,
+):
+    """Plot galactic supernovae distribution as a contour in flat RA/Dec projection.
+    
+    Projects the galactic coordinates from a Supernovae instance into RA/Dec (J2000),
+    creates a 2D density histogram, and displays it as contours in an equirectangular
+    flat-sky projection.
+    
+    Parameters
+    ----------
+    supernovae : Supernovae
+        Instance with galactic_coords (x, y, z in kpc) and optionally distance data
+    output_path : str, optional
+        Path to save output. If None, only returns fig/ax
+    figsize : tuple
+        Figure size in cm (width, height). Default (14.5, 19.0) for A4 portrait
+    page_dpi : int
+        DPI for output (default: 300)
+    background : str
+        Background color ('white' or hex code, default: 'white')
+    font_family : str
+        Font family (default: 'sans-serif')
+    font_name : str
+        Font name (default: 'Futura')
+    n_contours : int
+        Number of contour levels (default: 4)
+    cmap_colors : list, optional
+        List of colors for contours. If None, uses blue gradient
+        
+    Returns
+    -------
+    fig, ax : matplotlib figure and axes objects
+    """
+    from matplotlib.colors import to_rgba
+    
+    if not _ASTROPY_AVAILABLE:
+        raise ImportError("Astropy is required for coordinate transformations")
+    
+    # Convert figsize from cm to inches
+    figwidth_inch = figsize[0] / 2.54
+    figheight_inch = figsize[1] / 2.54
+    
+    set_plot_style(background, font_family, font_name)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(figwidth_inch, figheight_inch), dpi=page_dpi)
+    
+    # Set background
+    if background == "white":
+        fig.patch.set_facecolor('white')
+        ax.set_facecolor('white')
+        text_color = 'black'
+    else:
+        fig.patch.set_facecolor(background)
+        ax.set_facecolor(background)
+        text_color = 'white'
+    
+    # Setup equirectangular projection: RA (0-360°) on x-axis, Dec (-90 to +90°) on y-axis
+    ax.set_xlim(0, 360)
+    ax.set_ylim(-90, 90)
+    ax.axis('off')
+    
+    # Get galactic coordinates and convert to RA/Dec
+    gal_coords = supernovae.galactic_coords
+    if gal_coords is None:
+        raise ValueError("Supernovae instance has no galactic coordinates")
+    
+    # Convert galactic Cartesian (x, y, z in kpc) to RA/Dec
+    # Using Astropy: galactic frame -> ICRS (J2000)
+    from astropy.coordinates import SkyCoord, Galactic, CartesianRepresentation
+    import astropy.units as u
+    
+    x_gal = gal_coords[:, 0]
+    y_gal = gal_coords[:, 1]
+    z_gal = gal_coords[:, 2]
+    
+    # Create SkyCoord in galactic frame using Cartesian coordinates
+    coords_gal = SkyCoord(
+        CartesianRepresentation(
+            x=x_gal * u.kpc,
+            y=y_gal * u.kpc,
+            z=z_gal * u.kpc
+        ),
+        frame=Galactic,
+    )
+    
+    # Transform to ICRS (J2000)
+    coords_icrs = coords_gal.transform_to("icrs")
+    ra_deg = coords_icrs.ra.deg
+    dec_deg = coords_icrs.dec.deg
+    
+    # Sample only the N closest supernovae (like in sky.py)
+    n_background_supernovae = 20000
+    if hasattr(supernovae, 'distance') and supernovae.distance is not None:
+        distances = np.asarray(supernovae.distance)
+        sorted_indices = np.argsort(distances)
+        n_sample = min(n_background_supernovae, len(sorted_indices))
+        sample_indices = sorted_indices[:n_sample]
+        ra_deg = ra_deg[sample_indices]
+        dec_deg = dec_deg[sample_indices]
+        print(f"Sampled {n_sample} closest supernovae for contour")
+    else:
+        print(f"Using all {len(ra_deg)} supernovae for contour (no distance data)")
+    
+    # Create 2D histogram in RA/Dec space (match sky.py: bins=320)
+    bins = 320
+    hist_range = [[0, 360], [-90, 90]]
+    h, ra_edges, dec_edges = np.histogram2d(ra_deg, dec_deg, bins=bins, range=hist_range)
+    
+    # Smooth with Gaussian kernel
+    k_radius = 3
+    k_sigma = 1.2
+    k_axis = np.arange(-k_radius, k_radius + 1)
+    kernel = np.exp(-(k_axis**2) / (2.0 * k_sigma**2))
+    kernel /= kernel.sum()
+    
+    h_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=0, arr=h)
+    h_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=1, arr=h_smooth)
+    
+    ra_centers = 0.5 * (ra_edges[:-1] + ra_edges[1:])
+    dec_centers = 0.5 * (dec_edges[:-1] + dec_edges[1:])
+    ra_grid, dec_grid = np.meshgrid(ra_centers, dec_centers)
+    
+    # Compute contour levels from density quantiles (match sky.py: [0.995, 0.80, 0.50, 0.25])
+    h_flat = h_smooth.ravel()
+    h_flat = h_flat[h_flat > 0]
+    
+    if h_flat.size == 0:
+        print("Warning: No density data to plot")
+        return fig, ax
+    
+    blue_probs = [0.995, 0.80, 0.50, 0.25]
+    vals = np.sort(h_flat)[::-1]
+    cdf = np.cumsum(vals) / np.sum(vals)
+    
+    thr_shared = []
+    for p in blue_probs:
+        idx = np.searchsorted(cdf, p, side="left")
+        idx = min(idx, vals.size - 1)
+        thr_shared.append(float(vals[idx]))
+    
+    levels_shared = np.sort(np.array(thr_shared, dtype=float))
+    top_shared = max(levels_shared[-1] * 1.001, np.max(h_flat) * 1.001)
+    fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
+    
+    # Define contour colors with smooth interpolation (match sky.py)
+    blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
+    fill_colors = [
+        to_rgba(blue_bases[0], alpha=0.20),
+        to_rgba(blue_bases[1], alpha=0.40),
+        to_rgba(blue_bases[2], alpha=0.62),
+        to_rgba(blue_bases[3], alpha=0.88),
+    ]
+    
+    # Create smooth transitions by interpolating colors in RGBA space
+    n_per_segment = 4  # Create 4 intermediate colors between each pair
+    smooth_colors = []
+    
+    for i in range(len(fill_colors) - 1):
+        color_a = np.array(fill_colors[i])
+        color_b = np.array(fill_colors[i + 1])
+        
+        # Interpolate between current and next color
+        for j in range(n_per_segment):
+            alpha = j / n_per_segment
+            interp_color = color_a * (1 - alpha) + color_b * alpha
+            smooth_colors.append(tuple(interp_color))
+    
+    # Add the last color
+    smooth_colors.append(fill_colors[-1])
+    
+    # Create levels to match the number of colors
+    smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
+    
+    # Plot contours
+    ax.contourf(ra_grid, dec_grid, h_smooth.T, levels=smooth_levels, colors=smooth_colors, 
+                antialiased=True, zorder=0)
+    
+    ax.set_position([0, 0, 1, 1])
+    fig.canvas.draw()
+    
+    if output_path:
+        fig.savefig(output_path, dpi=page_dpi, bbox_inches=None,
+                   facecolor=background, edgecolor='none', pad_inches=0)
+        print(f"✓ Galactic supernovae contour saved to: {output_path}")
     
     return fig, ax
