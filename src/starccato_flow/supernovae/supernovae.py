@@ -422,6 +422,65 @@ class Supernovae:
             figsize=figsize
         )
     
+    def plot_negative_space_artwork(
+        self,
+        fname: Optional[str] = None,
+        figsize: tuple[float, float] = (12, 12),
+        dpi: int = 300,
+        dot_size: float = 0.5,
+        min_distance_kpc: float = 0.3,
+        num_candidate_dots: int = 50000,
+        feather_radius_kpc: float = 26,
+        feather_strength: float = 1.5,
+        shape: str = "circle",
+        show: bool = False,
+        transparent: bool = True,
+        seed: Optional[int] = None,
+    ) -> plt.Figure:
+        """Create an artistic ink-drawing style negative space visualization.
+        
+        Shows small black dots everywhere EXCEPT at supernova locations, creating an
+        inverted/negative view of the galactic distribution. Includes feathering at
+        the edges for an organic ink-drawing appearance.
+        
+        Args:
+            fname (Optional[str]): Output path for the plot
+            figsize (tuple): Figure size in cm as (width, height)
+            dpi (int): Resolution for saving
+            dot_size (float): Size of individual black dots
+            min_distance_kpc (float): Minimum distance from supernovae to place a dot (in kpc)
+            num_candidate_dots (int): Number of candidate dot positions to sample
+            feather_radius_kpc (float): Radius/distance beyond which to apply edge feathering (in kpc)
+            feather_strength (float): Strength of edge fade (higher = sharper falloff, 1.0-3.0 recommended)
+            shape (str): Shape of artwork ('circle' for organic ink blot or 'square' for sharp edges)
+            show (bool): Whether to display the figure
+            transparent (bool): Whether to save with transparent background
+            seed (Optional[int]): Random seed for reproducibility
+            
+        Returns:
+            plt.Figure: The created matplotlib figure
+        """
+        if self._galactic_coords is None:
+            raise ValueError("No galactic coordinates available. Load or generate locations first.")
+        
+        from ..plotting.analysis import plot_negative_space_artwork as _plot_negative_space_artwork
+        
+        return _plot_negative_space_artwork(
+            galactic_coords=self._galactic_coords,
+            fname=fname,
+            figsize=figsize,
+            dpi=dpi,
+            dot_size=dot_size,
+            min_distance_kpc=min_distance_kpc,
+            num_candidate_dots=num_candidate_dots,
+            feather_radius_kpc=feather_radius_kpc,
+            feather_strength=feather_strength,
+            shape=shape,
+            show=show,
+            transparent=transparent,
+            seed=seed,
+        )
+    
     def sample_supernovae_for_epoch(
         self,
         epoch: int,

@@ -461,14 +461,15 @@ def plot_sky_localization_cumulative_areas(
     ax.set_ylabel('Cumulative Fraction of Signals', fontsize=11)
     ax.set_ylim(0, 1)
     ax.axvline(9.6, color='grey', linestyle='--', linewidth=1)
-    ax.text(9.6, 0.5, 'Vera Rubin FOV (9.6 deg²)', fontsize=9, 
-            color='grey', ha='right', va='center', rotation=90)
+    ax.text(9.6, 0.2, 'Vera Rubin FOV (9.6 deg²)', fontsize=9, 
+            color='grey', ha='right', va='bottom', rotation=90)
     ax.legend(loc='upper left', fontsize=10)
     ax.tick_params(labelsize=11)
     ax.set_xscale('log')
     ax.set_xlim(1, 1000)
     ax.grid(True, alpha=0.3)
-    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150)
+    plt.tight_layout()
+    plt.savefig(fname, facecolor=background, edgecolor='none', dpi=150, bbox_inches='tight')
     if show:
         plt.show()
     else:
@@ -735,7 +736,7 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
         'labels': labels,
         'truths': true_param[:num_params],
         'truth_color': SIGNAL_COLOUR,
-        'show_titles': True,
+        'show_titles': False,  # Disable default titles (which include parameter labels)
         'title_quantiles': [0.16, 0.5, 0.84],
         'title_fmt': '.2f',
         'title_kwargs': {'fontsize': fontsize_tick},
@@ -756,12 +757,13 @@ def plot_corner(samples_cpu, true_param, background="black", fname="plots/corner
     
     figure = corner.corner(samples_cpu, **corner_kwargs)
 
-    # Manually set font size and family on the per-panel titles (mean ± sd text)
-    for ax in figure.get_axes():
-        if ax.get_title():  # only diagonal panels have titles
-            ax.title.set_fontsize(fontsize_tick)
-            ax.title.set_fontfamily(font_name)
-            ax.title.set_color(text_color)
+    # Manually add custom titles with just mean ± credible intervals (no parameter labels)
+    axes = np.array(figure.get_axes()).reshape((num_params, num_params))
+    for i in range(num_params):
+        ax = axes[i, i]  # Diagonal panels have the histograms
+        q = np.percentile(samples_cpu[:, i], [16, 50, 84])
+        title = f"{q[1]:.2f}$_{{-{q[1]-q[0]:.2f}}}^{{+{q[2]-q[1]:.2f}}}$"
+        ax.set_title(title, fontsize=fontsize_tick, color=text_color, pad=5)
 
     # Fill hist patches with appropriate color
     for ax in figure.get_axes():
@@ -895,8 +897,8 @@ def plot_eos_ye_distribution(
     )
     
     # Formatting
-    ax.set_xlabel('Equation of State (EOS)', fontsize=16, fontfamily=font_name)
-    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=16, fontfamily=font_name)
+    ax.set_xlabel('Equation of State (EOS)', fontsize=11, fontfamily=font_name)
+    ax.set_ylabel(PARAMETER_LABELS['Ye_c_b'], fontsize=11, fontfamily=font_name)
     ax.tick_params(labelsize=7, axis='x')
     ax.tick_params(labelsize=11, axis='y')
     # Rotate x-axis labels for readability

@@ -46,7 +46,6 @@ class FlowMatchingTrainer:
         samples_per_epoch: int = 18000,
         validation_split: float = VALIDATION_SPLIT,
         lr_flow: float = 5e-4,
-        checkpoint_interval: int = 16,
         outdir: str = "outdir",
         detector_noise_on: bool = True,
         max_grad_norm: float = 1.0,
@@ -95,7 +94,6 @@ class FlowMatchingTrainer:
         self.samples_per_epoch = samples_per_epoch
         self.validation_split = validation_split
         self.lr_flow = lr_flow
-        self.checkpoint_interval = checkpoint_interval
         
         # Construct absolute outdir path if not provided
         if outdir == "outdir" or (outdir and not os.path.isabs(outdir)):
@@ -292,7 +290,6 @@ class FlowMatchingTrainer:
                 "Increase dataset size or reduce validation_split."
             )
 
-        self.checkpoint_interval = checkpoint_interval
 
         os.makedirs(outdir, exist_ok=True)
         _set_seed(self.seed)
@@ -644,7 +641,7 @@ class FlowMatchingTrainer:
             transparent=True,
             format=format,
             background=background,
-            constellations=False,
+            constellations=True,
             show_stars=False,
             coastline=False,
         )
@@ -762,6 +759,10 @@ class FlowMatchingTrainer:
                 "persistent_workers": False,
             }
 
+            # Ensure deterministic supernova sampling: reset RNG to epoch-specific seed
+            # so two trainers with same self.seed always sample the same supernovae
+            np.random.seed(self.seed + epoch * 1000)
+            
             sampled_ra, sampled_dec, sampled_d = self.supernovae.sample_supernovae_for_epoch(
                 epoch,
                 self.samples_per_epoch,
@@ -771,9 +772,6 @@ class FlowMatchingTrainer:
                 epoch_dir=os.path.join(self.outdir, "flow_matching", "epoch_data"),
             )
             signals, params = self._sample_dataset_batches(self.training_dataset, self.samples_per_epoch)
-
-
-            # create multi-channel signals
             self.h_theta_multi_train = hThetaMulti(
                 s=signals,
                 shared_max_strain=self.training_dataset.shared_max_strain,
@@ -836,6 +834,8 @@ class FlowMatchingTrainer:
             val_samples = 0
             with torch.no_grad():
                 n_val_signals = 2000
+                # Ensure deterministic validation supernova sampling
+                np.random.seed(self.seed + epoch * 1000 + 500000)
                 val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
                     epoch,
                     n_val_signals,
@@ -898,7 +898,7 @@ class FlowMatchingTrainer:
             corner_epoch_dir = os.path.join(self.outdir, "flow_matching", "epoch_data")
             os.makedirs(corner_epoch_dir, exist_ok=True)
 
-            self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None, epoch=epoch, transparent=True) 
+            # self.run_parameter_estimation(signal_idx=None, d=None, ra=None, dec=None, epoch=epoch, transparent=True) 
 
             print(f"Epoch {epoch+1}/{self.num_epochs} | Train MSE Loss: {avg_total_loss:.4f} | Val MSE Loss: {avg_total_loss_val:.4f}")
 
@@ -990,6 +990,8 @@ class FlowMatchingTrainer:
             
             # Sample sky parameters for validation set
             # Use uniform sampling (not exponential) for representative calibration assessment
+            # Deterministic sampling: use seed offset to ensure reproducibility
+            np.random.seed(self.seed + 9000000)
             val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
                 epoch=self.num_epochs,
                 n_samples=num_signals,
@@ -1176,7 +1178,7 @@ class FlowMatchingTrainer:
                 credible_areas,
                 fname=fname_area_v_probability if fname_area_v_probability is not None else os.path.join(outdir, "sky_localization_credible_areas.png"),
                 show=False,
-                figsize=(10.0, 14.5),
+                figsize=(14.5, 10.0),
                 background=background,
                 font_family=font_family,
                 font_name=font_name,
@@ -1755,12 +1757,13 @@ class FlowMatchingTrainer:
         val_signals, val_params = self._sample_dataset_batches(self.validation_dataset, num_signals)
         
         # Sample sky parameters for validation set
+        # Deterministic sampling: use seed offset to ensure reproducibility
+        np.random.seed(self.seed + 8000000)
         val_sampled_ra, val_sampled_dec, val_sampled_d = self.supernovae.sample_supernovae_for_epoch(
             epoch=self.num_epochs,
             n_samples=num_signals,
             num_epochs=self.num_epochs,
-            curriculum_mode="uniform",
-            exponential=True
+            curriculum_mode="uniform"
         )
         
         # Create hThetaMulti validation dataset

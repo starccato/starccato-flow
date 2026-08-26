@@ -887,6 +887,178 @@ class ConditionalVAETrainer:
         }
 
     
+    def benchmark_signal_generation_speed(
+        self,
+        num_samples: int = 10000,
+        num_runs: int = 1000,
+        warmup_runs: int = 3,
+        sample_from_data: bool = False,
+        beta_min: float = 0.0,
+        beta_max: float = 0.25
+    ) -> dict:
+        """Benchmark signal generation speed with multiple runs.
+        
+        Generates signals repeatedly to measure runtime statistics and per-signal timing.
+        
+        Args:
+            num_samples: Number of signals per run (default 10,000)
+            num_runs: Number of times to run generation (default 100)
+            warmup_runs: Number of warmup runs to discard (default 3)
+            sample_from_data: If True, sample parameters from dataset; else uniform [-1, 1]
+            beta_min: Minimum beta parameter for filtering (if sample_from_data=True)
+            beta_max: Maximum beta parameter for filtering (if sample_from_data=True)
+            
+        Returns:
+            dict: Contains timing statistics:
+                - 'total_times': Array of runtimes for each run (seconds)
+                - 'mean_time_s': Mean runtime per batch of num_samples
+                - 'std_time_s': Std dev of runtimes
+                - 'mean_per_signal_ms': Mean time per individual signal (milliseconds)
+                - 'std_per_signal_ms': Std dev of per-signal time
+                - 'num_samples': Number of signals generated per run
+                - 'num_runs': Number of runs performed
+        """
+        print(f"\n{'='*60}")
+        print(f"Benchmarking Signal Generation")
+        print(f"{'='*60}")
+        print(f"Device: {DEVICE}")
+        print(f"Warmup runs: {warmup_runs}")
+        print(f"Benchmark runs: {num_runs}")
+        print(f"Signals per run: {num_samples}")
+        print(f"Total signals: {num_samples * num_runs}")
+        print(f"{'='*60}\n")
+        
+        self.cvae.eval()
+        
+        # Get parameter dimension
+        param_dim = self.training_dataset.parameters.shape[1]
+        
+        # Test single run to verify output size
+        test_z = torch.randn(100, self.z_dim).to(DEVICE)
+        test_params = torch.zeros(100, param_dim).to(DEVICE)
+        with torch.no_grad():
+            test_output = self.cvae.decoder(test_z, test_params)
+        print(f"Test output shape: {test_output.shape} (expected: torch.Size([100, {self.y_length}]))")
+        del test_z, test_params, test_output
+        if str(DEVICE).startswith('cuda'):
+            torch.cuda.empty_cache()
+        print()
+        
+        # Warmup runs (discarded)
+        print("Warmup runs...")
+        for _ in range(warmup_runs):
+            z_samples = np.random.randn(num_samples, self.z_dim).astype(np.float32)
+            z_tensor = torch.tensor(z_samples, dtype=torch.float32).to(DEVICE)
+            
+            if sample_from_data:
+                combined_theta = np.vstack([
+                    self.training_dataset.parameters,
+                    self.validation_dataset.parameters
+                ])
+                beta = combined_theta[:, self.beta_param_index]
+                mask = (beta >= beta_min) & (beta <= beta_max)
+                combined_theta = combined_theta[mask, :]
+                param_indices = np.random.choice(combined_theta.shape[0], size=num_samples, replace=True)
+                params_sampled = combined_theta[param_indices].astype(np.float32)
+                params_sampled = self.training_dataset.normalize_parameters(params_sampled)
+            else:
+                params_sampled = np.random.uniform(-1.0, 1.0, size=(num_samples, param_dim)).astype(np.float32)
+            
+            params_tensor = torch.tensor(params_sampled, dtype=torch.float32).to(DEVICE)
+            
+            with torch.no_grad():
+                output = self.cvae.decoder(z_tensor, params_tensor)
+            
+            # Synchronize if using CUDA to ensure GPU computation completes
+            if str(DEVICE).startswith('cuda'):
+                torch.cuda.synchronize()
+        
+        # Benchmark runs
+        print(f"Running {num_runs} benchmark iterations...")
+        total_times = []
+        
+        for run_idx in range(num_runs):
+            # Synchronize before timing if using CUDA
+            if str(DEVICE).startswith('cuda'):
+                torch.cuda.synchronize()
+            
+            # Start timing (includes everything: z generation, tensor creation, forward pass)
+            t0 = time.perf_counter()
+            
+            # Generate random z
+            z_samples = np.random.randn(num_samples, self.z_dim).astype(np.float32)
+            z_tensor = torch.tensor(z_samples, dtype=torch.float32).to(DEVICE)
+            
+            # Generate or sample parameters
+            if sample_from_data:
+                combined_theta = np.vstack([
+                    self.training_dataset.parameters,
+                    self.validation_dataset.parameters
+                ])
+                beta = combined_theta[:, self.beta_param_index]
+                mask = (beta >= beta_min) & (beta <= beta_max)
+                combined_theta = combined_theta[mask, :]
+                param_indices = np.random.choice(combined_theta.shape[0], size=num_samples, replace=True)
+                params_sampled = combined_theta[param_indices].astype(np.float32)
+                params_sampled = self.training_dataset.normalize_parameters(params_sampled)
+            else:
+                params_sampled = np.random.uniform(-1.0, 1.0, size=(num_samples, param_dim)).astype(np.float32)
+            
+            params_tensor = torch.tensor(params_sampled, dtype=torch.float32).to(DEVICE)
+            
+            with torch.no_grad():
+                output = self.cvae.decoder(z_tensor, params_tensor)
+            
+            # Synchronize after to ensure GPU computation completes
+            if str(DEVICE).startswith('cuda'):
+                torch.cuda.synchronize()
+            
+            t1 = time.perf_counter()
+            
+            elapsed = t1 - t0
+            total_times.append(elapsed)
+            
+            if (run_idx + 1) % max(1, num_runs // 10) == 0:
+                print(f"  Run {run_idx + 1}/{num_runs}: {elapsed:.4f}s ({elapsed/num_samples*1e3:.4f}ms per signal)")
+        
+        # Compute statistics
+        total_times = np.array(total_times)
+        mean_time = total_times.mean()
+        std_time = total_times.std(ddof=1)
+        mean_per_signal_ms = (mean_time / num_samples) * 1e3
+        std_per_signal_ms = (std_time / num_samples) * 1e3
+        
+        stats = {
+            'total_times': total_times,
+            'mean_time_s': mean_time,
+            'std_time_s': std_time,
+            'mean_per_signal_ms': mean_per_signal_ms,
+            'std_per_signal_ms': std_per_signal_ms,
+            'num_samples': num_samples,
+            'num_runs': num_runs
+        }
+        
+        # Print summary
+        print(f"\n{'='*60}")
+        print(f"BENCHMARK RESULTS")
+        print(f"{'='*60}")
+        print(f"Per batch ({num_samples} signals):")
+        print(f"  Mean:   {mean_time:.6f} s")
+        print(f"  Std:    {std_time:.6f} s")
+        print(f"  Min:    {total_times.min():.6f} s")
+        print(f"  Max:    {total_times.max():.6f} s")
+        print(f"\nPer signal:")
+        print(f"  Mean:   {mean_per_signal_ms:.4f} ms")
+        print(f"  Std:    {std_per_signal_ms:.4f} ms")
+        print(f"  Min:    {(total_times.min() / num_samples * 1e3):.4f} ms")
+        print(f"  Max:    {(total_times.max() / num_samples * 1e3):.4f} ms")
+        print(f"\nRuns completed: {num_runs}")
+        print(f"Total signals generated: {num_samples * num_runs:,}")
+        print(f"Total time: {total_times.sum():.2f}s ({total_times.sum()/60:.2f}m)")
+        print(f"{'='*60}\n")
+        
+        return stats
+
     def generate_and_plot_signal_distribution(
         self, 
         num_samples: int = 10000,

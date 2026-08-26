@@ -594,6 +594,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     coastline: bool = False,
     figsize: tuple[float, float] | None = None,
     credible_area_labels: dict | None = None,
+    display_supernova_marker: bool = False,
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -621,6 +622,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             two hemispheres stacked vertically (North on top, South on bottom).
         n_background_supernovae: Number of closest supernovae to use for background distribution.
             If not enough supernovae are available, uses all. Default 50000.
+        display_supernova_marker: If True, add a legend marker for "Supernova" at the bottom
+            of the plot. Default False.
     """
     # Configure sizes based on mode
     # Figsize in mm (converted to inches for matplotlib)
@@ -1957,6 +1960,19 @@ def plot_galactic_supernovae_polar_hemispheres(
             label="Gravitational Wave Detector" if format == "poster" else "Detector",
         )
     
+    # Add supernova marker to legend if requested
+    if display_supernova_marker:
+        ax_r.plot(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+            markersize=8 if format == "poster" else 9,
+            markerfacecolor="lightgray",
+            markeredgecolor="none",
+            label="Supernova",
+        )
+    
     if format == "thesis":
         ax_r.legend(
             loc="upper center",
@@ -2004,7 +2020,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 zorder=1
             )
         )
-
 
     # Determine format from filename extension
     file_format = None

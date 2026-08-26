@@ -691,6 +691,154 @@ def plot_galactic_distribution(
     # return fig
 
 
+def plot_negative_space_artwork(
+    galactic_coords: np.ndarray,
+    fname: Optional[str] = None,
+    figsize: tuple[float, float] = (12, 12),
+    dpi: int = 300,
+    dot_size: float = 0.5,
+    min_distance_kpc: float = 0.3,
+    num_candidate_dots: int = 50000,
+    feather_radius_kpc: float = 26,
+    feather_strength: float = 1.5,
+    shape: str = "circle",
+    show: bool = False,
+    transparent: bool = True,
+    seed: Optional[int] = None,
+) -> plt.Figure:
+    """Create an artistic ink-drawing style negative space visualization.
+    
+    Shows small black dots everywhere EXCEPT at supernova locations, creating an
+    inverted/negative view of the galactic distribution. Includes feathering at
+    the edges for an organic ink-drawing appearance.
+    
+    Args:
+        galactic_coords (np.ndarray): Cartesian galactic coordinates with shape (N, 3)
+        fname (Optional[str]): Output path for the plot
+        figsize (tuple): Figure size in cm as (width, height)
+        dpi (int): Resolution for saving
+        dot_size (float): Size of individual black dots
+        min_distance_kpc (float): Minimum distance from supernovae to place a dot (in kpc)
+        num_candidate_dots (int): Number of candidate dot positions to sample
+        feather_radius_kpc (float): Radius/distance beyond which to apply edge feathering (in kpc)
+        feather_strength (float): Strength of edge fade (higher = sharper falloff, 1.0-3.0 recommended)
+        shape (str): Shape of artwork ('circle' for organic ink blot or 'square' for sharp edges)
+        show (bool): Whether to display the figure
+        transparent (bool): Whether to save with transparent background
+        seed (Optional[int]): Random seed for reproducibility
+        
+    Returns:
+        plt.Figure: The created matplotlib figure
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    galactic_coords = np.asarray(galactic_coords)
+    if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
+        raise ValueError("galactic_coords must have shape (N, 3).")
+    
+    # Extract X-Y coordinates
+    supernova_x = galactic_coords[:, 0]
+    supernova_y = galactic_coords[:, 1]
+    
+    # Define the composition limits scaled to feather_radius_kpc with margin
+    # Add 15% margin beyond feather_radius to show feathering effect
+    coord_limit = feather_radius_kpc * 1.15
+    
+    # Generate candidate dot positions uniformly in the square
+    candidate_x = np.random.uniform(-coord_limit, coord_limit, num_candidate_dots)
+    candidate_y = np.random.uniform(-coord_limit, coord_limit, num_candidate_dots)
+    
+    # For efficiency, use KDTree to find nearest supernovae
+    from scipy.spatial import cKDTree
+    sn_coords = np.column_stack([supernova_x, supernova_y])
+    kdtree = cKDTree(sn_coords)
+    
+    # Find distance to nearest supernova for each candidate dot
+    candidate_coords = np.column_stack([candidate_x, candidate_y])
+    distances_to_sn, _ = kdtree.query(candidate_coords, k=1)
+    
+    # Filter: keep only dots far enough from supernovae
+    valid_mask = distances_to_sn >= min_distance_kpc
+    valid_x = candidate_x[valid_mask]
+    valid_y = candidate_y[valid_mask]
+    
+    # Calculate distance from center for feathering
+    distance_from_center = np.sqrt(valid_x**2 + valid_y**2)
+    
+    # Apply feathering with smooth falloff
+    # Use exponential falloff for more natural ink-blot appearance
+    feather_alpha = np.ones_like(distance_from_center)
+    beyond_feather = distance_from_center > feather_radius_kpc
+    if np.any(beyond_feather):
+        # Exponential fade-out for smoother transition
+        fade_distance = distance_from_center[beyond_feather] - feather_radius_kpc
+        fade_max = coord_limit - feather_radius_kpc
+        fade_amount = np.clip(fade_distance / fade_max, 0, 1)
+        # Use exponential instead of power for smoother feathering
+        feather_alpha[beyond_feather] = np.exp(-feather_strength * fade_amount)
+    
+    # For circle shape, apply additional mask to create circular boundary
+    if shape.lower() == "circle":
+        # Circular mask: fade out dots outside a circle
+        circle_radius = feather_radius_kpc
+        beyond_circle = distance_from_center > circle_radius
+        # Create smooth circular edge with feathering
+        if np.any(beyond_circle):
+            edge_fade = distance_from_center[beyond_circle] - circle_radius
+            edge_width = 2.0  # kpc, width of feather zone
+            edge_fade_amount = np.clip(edge_fade / edge_width, 0, 1)
+            feather_alpha[beyond_circle] *= (1 - edge_fade_amount ** 2)
+    
+    # Convert cm to inches
+    figsize_inches = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
+    
+    # Create figure with white background
+    fig = plt.figure(figsize=figsize_inches, facecolor="white")
+    ax = fig.add_subplot(111, facecolor="white")
+    
+    # Plot dots with feathering
+    ax.scatter(
+        valid_x,
+        valid_y,
+        s=dot_size,
+        c="black",
+        alpha=feather_alpha,
+        edgecolors="none",
+        rasterized=True
+    )
+    
+    # Remove all axes, ticks, labels, spines
+    ax.set_xlim(-coord_limit, coord_limit)
+    ax.set_ylim(-coord_limit, coord_limit)
+    ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
+    
+    plt.tight_layout(pad=0)
+    
+    # Save if filename provided
+    if fname is not None:
+        output_path = Path(fname)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        facecolor = "none" if transparent else "white"
+        fig.savefig(
+            fname,
+            dpi=dpi,
+            bbox_inches="tight",
+            transparent=transparent,
+            facecolor=facecolor,
+            pad_inches=0
+        )
+    
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    
+    return fig
+
+
 def plot_galactic_distribution_with_posterior_zoom(
     galactic_coords: np.ndarray,
     posterior_ra: np.ndarray,
