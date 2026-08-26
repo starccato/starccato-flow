@@ -163,15 +163,28 @@ def plot_flat_constellation_projection(
             # Formula: size = 60 * 10^(-0.4*mag), clipped to reasonable range
             # At mag=-1: 60 * 10^0.4 ≈ 151 → clipped to 12
             # At mag=3:  60 * 10^-1.2 ≈ 3.8 → stays as 3.8
-            star_sizes = np.clip(60 * 10 ** (-0.4 * mag_all), 0.5, 12)
+            star_sizes = np.clip(60 * 10 ** (-0.4 * mag_all), 0.2, 10)
+            
+            # Calculate alpha values: brightest stars full (1.0), faintest at 0.7
+            # Normalize magnitude to 0-1 range, then invert so brighter = higher
+            mag_min, mag_max = mag_all.min(), mag_all.max()
+            norm_mag = (mag_all - mag_min) / (mag_max - mag_min) if mag_max > mag_min else np.zeros_like(mag_all)
+            star_alphas = 1.0 - 0.3 * norm_mag  # brightest (norm=0) → 1.0, faintest (norm=1) → 0.7
             
             print(f"DEBUG: Star sizes range: {star_sizes.min():.2f} to {star_sizes.max():.2f}")
+            print(f"DEBUG: Star alphas range: {star_alphas.min():.2f} to {star_alphas.max():.2f}")
             
-            # Plot stars with solid opacity on top layer (above constellation lines)
-            scatter = ax.scatter(ra_all, dec_all, s=star_sizes, c=text_color, alpha=0.9, 
-                                edgecolors=text_color, linewidth=0.1, zorder=10)
+            # Plot stars in 10 alpha bins for efficiency
+            n_bins = 10
+            alpha_bins = np.linspace(0.7, 1.0, n_bins + 1)
+            for i in range(len(alpha_bins) - 1):
+                mask = (star_alphas >= alpha_bins[i]) & (star_alphas < alpha_bins[i + 1])
+                if mask.any():
+                    alpha_val = (alpha_bins[i] + alpha_bins[i + 1]) / 2
+                    ax.scatter(ra_all[mask], dec_all[mask], s=star_sizes[mask], c=text_color, 
+                              alpha=alpha_val, edgecolors='none', zorder=10)
             
-            print(f"✓ Plotted {len(ra_all)} stars with mag <= {mag_limit} sized by magnitude")
+            print(f"✓ Plotted {len(ra_all)} stars with mag <= {mag_limit} sized by magnitude, alpha {star_alphas.min():.2f}-{star_alphas.max():.2f}")
         else:
             print(f"⊘ No stars found with mag <= {mag_limit}")
     else:
@@ -223,29 +236,17 @@ def plot_flat_constellation_projection(
                 ra_deg_j2000 = coords_j2000.ra.deg
                 dec_deg_j2000 = coords_j2000.dec.deg
                 
-                # Collect borders as line segments per constellation
-                border_segments = []
+                # Collect borders grouped by constellation to enable proper dashing
+                borders_by_constellation = {}
                 current_border = None
                 current_ra = []
                 current_dec = []
                 
                 for border, ra, dec in zip(borders, ra_deg_j2000, dec_deg_j2000):
                     if border != current_border and current_border is not None:
-                        # Process previous border constellation
+                        # Store this constellation's border path
                         if len(current_ra) > 1:
-                            # Check for RA wrapping in this border line
-                            has_wrapping = False
-                            for j in range(len(current_ra) - 1):
-                                if _check_ra_wrapping(current_ra[j], current_ra[j+1]):
-                                    has_wrapping = True
-                                    break
-                            
-                            # Only collect if no wrapping detected
-                            if not has_wrapping:
-                                # Add each segment of this border
-                                for j in range(len(current_ra) - 1):
-                                    border_segments.append(np.array([[current_ra[j], current_dec[j]], 
-                                                                    [current_ra[j+1], current_dec[j+1]]]))
+                            borders_by_constellation[current_border] = (current_ra, current_dec)
                         current_ra = []
                         current_dec = []
                     
@@ -253,23 +254,56 @@ def plot_flat_constellation_projection(
                     current_ra.append(ra)
                     current_dec.append(dec)
                 
-                # Process final border
+                # Store final border
                 if len(current_ra) > 1:
-                    has_wrapping = False
-                    for j in range(len(current_ra) - 1):
-                        if _check_ra_wrapping(current_ra[j], current_ra[j+1]):
-                            has_wrapping = True
-                            break
-                    
-                    if not has_wrapping:
-                        for j in range(len(current_ra) - 1):
-                            border_segments.append(np.array([[current_ra[j], current_dec[j]], 
-                                                            [current_ra[j+1], current_dec[j+1]]]))
+                    borders_by_constellation[current_border] = (current_ra, current_dec)
                 
-                # Add all border segments as a single LineCollection (dashed, matching sky.py)
-                if border_segments:
-                    ax.add_collection(LineCollection(border_segments, colors="#1e293b", 
-                                                     alpha=0.5, linewidth=0.5, zorder=1,
+                # Build continuous paths with NaN separators to maintain dash consistency
+                all_border_segments = []
+                for constellation, (ras, decs) in borders_by_constellation.items():
+                    # Handle segments with RA wrapping by extending to edges
+                    constellation_path = []
+                    current_path = []
+                    
+                    for j in range(len(ras) - 1):
+                        ra1, dec1 = ras[j], decs[j]
+                        ra2, dec2 = ras[j+1], decs[j+1]
+                        
+                        if not _check_ra_wrapping(ra1, ra2):
+                            # Normal segment - add to current path
+                            current_path.append([ra1, dec1])
+                        else:
+                            # RA wrap detected - extend to edges and create two segments
+                            if current_path:
+                                current_path.append([ra1, dec1])
+                                constellation_path.append(np.array(current_path))
+                                current_path = []
+                            
+                            # Add segment from ra1 to edge (RA=0 or 360)
+                            if ra1 > 180:
+                                # ra1 is near 360, extend to 360
+                                constellation_path.append(np.array([[ra1, dec1], [360, dec1]]))
+                                # Start new segment from 0
+                                current_path = [[0, dec2]]
+                            else:
+                                # ra1 is near 0, extend to 0
+                                constellation_path.append(np.array([[ra1, dec1], [0, dec1]]))
+                                # Start new segment from 360
+                                current_path = [[360, dec2]]
+                    
+                    # Add final point and finalize path
+                    if current_path:
+                        current_path.append([ras[-1], decs[-1]])
+                        constellation_path.append(np.array(current_path))
+                    
+                    # Add all paths for this constellation
+                    all_border_segments.extend(constellation_path)
+                
+                # Add borders with dashes
+                if all_border_segments:
+                    print(f"DEBUG: Total border paths (consolidated): {len(all_border_segments)}")
+                    ax.add_collection(LineCollection(all_border_segments, colors="#1e293b", 
+                                                     alpha=0.35, linewidth=0.5, zorder=1,
                                                      linestyle=(0, (5, 5)),
                                                      joinstyle="round", capstyle="round"))
                 
@@ -300,8 +334,8 @@ def plot_flat_constellation_projection(
         codes = [Path.MOVETO] + [Path.LINETO] * 7 + [Path.CLOSEPOLY]
         star_marker = Path(star_verts, codes)
         
-        # Draw red 4-pointed star at Crab Nebula location (no outline)
-        ax.scatter(crab_ra, crab_dec, s=450, marker=star_marker, c='red', alpha=1.0, 
+        # Draw black 4-pointed star at Crab Nebula location (no outline)
+        ax.scatter(crab_ra, crab_dec, s=550, marker=star_marker, c='black', alpha=1.0, 
                   edgecolors='none', linewidth=0.0, zorder=100, label='Crab Nebula (M1)')
         print(f"✓ Crab Nebula (M1) marked at RA={crab_ra:.3f}°, Dec={crab_dec:.3f}° with 4-pointed star")
     except Exception as e:
@@ -311,22 +345,30 @@ def plot_flat_constellation_projection(
     ax.set_xlim(0, 360)
     ax.set_ylim(-90, 90)
     
-    # Save with tight layout
-    plt.tight_layout(pad=0)
+    # Add Crab Supernova label near bottom center
+    ax.text(180, -82, "Crab Supernova\n4th July, 1054", 
+           ha='center', va='top', fontsize=7, fontfamily='Futura', 
+           color=text_color, zorder=50)
+    
+    # Make axes fill entire figure (no margins)
+    ax.set_position([0, 0, 1, 1])
+    
+    # Explicitly position axes to fill entire figure (full bleed)
+    ax.set_position([0, 0, 1, 1])
     
     # Ensure canvas is properly configured
     canvas = fig.canvas
     canvas.draw()
     
-    # Save to PNG first for debugging
+    # Save to PNG first for debugging (no tight_layout, full bleed to edges)
     png_path = output_path.replace('.pdf', '.png')
-    fig.savefig(png_path, dpi=page_dpi, bbox_inches='tight', 
-                facecolor=background, edgecolor='none', pad_inches=0.02)
+    fig.savefig(png_path, dpi=page_dpi, bbox_inches=None, 
+                facecolor=background, edgecolor='none', pad_inches=0)
     print(f"✓ Saved debug PNG to: {png_path}")
     
-    # Save to PDF
-    fig.savefig(output_path, dpi=page_dpi, bbox_inches='tight', 
-                facecolor=background, edgecolor='none', pad_inches=0.02)
+    # Save to PDF (no tight_layout, full bleed to edges)
+    fig.savefig(output_path, dpi=page_dpi, bbox_inches=None, 
+                facecolor=background, edgecolor='none', pad_inches=0)
     print(f"✓ Flat sky projection saved to: {output_path}")
     
     return fig, ax
