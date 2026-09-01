@@ -580,6 +580,7 @@ def plot_galactic_supernovae_polar_hemispheres(
     true_dec_override: float | None = None,
     show_constellation_borders: bool = False,
     show_constellation_names: bool = False,
+    show_ra_dec_lines: bool = True,
     constellations: bool = True,
     show_stars: bool = False,
     galactic_contour: bool = True,
@@ -595,6 +596,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     figsize: tuple[float, float] | None = None,
     credible_area_labels: dict | None = None,
     display_supernova_marker: bool = False,
+    circle_historic_ccsn: bool = False,
+    timeline: bool = False,
+    supernova_colour: str = "lightgray",
 ) -> None:
     """Plot CCSN sky distribution as tangent north/south pole-centered hemispheres.
 
@@ -624,6 +628,10 @@ def plot_galactic_supernovae_polar_hemispheres(
             If not enough supernovae are available, uses all. Default 50000.
         display_supernova_marker: If True, add a legend marker for "Supernova" at the bottom
             of the plot. Default False.
+        circle_historic_ccsn: If True, draw yellow circles around historic core collapse supernovae
+            (Crab Nebula, Cas A, SN 1987A, Tycho, Kepler). Default False.
+        timeline: If True, display a supernova timeline below the southern hemisphere. Default False.
+        supernova_colour: Color for supernova markers in the plot and timeline. Default "lightgray".
     """
     # Configure sizes based on mode
     # Figsize in mm (converted to inches for matplotlib)
@@ -855,12 +863,13 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Create levels to match the number of colors
         smooth_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
 
-        ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
-        ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True)
+        ax_l.contourf(xcenters, ycenters, h_n_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, zorder=0)
+        ax_r.contourf(xcenters, ycenters, h_s_plot, levels=smooth_levels, colors=smooth_colors, antialiased=True, zorder=0)
 
-    for r_lat in lat_radii:
-        ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
-        ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
+    if show_ra_dec_lines:
+        for r_lat in lat_radii:
+            ax_l.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
+            ax_r.plot(r_lat * np.cos(theta), r_lat * np.sin(theta), color=text_color, alpha=0.2, lw=0.75)
 
     # border circle for each hemisphere
     ax_l.plot(np.cos(theta), np.sin(theta), color=text_color, lw=1 if format == "poster" else 0.5, zorder=50)
@@ -870,26 +879,27 @@ def plot_galactic_supernovae_polar_hemispheres(
 
     meridian_angles_deg = [0, 30, 60, 90, 120, 150]  # replace with e.g. np.arange(0, 360, 30) for more spokes
 
-    for ang_deg in meridian_angles_deg:
-        ang = np.deg2rad(ang_deg)
+    if show_ra_dec_lines:
+        for ang_deg in meridian_angles_deg:
+            ang = np.deg2rad(ang_deg)
 
-        # North panel: full diameter from angle to angle+180, through the center.
-        x1_n, y1_n = np.sin(ang), np.cos(ang)
-        x2_n, y2_n = -np.sin(ang), -np.cos(ang)
-        
-        # South panel (mirrored x, per the rest of the file's convention).
-        x1_s, y1_s = -np.sin(ang), np.cos(ang)
-        x2_s, y2_s = np.sin(ang), -np.cos(ang)
-        
-        # Apply thesis rotation to both panels' meridian coordinates
-        if thesis_rotate:
-            x1_n, y1_n = y1_n, -x1_n
-            x2_n, y2_n = y2_n, -x2_n
-            x1_s, y1_s = y1_s, -x1_s
-            x2_s, y2_s = y2_s, -x2_s
-        
-        ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.2, lw=0.75, zorder=10)
-        ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.2, lw=0.75, zorder=10)
+            # North panel: full diameter from angle to angle+180, through the center.
+            x1_n, y1_n = np.sin(ang), np.cos(ang)
+            x2_n, y2_n = -np.sin(ang), -np.cos(ang)
+            
+            # South panel (mirrored x, per the rest of the file's convention).
+            x1_s, y1_s = -np.sin(ang), np.cos(ang)
+            x2_s, y2_s = np.sin(ang), -np.cos(ang)
+            
+            # Apply thesis rotation to both panels' meridian coordinates
+            if thesis_rotate:
+                x1_n, y1_n = y1_n, -x1_n
+                x2_n, y2_n = y2_n, -x2_n
+                x1_s, y1_s = y1_s, -x1_s
+                x2_s, y2_s = y2_s, -x2_s
+            
+            ax_l.plot([x1_n, x2_n], [y1_n, y2_n], color=text_color, alpha=0.2, lw=0.75, zorder=10)
+            ax_r.plot([x1_s, x2_s], [y1_s, y2_s], color=text_color, alpha=0.2, lw=0.75, zorder=10)
 
     # Add "Northern Sky" label directly above 0h RA (top of hemisphere)
     if background == "black" and format == "poster":
@@ -1290,7 +1300,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         dec = data[:, 1]
         mag = data[:, 2]
 
-        data = data[np.where(mag < (8.0 if format == "poster" else 5.0))]  # filter out very dim stars above magnitude 5.0
+        data = data[np.where(mag < (8.0 if format == "poster" else 6.0))]  # filter out very dim stars above magnitude 5.0
         ra = data[:, 0]
         dec = data[:, 1]
         mag = data[:, 2]
@@ -1302,7 +1312,9 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         north, x, y = _project_to_hemisphere(np.deg2rad(ra), np.deg2rad(dec), thesis_rotate=thesis_rotate)
 
-        sizes = np.clip(40 * 10 ** (-0.4 * mag), 0.2, 50 if format == "poster" else 8)
+        # Size stars using inverse magnitude scale (matching sky_flat.py): brighter = larger
+        # Formula: size = 60 * 10^(-0.4*mag), clipped to reasonable range
+        sizes = np.clip(60 * 10 ** (-0.4 * mag), 0.05, 10)
 
         ax_l.scatter(
             x[north],
@@ -1311,7 +1323,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             color="white",
             edgecolors="none" if background == "black" else "#b1cbed",
             linewidths=0.2 if background == "white" else 0.0,
-            alpha=0.7,
+            alpha=1.0,
             zorder=5,
         )
 
@@ -1322,7 +1334,7 @@ def plot_galactic_supernovae_polar_hemispheres(
             color="white",
             edgecolors="none" if background == "black" else "#b1cbed",
             linewidths=0.2 if background == "white" else 0.0,
-            alpha=0.7,
+            alpha=1.0,
             zorder=5,
         )
         
@@ -1582,7 +1594,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 fig.legend(
                     handles=posterior_legend_handles,
                     loc="center",
-                    bbox_to_anchor=(0.5, 0.18),
+                    bbox_to_anchor=(0.5, 0.75),
                     ncol=1,
                     frameon=False,
                     fontsize=fontsize_main,
@@ -1635,16 +1647,16 @@ def plot_galactic_supernovae_polar_hemispheres(
         true_ax.scatter(
             [true_loc_x],
             [true_loc_y],
-            s=100,
+            s=1000,
             marker="x",
             c=SIGNAL_COLOUR,
-            linewidths=1.8,
+            linewidths=9,
             zorder=20,
         )
 
     if show_stars:
         # Southern Cross (Crux), pointer stars, Achernar, and Pleiades/Matariki.
-        object_names = ["Achernar", "Pleiades", "Antares", "Betelgeuse", "Sirius", "Acrux", "Gacrux", "Mimosa", "Imai", "Alnair"]
+        object_names = ["Pleiades", "Antares", "Betelgeuse", "Sirius", "Acrux", "Gacrux", "Mimosa", "Imai", "Alnair"]
 
         south_proj: dict[str, tuple[str, float, float]] = {}
         for star_name in object_names:
@@ -1675,7 +1687,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 edgecolors=color if border else "none",
                 linestyle="--" if border else "solid",
                 linewidth=0.5 if border else 0.0,
-                alpha=0.9,
+                alpha=1.0,
                 zorder=9,
             )
 
@@ -1730,6 +1742,91 @@ def plot_galactic_supernovae_polar_hemispheres(
                 va="top",
                 zorder=10,
             )
+
+    # Circle historic core-collapse supernovae if requested
+    if circle_historic_ccsn:
+        # Well-known CCSN with their J2000 coordinates (RA in degrees, Dec in degrees) and discovery year
+        historic_ccsn = {
+            "Puppis A": (119.5, -42.5, -4000),
+            "Vela Remnant": (135.0, -46.0, -2000),
+            "SN 386 (1st millennia)": (12.5, -62.0, -386),
+            "Crab Nebula (SN 1054)": (83.625, 22.014, 1054),
+            "Cas A (SN 1680)": (350.85, 58.815, 1680),
+        }
+
+        # Color mapping for each historic supernova
+        sn_colors = {
+            "Puppis A": "#FF6B6B",  # Red
+            "Vela Remnant": "#4ECDC4",  # Teal
+            "SN 386 (1st millennia)": "#FFE66D",  # Yellow
+            "Crab Nebula (SN 1054)": "#95E1D3",  # Mint
+            "Cas A (SN 1680)": "#F38181",  # Pink
+        }
+
+        # Add future CCSN if true location is provided (plotted as X marker, not as circle)
+        future_ccsn_data = None
+        if true_ra_override is not None and true_dec_override is not None:
+            future_ccsn_data = (np.rad2deg(true_ra_override), np.rad2deg(true_dec_override))
+
+        # Circle radius in normalized hemisphere coordinates
+        circle_radius = 0.045 if format == "poster" else 0.08
+        marker_size = 200 if format == "poster" else 15
+
+        for sn_name, (ra_deg, dec_deg, age_years) in historic_ccsn.items():
+            # Convert to radians
+            ra_rad = np.deg2rad(ra_deg)
+            dec_rad = np.deg2rad(dec_deg)
+            
+            # Project to hemisphere
+            hemi, cx, cy = _project_to_hemisphere(ra_rad, dec_rad, thesis_rotate=thesis_rotate)
+            
+            # Only draw if within hemisphere circle
+            if np.sqrt(cx**2 + cy**2) <= 1.0:
+                ax = ax_l if hemi == "north" else ax_r
+                
+                # Plot as scatter point with circle outline and dashed edge
+                ax.scatter(
+                    [cx],
+                    [cy],
+                    s=marker_size,
+                    c="none",  # Use SN color, default to gold
+                    edgecolors=sn_colors.get(sn_name, "#FFD700"),
+                    linewidth=0.5,
+                    linestyle="--",
+                    alpha=1.0,
+                    zorder=11,
+                )
+
+                # Add legend handle by plotting invisible scatter on ax_r
+                ax_r.scatter(
+                    [],
+                    [],
+                    s=100,
+                    c=sn_colors.get(sn_name, "#FFD700"),
+                    edgecolors=sn_colors.get(sn_name, "#FFD700"),
+                    linewidth=1.5,
+                    linestyle="--",
+                    label=sn_name,
+                )
+
+        # Plot Future CCSN as X marker if provided
+        if future_ccsn_data is not None:
+            ra_deg, dec_deg = future_ccsn_data
+            ra_rad = np.deg2rad(ra_deg)
+            dec_rad = np.deg2rad(dec_deg)
+            hemi, cx, cy = _project_to_hemisphere(ra_rad, dec_rad, thesis_rotate=thesis_rotate)
+
+            if np.sqrt(cx**2 + cy**2) <= 1.0:
+                ax = ax_l if hemi == "north" else ax_r
+                ax.scatter(
+                    [cx],
+                    [cy],
+                    s=1000,
+                    marker="x",
+                    c=SIGNAL_COLOUR,
+                    linewidths=9,
+                    zorder=20,
+                )
 
     # Plot a random sample of n supernovae from the galactic distribution (rasterized)
     if hasattr(ccsn, 'galactic_coords') and ccsn.galactic_coords is not None:
@@ -1959,7 +2056,129 @@ def plot_galactic_supernovae_polar_hemispheres(
             markeredgewidth=0.0,
             label="Gravitational Wave Detector" if format == "poster" else "Detector",
         )
-    
+
+    # -------------------------------------------------
+    # Timeline visualization (if enabled)
+    # -------------------------------------------------
+    if timeline and format == "poster" and circle_historic_ccsn:
+        # Extract years and names from historic_ccsn
+        timeline_data = []
+        for sn_name, (ra_deg, dec_deg, year) in historic_ccsn.items():
+            timeline_data.append((year, sn_name))
+
+        # Add Future CCSN to timeline if provided
+        if future_ccsn_data is not None:
+            timeline_data.append((2026, "Future CCSN"))
+
+        if timeline_data:
+            # Sort by year
+            timeline_data.sort(key=lambda x: x[0])
+            years = np.array([x[0] for x in timeline_data])
+            names = [x[1] for x in timeline_data]
+
+            # Normalize years to [0, 1] for timeline positioning
+            if len(years) > 1:
+                year_min, year_max = np.min(years), np.max(years)
+                if year_max > year_min:
+                    year_normalized = (years - year_min) / (year_max - year_min)
+                else:
+                    year_normalized = np.zeros_like(years)
+            else:
+                year_normalized = np.zeros_like(years)
+
+            # Timeline positioning: horizontal line from left to right edge, below southern hemisphere
+            timeline_y = -1.1  # Below the southern hemisphere
+            timeline_x_start = -1.0  # Left edge of southern sky
+            timeline_x_end = 1.0   # Right edge of southern sky
+
+            # Find the positions of Puppis A (-4000) and SN 386 (-386) - the uncertain boundary
+            puppis_year = -4000
+            sn386_year = -386
+            puppis_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((puppis_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
+            sn386_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((sn386_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
+
+            ax_r.plot(
+                [timeline_x_start, sn386_x],
+                [timeline_y, timeline_y],
+                color="white",
+                linewidth=2,
+                linestyle="--",
+                zorder=12,
+                clip_on=False,
+            )
+
+            ax_r.plot(
+                [sn386_x, timeline_x_end],
+                [timeline_y, timeline_y],
+                color="white",
+                linewidth=2,
+                linestyle="-",
+                zorder=12,
+                clip_on=False,
+            )
+
+            # Plot historic supernovae as circles along timeline (each with its own color)
+            timeline_x_positions = timeline_x_start + (timeline_x_end - timeline_x_start) * year_normalized
+            timeline_y_positions = np.full_like(timeline_x_positions, timeline_y)
+
+            # Plot each circle individually with its supernova's color (or X for Future CCSN)
+            for x, y, name in zip(timeline_x_positions, timeline_y_positions, names):
+                if name == "Future CCSN":
+                    # Plot as X marker for Future CCSN
+                    ax_r.scatter(
+                        [x],
+                        [y],
+                        s=450,
+                        marker="x",
+                        c=SIGNAL_COLOUR,
+                        linewidths=3,
+                        zorder=13,
+                        clip_on=False,
+                    )
+                else:
+                    # Plot as circle for historic supernovae
+                    ax_r.scatter(
+                        [x],
+                        [y],
+                        s=750,
+                        c=fig_facecolor,  # Use SN color, default to gold
+                        edgecolors=sn_colors.get(name, "#FFD700"),
+                        linewidth=1.5,
+                        linestyle="--",
+                        alpha=1.0,
+                        zorder=13,
+                        clip_on=False,
+                    )
+
+            # Add labels for each supernova on the timeline
+            for i, (x, y, name) in enumerate(zip(timeline_x_positions, timeline_y_positions, names)):
+                # Extract short name (before parentheses if present)
+                short_name = name.split("(")[0].strip()
+                ax_r.text(
+                    x,
+                    y - 0.15,  # Below the marker
+                    short_name,
+                    ha="center",
+                    va="top",
+                    fontsize=fontsize_small * 0.6,
+                    color=text_color,
+                    zorder=14,
+                    clip_on=False,
+                )
+
+            # Add timeline marker to legend (must exactly match the scatter plot circles)
+            ax_r.plot(
+                [],
+                [],
+                marker="o",
+                markerfacecolor="blue",  # Example color (will be mixed in legend)
+                markeredgecolor="#FF6B6B",
+                markeredgewidth=1.5,
+                linestyle="--",
+                markersize=9,  # Matches s=60 in scatter plot
+                label="Historic Supernovae",
+            )
+
     # Add supernova marker to legend if requested
     if display_supernova_marker:
         ax_r.plot(
@@ -1968,11 +2187,11 @@ def plot_galactic_supernovae_polar_hemispheres(
             marker="o",
             linestyle="None",
             markersize=8 if format == "poster" else 9,
-            markerfacecolor="lightgray",
+            markerfacecolor=supernova_colour,
             markeredgecolor="none",
             label="Supernova",
         )
-    
+
     if format == "thesis":
         ax_r.legend(
             loc="upper center",
@@ -1986,14 +2205,25 @@ def plot_galactic_supernovae_polar_hemispheres(
             borderaxespad=0.2,
         )
     else:
-        ax_r.legend(
-            loc="lower right",
-            bbox_to_anchor=(0.98, -0.08),
-            frameon=False,
-            labelcolor=text_color,
-            fontsize=fontsize_main,
-            borderaxespad=0.0,
-        )
+        # Move legend to left side if timeline is enabled, otherwise right side
+        if timeline:
+            ax_l.legend(
+                loc="lower left",
+                bbox_to_anchor=(0.02, -0.08),
+                frameon=False,
+                labelcolor=text_color,
+                fontsize=fontsize_main,
+                borderaxespad=0.0,
+            )
+        else:
+            ax_r.legend(
+                loc="lower right",
+                bbox_to_anchor=(0.98, -0.08),
+                frameon=False,
+                labelcolor=text_color,
+                fontsize=fontsize_main,
+                borderaxespad=0.0,
+            )
 
     # -------------------------------------------------
     # Earth coastlines
@@ -2231,14 +2461,6 @@ def _draw_constellation_name(
         ra_offset_deg: Right ascension offset in degrees. Positive moves in the direction
             of increasing RA (counterclockwise from the north pole).
     """
-    # Debug: Print for Columba
-    is_columba = "Columba" in const_name
-    if is_columba:
-        print(f"\n=== DRAWING COLUMBA ===")
-        print(f"  Input const_name: {const_name}")
-        print(f"  Panel: {panel}")
-        print(f"  center_ra_rad: {center_ra_rad}, center_dec_rad: {center_dec_rad}")
-        print(f"  dec_offset_deg: {dec_offset_deg}, ra_offset_deg: {ra_offset_deg}")
     
     # Apply declination and RA offsets
     center_dec_rad_adjusted = center_dec_rad + np.deg2rad(dec_offset_deg)
@@ -2247,9 +2469,6 @@ def _draw_constellation_name(
     # Split on newlines and draw each line as a separate curved arc
     lines = const_name.split('\n')
     n_lines = len(lines)
-    
-    if is_columba:
-        print(f"  n_lines: {n_lines}, lines: {lines}")
     
     # For multi-line names, offset each line radially to spread them out
     # Adjust radius for each line based on its position
@@ -2335,16 +2554,9 @@ def _draw_constellation_name(
         
         if flipped:
             letter_pos = letter_pos[::-1]
-        
-        if is_columba:
-            print(f"  Line {line_idx}: '{line_text}'")
-            print(f"    base_rot={base_rot}, norm={norm}, flipped={flipped}")
-            print(f"    letter_pos: {letter_pos}")
-        
+   
         # Draw each character at its arc-length position
         for char, target_s in zip(line_text, letter_pos):
-            if is_columba:
-                print(f"      Drawing '{char}' at arc_s={target_s}")
             if target_s < 0 or target_s > s[-1]:
                 continue  # Skip if outside arc bounds
             
@@ -2380,9 +2592,6 @@ def _draw_constellation_name(
                 path_effects=[pe.withStroke(linewidth=1, foreground=outline_color)],
                 zorder=zorder,
             )
-    
-    if is_columba:
-        print(f"=== DONE DRAWING COLUMBA ===\n")
 
 _fp_cache = {}
 
