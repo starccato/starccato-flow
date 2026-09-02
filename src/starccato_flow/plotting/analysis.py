@@ -168,6 +168,9 @@ def plot_galactic_distribution(
     Returns:
         List[plt.Figure]: A single-item list containing the X-Y figure.
     """
+
+    
+
     galactic_coords = np.asarray(galactic_coords)
     if galactic_coords.ndim != 2 or galactic_coords.shape[1] != 3:
         raise ValueError("galactic_coords must have shape (N, 3).")
@@ -212,7 +215,7 @@ def plot_galactic_distribution(
         return output_path
 
     def _style_2d_axes(axes: plt.Axes) -> None:
-        axes.tick_params(colors=text_color, labelsize=fontsize_tick, direction="inout", length=fontsize_tick, width=line_weight)
+        axes.tick_params(colors=text_color, labelsize=fontsize_tick, direction="inout", length=fontsize_tick, width=line_weight, labelfontfamily=font_family)
         for spine in axes.spines.values():
             spine.set_color(text_color)
             spine.set_linewidth(line_weight)
@@ -242,6 +245,8 @@ def plot_galactic_distribution(
     def _tighten_light_year_tick_lines(axes: plt.Axes) -> None:
         for tick_label in list(axes.get_xticklabels()) + list(axes.get_yticklabels()):
             tick_label.set_linespacing(0.75)
+            tick_label.set_fontfamily(font_family)
+            tick_label.set_fontname(font_name)
 
     def _axis_label(base: str) -> str:
         return f"{base} (kpc)" if not light_year else base
@@ -299,7 +304,7 @@ def plot_galactic_distribution(
                 adjusted_handles.append(handle_map[label])
 
         legend_ncol = 2 if len(ordered_labels) == 4 else max(1, len(ordered_labels))
-        axes.legend(
+        legend = axes.legend(
             adjusted_handles,
             ordered_labels,
             loc="upper center",
@@ -311,6 +316,9 @@ def plot_galactic_distribution(
             fontsize=fontsize_tick,
             frameon=False,
         )
+        for text in legend.get_texts():
+            text.set_fontfamily(font_family)
+            text.set_fontname(font_name)
 
     output_xy = _prepare_output_path(fname_xy)
 
@@ -350,11 +358,15 @@ def plot_galactic_distribution(
             label="Sampled Supernova",
             zorder=10,
         )
-    ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=fontsize_title)
-    ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=fontsize_title)
+    xlabel = ax1.set_xlabel(_axis_label("X"), color=text_color, fontsize=fontsize_title)
+    xlabel.set_fontfamily(font_family)
+    xlabel.set_fontname(font_name)
+    ylabel = ax1.set_ylabel(_axis_label("Y"), color=text_color, fontsize=fontsize_title)
+    ylabel.set_fontfamily(font_family)
+    ylabel.set_fontname(font_name)
 
     n_supernovae = galactic_coords.shape[0]
-    ax1.text(
+    n_text = ax1.text(
         0.95,
         0.02,
         f"n={n_supernovae:,}",
@@ -364,6 +376,8 @@ def plot_galactic_distribution(
         fontsize=fontsize_tick,
         color=text_color,
     )
+    n_text.set_fontfamily(font_family)
+    n_text.set_fontname(font_name)
 
     _style_2d_axes(ax1)
     ax1.set_xlim(-xy_radius, xy_radius)

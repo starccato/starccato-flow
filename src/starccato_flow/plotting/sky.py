@@ -154,16 +154,34 @@ _GREEK_LETTERS = [
     'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'σ', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω'
 ]
 
-def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, list[tuple[float, float, str]]]:
-    """Assign Greek letters to the brightest stars in each constellation based on Rey.
+def _get_greek_letter_stars(max_stars_per_constellation: int = 10) -> dict[str, list[tuple[float, float, str]]]:
+    """Assign Greek letters to stars in each constellation using Bayer designation lookup.
     
     Returns a dict mapping constellation_name -> [(ra_deg, dec_deg, greek_label), ...]
-    sorted by brightness (brightest first).
-    Only stars that appear in Rey's constellation boundaries are labeled.
-    Limited to max_stars_per_constellation to avoid duplicate letters across hemispheres.
+    Prioritizes known Bayer designations from HIP catalog, falls back to magnitude order.
     """
     if not _ASTROPY_AVAILABLE:
         return {}
+    
+    # Mapping of (constellation_abbr, HIP_ID) -> Bayer Greek letter
+    # Data from Yale Bright Star Catalog and Hipparcos
+    BAYER_DESIGNATIONS = {
+        ("Tau", 21421): "α",   # Aldebaran
+        ("Tau", 25428): "β",   # beta Tauri
+        ("Tau", 17702): "γ",   # gamma Tauri
+        ("Tau", 26451): "ζ",   # zeta Tauri - THIS IS THE KEY ONE
+        ("Tau", 20894): "ε",   # epsilon Tauri
+        ("Tau", 20889): "δ",   # delta Tauri (one of them)
+        ("Col", 26634): "α",   # phact (alpha Columbae)
+        ("Col", 27628): "β",   # beta Columbae
+        ("UMa", 54061): "α",   # Dubhe (alpha Ursae Majoris)
+        ("UMa", 53910): "β",   # Merak (beta Ursae Majoris)
+        ("UMa", 58001): "γ",   # Phecda (gamma Ursae Majoris)
+        ("UMa", 59774): "δ",   # Megrez (delta Ursae Majoris)
+        ("UMa", 62956): "ε",   # Alioth (epsilon Ursae Majoris)
+        ("UMa", 65378): "ζ",   # Mizar (zeta Ursae Majoris)
+        ("UMa", 67301): "η",   # Alkaid (eta Ursae Majoris)
+    }
     
     # Load HIP lookup with magnitudes
     hip_lookup = _hip_lookup_table_with_mag()
@@ -178,6 +196,11 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, l
                     continue
                 parts = line.split()
                 const_abbr = parts[0]
+                
+                # Normalize constellation abbreviations that don't match IAU standard
+                if const_abbr == "Uma":
+                    const_abbr = "UMa"
+                
                 try:
                     # Skip the count (parts[1]) and convert remaining parts to ints
                     hip_ids = [int(p) for p in parts[2:]]
@@ -187,10 +210,6 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, l
                 if not hip_ids:
                     continue
                 
-                if const_abbr == "Col":
-                    print(f"\n=== COLUMBA RAW DATA FROM FILE ===")
-                    print(f"  Raw HIP IDs from this line: {hip_ids}")
-                
                 # Deduplicate HIP IDs FIRST (they're line segment vertices, some may repeat)
                 unique_hip_ids = set(hip_ids)
                 
@@ -198,9 +217,6 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, l
                 if const_abbr not in constellation_stars:
                     constellation_stars[const_abbr] = set()
                 constellation_stars[const_abbr].update(unique_hip_ids)
-        
-        if "Col" in constellation_stars:
-            print(f"  Total unique HIP IDs for Columba across all lines: {len(constellation_stars['Col'])}")
         
         # Now load star data from HIP table for each unique HIP ID
         for const_abbr in list(constellation_stars.keys()):
@@ -216,56 +232,48 @@ def _get_greek_letter_stars(max_stars_per_constellation: int = 6) -> dict[str, l
                 constellation_stars[const_abbr] = stars_in_const
             else:
                 del constellation_stars[const_abbr]
-            
-            if const_abbr == "Col":
-                print(f"  After loading from HIP table: {len(stars_in_const)} stars")
-                print(f"=== END COLUMBA RAW DATA ===\n")
     
-    # Assign Greek letters to brightest stars in each constellation
+    # Helper: get Bayer letter sort order
+    def get_bayer_sort_key(hip_id: int, vmag: float, const_abbr: str) -> tuple:
+        """Return sort key for stars with known vs unknown Bayer letters.
+        
+        Returns (has_known_bayer, bayer_index, magnitude) for proper sorting.
+        Stars with known Bayer letters come first, sorted by designation order.
+        Unknown stars sorted by magnitude afterwards.
+        """
+        key = (const_abbr, hip_id)
+        if key in BAYER_DESIGNATIONS:
+            bayer_letter = BAYER_DESIGNATIONS[key]
+            bayer_idx = _GREEK_LETTERS.index(bayer_letter) if bayer_letter in _GREEK_LETTERS else 999
+            return (0, bayer_idx, vmag)  # 0 = has known Bayer, sort by position
+        else:
+            return (1, 0, vmag)  # 1 = unknown, fallback to magnitude
+    
+    # Assign Greek letters to stars in each constellation
     greek_labels = {}
     for const_abbr, star_list in constellation_stars.items():
         if not star_list:
             continue
         
-        if const_abbr == "Col":
-            print(f"\n=== FINAL CHECK BEFORE GREEK LETTER ASSIGNMENT ===")
-            print(f"  constellation_stars['Col'] type: {type(star_list)}")
-            print(f"  constellation_stars['Col'] length: {len(star_list)}")
-            print(f"  constellation_stars['Col'] contents:")
-            for item in star_list:
-                print(f"    {item}")
+        # Sort: known Bayer designations first (by letter order), then unknown (by brightness)
+        sorted_stars = sorted(
+            star_list,
+            key=lambda x: get_bayer_sort_key(x[3], x[0], const_abbr)
+        )[:max_stars_per_constellation]
         
-        # Sort by magnitude and limit to max_stars_per_constellation
-        sorted_stars = sorted(star_list, key=lambda x: x[0])[:max_stars_per_constellation]
-        
-        if const_abbr == "Col":  # Columba
-            print(f"\n=== ASSIGNING GREEK LETTERS FOR COLUMBA ===")
-            print(f"  Total stars in constellation_stars: {len(star_list)}")
-            print(f"  After sorting by magnitude and limiting to {max_stars_per_constellation}:")
-            for i, (vmag, ra, dec, hip_id) in enumerate(sorted_stars):
-                print(f"    {i}: vmag={vmag:.2f}, HIP={hip_id}, RA={ra:.2f}°, Dec={dec:.2f}°")
-        
-        # Assign Greek letters
+        # Assign Greek letters sequentially (α, β, γ, ...)
         greek_labels[const_abbr] = []
         for greek_idx, (vmag, ra, dec, hip_id) in enumerate(sorted_stars):
             if greek_idx < len(_GREEK_LETTERS):
                 greek_letter = _GREEK_LETTERS[greek_idx]
-                if const_abbr == "Col":
-                    print(f"    Assigning {greek_letter} to HIP {hip_id}")
                 greek_labels[const_abbr].append((float(ra), float(dec), greek_letter))
-        
-        if const_abbr == "Col":
-            print(f"  Final greek_labels['Col'] contents:")
-            for item in greek_labels[const_abbr]:
-                print(f"    {item}")
-            print(f"=== DONE ASSIGNING COLUMBA GREEK LETTERS ===\n")
     
     return greek_labels
+
 
 def _constellation_stick_segments(thesis_rotate: bool = False):
     filename = os.path.join(SKY_MAP_ROOT, "constellations_rey.txt")
     hip_ids = _read_constellation_hip_ids(filename)
-    print(len(hip_ids))
 
     hip_lookup = _hip_lookup_table_with_mag()
 
@@ -629,7 +637,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         display_supernova_marker: If True, add a legend marker for "Supernova" at the bottom
             of the plot. Default False.
         circle_historic_ccsn: If True, draw yellow circles around historic core collapse supernovae
-            (Crab Nebula, Cas A, SN 1987A, Tycho, Kepler). Default False.
+            (Crab Nebula, Cassiopeia A, SN 1987A, Tycho, Kepler). Default False.
         timeline: If True, display a supernova timeline below the southern hemisphere. Default False.
         supernova_colour: Color for supernova markers in the plot and timeline. Default "lightgray".
     """
@@ -1288,7 +1296,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                     dec_offset_deg=dec_offset,
                     ra_offset_deg=ra_offset
                 )
-
+        
     # Initialize greek_labels (will be populated if show_stars is True)
     greek_labels = {}
     
@@ -1341,37 +1349,30 @@ def plot_galactic_supernovae_polar_hemispheres(
         # Add Greek letter labels for the brightest stars
         # Only show Greek letters for constellations that have their names displayed
         greek_labels = _get_greek_letter_stars()
+        
+        print("\n=== GREEK LABELS COMPUTED ===")
+        for const_abbr in ["Tau", "Col"]:
+            if const_abbr in greek_labels:
+                print(f"{const_abbr}: {len(greek_labels[const_abbr])} stars")
+                for idx, (ra, dec, letter) in enumerate(greek_labels[const_abbr]):
+                    print(f"  [{idx}] {letter}: RA={ra:.2f}°, Dec={dec:.2f}°")
+        
         for const_abbr, star_labels in greek_labels.items():
             # Skip if this constellation name wasn't displayed
             if not show_constellation_names or const_abbr not in displayed_constellations:
                 continue
             
-            if const_abbr == "Col":  # Columba
-                print(f"\n=== DRAWING COLUMBA GREEK LETTERS ===")
-                print(f"  const_abbr: {const_abbr}")
-                print(f"  Found {len(star_labels)} stars with labels")
-            
             for label_idx, (label_ra, label_dec, greek_label) in enumerate(star_labels):
-                if const_abbr == "Col":
-                    print(f"  Star {label_idx}: {greek_label} at ({label_ra:.2f}°, {label_dec:.2f}°)")
-                
                 hemi, label_x, label_y = _project_to_hemisphere(
                     np.deg2rad(label_ra), np.deg2rad(label_dec), thesis_rotate=thesis_rotate
                 )
                 
-                if const_abbr == "Col":
-                    print(f"    Projected: hemi={hemi}, x={label_x:.4f}, y={label_y:.4f}")
-                
                 # Check for valid, finite coordinates
                 if not (np.isfinite(label_x) and np.isfinite(label_y)):
-                    if const_abbr == "Col":
-                        print(f"    SKIPPED: non-finite coordinates")
                     continue
                 
                 # Only label if within the hemisphere
                 if np.sqrt(label_x**2 + label_y**2) > 1.0:
-                    if const_abbr == "Col":
-                        print(f"    SKIPPED: outside hemisphere circle (r={np.sqrt(label_x**2 + label_y**2):.4f})")
                     continue
                 
                 ax = ax_l if hemi == "north" else ax_r
@@ -1379,17 +1380,19 @@ def plot_galactic_supernovae_polar_hemispheres(
                 # Small radial offset to avoid overlapping with star or constellation sticks
                 r = np.sqrt(label_x**2 + label_y**2)
                 if r > 0.01:
-                    # Radial offset: move label 3% further out
+                    # Radial offset: move label outward normally, but reverse direction near edges
                     offset_factor = 1.015
+                    
+                    # If too close to hemisphere edge (r > 0.95), move inward instead
+                    if r > 0.95:
+                        offset_factor = 0.985  # Move 1.5% inward
+                    
                     label_x_display = label_x * offset_factor
                     label_y_display = label_y * offset_factor
                 else:
                     # At origin: use fixed offset
                     label_x_display = label_x + 0.03
                     label_y_display = label_y + 0.03
-                
-                if const_abbr == "Col":
-                    print(f"    PLOTTED: {greek_label} at display ({label_x_display:.4f}, {label_y_display:.4f})")
                 
                 ax.text(
                     label_x_display, label_y_display, greek_label,
@@ -1401,20 +1404,10 @@ def plot_galactic_supernovae_polar_hemispheres(
                     zorder=6,
                     fontfamily="DejaVu Sans",  # Use DejaVu Sans for Greek letter support
                 )
-            
-            if const_abbr == "Col":
-                print(f"=== DONE WITH COLUMBA GREEK LETTERS ===\n")
     
     if galaxy:
         # Keep Galactic Center fixed to the physical galactic center direction.
         gc_ra, gc_dec = ccsn.get_galactic_center_direction()
-        
-        # Print galactic center coordinates
-        print(f"\n{'='*60}")
-        print(f"Galactic Center Direction:")
-        print(f"  RA:  {gc_ra:.6f} rad = {np.degrees(gc_ra):.2f}°")
-        print(f"  Dec: {gc_dec:.6f} rad = {np.degrees(gc_dec):.2f}°")
-        print(f"{'='*60}\n")
 
     # Handle example mode: use first supernova as true location and prepare detector markers.
     detector_markers = []
@@ -1747,20 +1740,26 @@ def plot_galactic_supernovae_polar_hemispheres(
     if circle_historic_ccsn:
         # Well-known CCSN with their J2000 coordinates (RA in degrees, Dec in degrees) and discovery year
         historic_ccsn = {
-            "Puppis A": (119.5, -42.5, -4000),
-            "Vela Remnant": (135.0, -46.0, -2000),
-            "SN 386 (1st millennia)": (12.5, -62.0, -386),
-            "Crab Nebula (SN 1054)": (83.625, 22.014, 1054),
-            "Cas A (SN 1680)": (350.85, 58.815, 1680),
+            "Puppis A": (119.5, -42.5, -500),
+            "Vela Supernova": (135.0, -46.0, -1000),
+            "Guest Star \n of 386 CE": (12.5, -62.0, 386),
+            "Crab Supernova": (83.625, 22.014, 1054),
+            "Cassiopeia A": (350.85, 58.815, 1680),
+        }
+        
+        # Display year overrides (for showing approximate true ages on timeline)
+        display_years = {
+            "Puppis A": -1700,  # Display as 9000 BCE
+            "Vela Supernova": -9000,  # Display as 1700 BCE
         }
 
         # Color mapping for each historic supernova
         sn_colors = {
             "Puppis A": "#FF6B6B",  # Red
-            "Vela Remnant": "#4ECDC4",  # Teal
-            "SN 386 (1st millennia)": "#FFE66D",  # Yellow
-            "Crab Nebula (SN 1054)": "#95E1D3",  # Mint
-            "Cas A (SN 1680)": "#F38181",  # Pink
+            "Vela Supernova": "#4ECDC4",  # Teal
+            "Guest Star \n of 386 CE": "#FFE66D",  # Yellow
+            "Crab Supernova": "#95E1D3",  # Mint
+            "Cassiopeia A": "#F38181",  # Pink
         }
 
         # Add future CCSN if true location is provided (plotted as X marker, not as circle)
@@ -1770,7 +1769,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         # Circle radius in normalized hemisphere coordinates
         circle_radius = 0.045 if format == "poster" else 0.08
-        marker_size = 200 if format == "poster" else 15
+        marker_size = 300 if format == "poster" else 15
 
         for sn_name, (ra_deg, dec_deg, age_years) in historic_ccsn.items():
             # Convert to radians
@@ -2068,7 +2067,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         # Add Future CCSN to timeline if provided
         if future_ccsn_data is not None:
-            timeline_data.append((2026, "Future CCSN"))
+            timeline_data.append((2026, "Example \n Core-Collapse \n Supernova"))
 
         if timeline_data:
             # Sort by year
@@ -2087,14 +2086,12 @@ def plot_galactic_supernovae_polar_hemispheres(
                 year_normalized = np.zeros_like(years)
 
             # Timeline positioning: horizontal line from left to right edge, below southern hemisphere
-            timeline_y = -1.1  # Below the southern hemisphere
-            timeline_x_start = -1.0  # Left edge of southern sky
+            timeline_y = -1.2  # Below the southern hemisphere
+            timeline_x_start = -3.0  # Left edge of southern sky
             timeline_x_end = 1.0   # Right edge of southern sky
 
             # Find the positions of Puppis A (-4000) and SN 386 (-386) - the uncertain boundary
-            puppis_year = -4000
-            sn386_year = -386
-            puppis_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((puppis_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
+            sn386_year = 386
             sn386_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((sn386_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
 
             ax_r.plot(
@@ -2151,16 +2148,42 @@ def plot_galactic_supernovae_polar_hemispheres(
                     )
 
             # Add labels for each supernova on the timeline
-            for i, (x, y, name) in enumerate(zip(timeline_x_positions, timeline_y_positions, names)):
+            for i, (x, y, name, year) in enumerate(zip(timeline_x_positions, timeline_y_positions, names, years)):
                 # Extract short name (before parentheses if present)
                 short_name = name.split("(")[0].strip()
+                
+                # Use display year override if available, otherwise use actual year
+                display_year = display_years.get(name, year)
+                
+                # Format year label with era designation
+                if int(display_year) == 2026:
+                    year_label = "Future"
+                elif int(display_year) < 0:
+                    year_label = rf"$\sim$ {abs(int(display_year))} BCE"
+                else:
+                    year_label = f"{int(display_year)} CE"
+                
+                # Add year above the marker
                 ax_r.text(
                     x,
-                    y - 0.15,  # Below the marker
+                    y + 0.05,  # Above the marker
+                    year_label,
+                    ha="center",
+                    va="bottom",
+                    fontsize=fontsize_small,
+                    color=text_color,
+                    zorder=14,
+                    clip_on=False,
+                )
+                
+                # Add name below the marker
+                ax_r.text(
+                    x,
+                    y - 0.05,  # Below the marker
                     short_name,
                     ha="center",
                     va="top",
-                    fontsize=fontsize_small * 0.6,
+                    fontsize=fontsize_small,
                     color=text_color,
                     zorder=14,
                     clip_on=False,
