@@ -487,6 +487,7 @@ class FlowMatchingTrainer:
         fname_posterior: str = None, 
         fname_posterior_sky: str = None, 
         fname_posterior_galactic: str = None, 
+        fname_flow_trajectory: str = None, 
         fname_eos_ye: str = None, 
         background: str = "white", 
         transparent: bool = False, 
@@ -494,6 +495,7 @@ class FlowMatchingTrainer:
         fontsize_title: int = 16, 
         figsize_detector_signals: tuple[float, float] = (14.5,8),
         figsize_corner: tuple[float, float] = (14.5,14.5),
+        figsize_flow_trajectory: tuple[float, float] = (25, 5),
         format: str = "thesis"
     ) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
@@ -512,6 +514,7 @@ class FlowMatchingTrainer:
             fname_posterior: Filename for the posterior plot
             fname_posterior_sky: Filename for the posterior sky plot
             fname_posterior_galactic: Filename for the posterior galactic plot
+            fname_flow_trajectory: Filename for the flow matching trajectory plot
             fname_eos_ye: Filename for the EOS/Ye plot
             background: Background color for plots (e.g., "white", "black")
             transparent: Whether to save plots with transparent background
@@ -599,16 +602,26 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-            # figsize_mm=(165, 190),
+            figsize=(16.5, 19.0) if format=="poster" else None,
             fontsize_tick=fontsize_tick,
-            fontsize_title=fontsize_title,
-            figsize=figsize_detector_signals
+            fontsize_title=fontsize_title
         )
         plt.close('all')
         # Generate posterior samples once and reuse for both plots
-        posterior_samples_denorm, true_param_denorm, _ = self._generate_posterior_samples(
-            case, active_h_theta_multi, num_samples=num_samples, n_steps=20
+        # Also collect intermediate samples at key time steps for flow trajectory visualization
+        result = self._generate_posterior_samples(
+            case, active_h_theta_multi, num_samples=num_samples, n_steps=20,
+            collect_intermediate=True,
+            intermediate_time_steps=[0, 0.25, 0.5, 0.75, 1.0]
         )
+        
+        if len(result) == 4:
+            # Intermediate samples collected
+            posterior_samples_denorm, true_param_denorm, _, intermediate_samples_list = result
+        else:
+            # Backward compatibility: no intermediate samples
+            posterior_samples_denorm, true_param_denorm, _ = result
+            intermediate_samples_list = []
         
         self.plot_corner_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_corner.png") if fname_posterior is None else fname_posterior,
@@ -714,6 +727,36 @@ class FlowMatchingTrainer:
             print(f"✓ Exported signals to {export_dir}/")
             print(f"  Signal embedded in middle of 4-second zero (silence) window (samples {start_idx}-{end_idx})")
             print(f"  Signal time window: {start_idx / SAMPLING_FREQ:.3f}s - {end_idx / SAMPLING_FREQ:.3f}s")
+
+        # Plot flow matching trajectory from t=0 to t=1 (only if RA and Dec are in parameters)
+        if "ra" in self.parameters_to_estimate and "dec" in self.parameters_to_estimate and len(intermediate_samples_list) > 0:
+            from ..plotting.analysis import plot_flow_matching_trajectory
+            
+            # Extract RA and Dec from intermediate samples at each time step
+            ra_idx = self._get_extracted_index("ra")
+            dec_idx = self._get_extracted_index("dec")
+            
+            # Build lists of samples and time steps for each intermediate time
+            intermediate_radec_list = []
+            time_steps_list = []
+            for t, samples in intermediate_samples_list:
+                radec_samples = samples[:, [ra_idx, dec_idx]]  # RA, Dec (plot expects this order)
+                intermediate_radec_list.append(radec_samples)
+                time_steps_list.append(t)
+            
+            # Plot the trajectory using intermediate samples
+            plot_flow_matching_trajectory(
+                intermediate_samples_list=intermediate_radec_list,
+                time_steps=time_steps_list,
+                fname=fname_flow_trajectory if fname_flow_trajectory is not None else os.path.join(epoch_data_dir, f"{filename_suffix}_flow_trajectory.png"),
+                background=background,
+                font_family=font_family,
+                font_name=font_name,
+                figsize=(25, 5),
+                fontsize_title=fontsize_title,
+                fontsize_label=fontsize_tick
+            )
+            plt.close('all')
 
         if "Ye_c_b" in self.parameters_to_estimate:
             # get true ye and corresponding eos values for the signal (using random_signal_idx if signal_idx is None)
@@ -1282,7 +1325,7 @@ class FlowMatchingTrainer:
 
         return credible_areas
 
-    def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20, log=False):
+    def _generate_posterior_samples(self, sampled_case, h_theta_multi_dataset, num_samples=3000, n_steps=20, log=False, collect_intermediate=True, intermediate_time_steps=None):
         """Generate posterior samples for a given signal case.
         
         Args:
@@ -1290,9 +1333,16 @@ class FlowMatchingTrainer:
             h_theta_multi_dataset: Dataset containing normalization bounds
             num_samples: Number of posterior samples
             n_steps: Number of ODE solver steps
+            collect_intermediate: Whether to collect samples at intermediate time steps
+            intermediate_time_steps: List of time steps to collect samples at (e.g., [0, 0.25, 0.5, 0.75, 1.0])
             
         Returns:
-            Tuple of (samples_denorm, true_params_denorm) as numpy arrays
+            If collect_intermediate=True:
+                Tuple of (samples_denorm_dict, true_params_denorm, intermediate_samples_denorm) where
+                - samples_denorm_dict maps time -> denormalized samples
+                - intermediate_samples_denorm is list of (t, samples) tuples for plotting
+            Otherwise:
+                Tuple of (samples_denorm, true_params_denorm) as before
         """
         self.flow.eval()
         
@@ -1306,11 +1356,26 @@ class FlowMatchingTrainer:
         noisy_signal = noisy_signal.view(noisy_signal.size(0), -1).to(DEVICE).float()
         params = params.view(params.size(0), -1).to(DEVICE).float()
         
+        if intermediate_time_steps is None:
+            intermediate_time_steps = [0, 0.25, 0.5, 0.75, 1.0]
+        
         t0 = time.time()
+        
+        intermediate_samples_dict = {}  # t -> denormalized samples
         
         with torch.no_grad():
             posterior_samples = torch.randn(num_samples, self.flow_param_dim, device=DEVICE)
             repeated_signal = noisy_signal.repeat(num_samples, 1)
+            
+            # Collect t=0 samples (pure noise) if requested
+            if collect_intermediate and 0.0 in intermediate_time_steps:
+                samples_cpu = posterior_samples.detach().cpu().numpy()
+                if self.use_physics_aware_norm:
+                    samples_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(samples_cpu)
+                    samples_denorm = samples_full_denorm[:, self.param_extract_indices]
+                else:
+                    samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+                intermediate_samples_dict[0.0] = samples_denorm
             
             time_steps = torch.linspace(0, 1.0, n_steps + 1)
             for i in range(n_steps):
@@ -1320,6 +1385,19 @@ class FlowMatchingTrainer:
                     time_steps[i + 1],
                     repeated_signal,
                 )
+                
+                # Check if current time step matches any requested intermediate time
+                if collect_intermediate:
+                    current_t = time_steps[i + 1].item()
+                    for target_t in intermediate_time_steps:
+                        if abs(current_t - target_t) < 1e-4 and target_t not in intermediate_samples_dict:
+                            samples_cpu = posterior_samples.detach().cpu().numpy()
+                            if self.use_physics_aware_norm:
+                                samples_full_denorm = h_theta_multi_dataset.denormalize_parameters_physics_aware(samples_cpu)
+                                samples_denorm = samples_full_denorm[:, self.param_extract_indices]
+                            else:
+                                samples_denorm = self._denormalize_extracted_params(samples_cpu, h_theta_multi_dataset)
+                            intermediate_samples_dict[target_t] = samples_denorm
             
             samples_cpu = posterior_samples.detach().cpu().numpy()
             true_params_norm = params.detach().cpu().numpy().flatten()
@@ -1402,7 +1480,14 @@ class FlowMatchingTrainer:
             print(f"Posterior sampling and denormalisation took {(t1 - t0):.2f}s")
         compute_time = t1 - t0
         
-        return samples_denorm, true_params_denorm, compute_time
+        # Convert intermediate samples dict to sorted list
+        intermediate_samples_list = sorted(intermediate_samples_dict.items()) if collect_intermediate else []
+        
+        # Return with or without intermediate samples depending on flag
+        if collect_intermediate:
+            return samples_denorm, true_params_denorm, compute_time, intermediate_samples_list
+        else:
+            return samples_denorm, true_params_denorm, compute_time
 
     def plot_corner_sampled_signal(
         self,
@@ -1790,7 +1875,8 @@ class FlowMatchingTrainer:
             # Generate posterior samples once and reuse for both plots
             case = h_theta_multi_val[i]
             _, _, compute_time = self._generate_posterior_samples(
-                case, h_theta_multi_val, num_samples=num_samples, n_steps=n_steps, log=False
+                case, h_theta_multi_val, num_samples=num_samples, n_steps=n_steps, log=False,
+                collect_intermediate=False
             )
             computation_times.append(compute_time)
 

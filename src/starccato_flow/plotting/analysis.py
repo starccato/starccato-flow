@@ -313,7 +313,7 @@ def plot_galactic_distribution(
             facecolor=legend_facecolor,
             edgecolor="none",
             labelcolor=text_color,
-            fontsize=fontsize_tick,
+            fontsize=fontsize_title,
             frameon=False,
         )
         for text in legend.get_texts():
@@ -399,6 +399,10 @@ def plot_galactic_distribution(
         ax1.set_ylim(-kpc_limit - kpc_padding, kpc_limit + kpc_padding)
         ax1.set_xticks(tick_values)
         ax1.set_yticks(tick_values)
+        # Apply font styling to tick labels
+        for tick_label in list(ax1.get_xticklabels()) + list(ax1.get_yticklabels()):
+            tick_label.set_fontfamily(font_family)
+            tick_label.set_fontname(font_name)
     _apply_xy_axis_line_window(ax1)
     _legend_with_supernova_marker(ax1)
     plt.tight_layout()
@@ -410,13 +414,24 @@ def plot_galactic_distribution(
                 category=DeprecationWarning,
                 module=r"matplotlib\.backends\.backend_pdf",
             )
-            fig2.savefig(
-                output_xy,
-                dpi=dpi,
-                bbox_inches="tight",
-                transparent=transparent,
-                facecolor=facecolor,
-            )
+            # For SVG files, convert text to paths to preserve fonts
+            if str(output_xy).lower().endswith('.svg'):
+                with plt.rc_context({'svg.fonttype': 'path'}):
+                    fig2.savefig(
+                        output_xy,
+                        dpi=dpi,
+                        bbox_inches="tight",
+                        transparent=transparent,
+                        facecolor=facecolor,
+                    )
+            else:
+                fig2.savefig(
+                    output_xy,
+                    dpi=dpi,
+                    bbox_inches="tight",
+                    transparent=transparent,
+                    facecolor=facecolor,
+                )
 
     if show:
         plt.show()
@@ -1518,4 +1533,84 @@ def plot_sky_localisation(
         print(f"Saved sky localization plot to {fname}")
     
     plt.show()
+    return fig
+
+
+def plot_flow_matching_trajectory(
+    intermediate_samples_list,
+    time_steps,
+    fname: Optional[str] = None,
+    background: str = "white",
+    font_family: str = "sans-serif",
+    font_name: str = "Avenir",
+    figsize: tuple = (25, 5),
+    fontsize_title: int = 14,
+    fontsize_label: int = 12
+) -> plt.Figure:
+    """Plot flow matching trajectory from t=0 to t=1 showing RA vs Dec distribution.
+    
+    Args:
+        intermediate_samples_list: List of denormalized samples at each time step
+                                   Each element is array of shape (num_samples, num_params)
+        time_steps: List of time step values (e.g., [0, 0.25, 0.5, 0.75, 1.0])
+        fname: Output filename for the plot
+        background: Background color ("white" or "black")
+        font_family: Font family for text
+        font_name: Font name for text
+        figsize: Figure size in inches
+        fontsize_title: Font size for subplot titles
+        fontsize_label: Font size for axis labels
+        
+    Returns:
+        matplotlib figure object
+    """
+    set_plot_style(background)
+    text_color = "white" if background == "black" else "black"
+    
+    # Create 1x5 subplot grid (one for each time step)
+    fig, axes = plt.subplots(1, len(time_steps), figsize=figsize, facecolor=background)
+    if not isinstance(axes, np.ndarray):
+        axes = [axes]
+    
+    # Plot RA vs Dec for each time step
+    for ax, samples, t in zip(axes, intermediate_samples_list, time_steps):
+        # Extract RA (index 0) and Dec (index 1)
+        # Samples should already be denormalized from sin/cos space to angles in radians
+        ra = np.rad2deg(samples[:, 0])  # Convert to degrees
+        dec = np.rad2deg(samples[:, 1])  # Convert to degrees
+        
+        # Plot as small rasterized red dots
+        ax.scatter(
+            dec, ra,
+            s=5,
+            c="red",
+            alpha=0.6,
+            rasterized=True,
+            edgecolors="none"
+        )
+        
+        # Make plot square
+        ax.set_aspect("equal", adjustable="box")
+        
+        # Set labels
+        ax.set_xlabel("Dec (degrees)", fontsize=fontsize_label, color=text_color)
+        ax.set_ylabel("RA (degrees)", fontsize=fontsize_label, color=text_color)
+        ax.set_title(f"t = {t:.2f}", fontsize=fontsize_title, color=text_color)
+        
+        # Style axes
+        ax.tick_params(colors=text_color, labelsize=fontsize_label-2)
+        for spine in ax.spines.values():
+            spine.set_color(text_color)
+        
+        # Set reasonable limits for RA and Dec
+        ax.set_xlim(-180, 180)
+        ax.set_ylim(-90, 90)
+        ax.grid(True, alpha=0.2, color=text_color)
+    
+    plt.tight_layout()
+    
+    if fname:
+        plt.savefig(fname, dpi=300, facecolor=background, bbox_inches='tight', transparent=True)
+        print(f"✓ Saved flow matching trajectory plot to {fname}")
+    
     return fig

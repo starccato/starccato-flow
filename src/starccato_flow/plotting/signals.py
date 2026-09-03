@@ -163,7 +163,6 @@ def plot_detector_signal_channels(
     font_family: str = DEFAULT_FONT_FAMILY,
     font_name: str = DEFAULT_FONT,
     transparent: bool = False,
-    figsize_mm: Tuple[float, float] = (165, 190),
     fontsize_tick: int = 11,
     fontsize_title: int = 11,
     line_weight: float = 1,

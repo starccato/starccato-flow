@@ -1584,10 +1584,10 @@ def plot_galactic_supernovae_polar_hemispheres(
                 # Make the leading label read like a title even though it's inline.
                 ci_legend.get_texts()[0].set_fontsize(fontsize_main)
             else:
-                fig.legend(
+                legend = fig.legend(
                     handles=posterior_legend_handles,
-                    loc="center",
-                    bbox_to_anchor=(0.5, 0.75),
+                    loc="lower left",
+                    bbox_to_anchor=(0.9, 0.092),
                     ncol=1,
                     frameon=False,
                     fontsize=fontsize_main,
@@ -1599,6 +1599,9 @@ def plot_galactic_supernovae_polar_hemispheres(
                     title="Credible Levels",
                     title_fontsize=fontsize_main,
                 )
+                # Left-align the legend text
+                for text in legend.get_texts():
+                    text.set_ha("left")
 
         # Marker at posterior peak.
         n_plot = np.ma.array(h_pn_smooth.T, mask=~post_inside_circle)
@@ -1740,26 +1743,26 @@ def plot_galactic_supernovae_polar_hemispheres(
     if circle_historic_ccsn:
         # Well-known CCSN with their J2000 coordinates (RA in degrees, Dec in degrees) and discovery year
         historic_ccsn = {
-            "Puppis A": (119.5, -42.5, -500),
-            "Vela Supernova": (135.0, -46.0, -1000),
-            "Guest Star \n of 386 CE": (12.5, -62.0, 386),
-            "Crab Supernova": (83.625, 22.014, 1054),
-            "Cassiopeia A": (350.85, 58.815, 1680),
+            "Vela Remnant": (135.0, -46.0, -2000, False),
+            "Puppis A\nRemnant": (119.5, -42.5, -1000, False),
+            "Supernova\nof 386 CE": (12.5, -62.0, 386, True),
+            "Crab Supernova": (83.625, 22.014, 1054, True),
+            "Cassiopeia A\nRemnant": (350.85, 58.815, 1680, False),
         }
         
         # Display year overrides (for showing approximate true ages on timeline)
         display_years = {
-            "Puppis A": -1700,  # Display as 9000 BCE
-            "Vela Supernova": -9000,  # Display as 1700 BCE
+            "Puppis A\nRemnant": -1700,  # Display as 9000 BCE
+            "Vela Remnant": -9000,  # Display as 1700 BCE
         }
 
         # Color mapping for each historic supernova
         sn_colors = {
-            "Puppis A": "#FF6B6B",  # Red
-            "Vela Supernova": "#4ECDC4",  # Teal
-            "Guest Star \n of 386 CE": "#FFE66D",  # Yellow
+            "Puppis A\nRemnant": "#FF6B6B",  # Red
+            "Vela Remnant": "#4ECDC4",  # Teal
+            "Supernova\nof 386 CE": "#FFE66D",  # Yellow
             "Crab Supernova": "#95E1D3",  # Mint
-            "Cassiopeia A": "#F38181",  # Pink
+            "Cassiopeia A\nRemnant": "#F38181",  # Pink
         }
 
         # Add future CCSN if true location is provided (plotted as X marker, not as circle)
@@ -1771,7 +1774,7 @@ def plot_galactic_supernovae_polar_hemispheres(
         circle_radius = 0.045 if format == "poster" else 0.08
         marker_size = 300 if format == "poster" else 15
 
-        for sn_name, (ra_deg, dec_deg, age_years) in historic_ccsn.items():
+        for sn_name, (ra_deg, dec_deg, age_years, observed) in historic_ccsn.items():
             # Convert to radians
             ra_rad = np.deg2rad(ra_deg)
             dec_rad = np.deg2rad(dec_deg)
@@ -1790,23 +1793,22 @@ def plot_galactic_supernovae_polar_hemispheres(
                     s=marker_size,
                     c="none",  # Use SN color, default to gold
                     edgecolors=sn_colors.get(sn_name, "#FFD700"),
-                    linewidth=0.5,
+                    linewidth=0.75,
                     linestyle="--",
                     alpha=1.0,
                     zorder=11,
                 )
-
-                # Add legend handle by plotting invisible scatter on ax_r
-                ax_r.scatter(
-                    [],
-                    [],
-                    s=100,
-                    c=sn_colors.get(sn_name, "#FFD700"),
-                    edgecolors=sn_colors.get(sn_name, "#FFD700"),
-                    linewidth=1.5,
-                    linestyle="--",
-                    label=sn_name,
-                )
+                # If the supernova was observed, fill the circle
+                if observed:
+                    ax.scatter(
+                        [cx],
+                        [cy],
+                        s=marker_size,
+                        c=sn_colors.get(sn_name, "#FFD700"),
+                        linewidth=0.0,
+                        alpha=1.0,
+                        zorder=10,
+                    )
 
         # Plot Future CCSN as X marker if provided
         if future_ccsn_data is not None:
@@ -2025,7 +2027,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             markeredgecolor=SIGNAL_COLOUR,
             markerfacecolor="none",
             markeredgewidth=1.6,
-            label="True Supernova Location",
         )
     
     if show_detectors and detector_markers:
@@ -2062,18 +2063,19 @@ def plot_galactic_supernovae_polar_hemispheres(
     if timeline and format == "poster" and circle_historic_ccsn:
         # Extract years and names from historic_ccsn
         timeline_data = []
-        for sn_name, (ra_deg, dec_deg, year) in historic_ccsn.items():
-            timeline_data.append((year, sn_name))
+        for sn_name, (ra_deg, dec_deg, year, observed) in historic_ccsn.items():
+            timeline_data.append((year, sn_name, observed))
 
         # Add Future CCSN to timeline if provided
         if future_ccsn_data is not None:
-            timeline_data.append((2026, "Example \n Core-Collapse \n Supernova"))
+            timeline_data.append((2100, "Example\nCore-Collapse\nSupernova", False))
 
         if timeline_data:
             # Sort by year
             timeline_data.sort(key=lambda x: x[0])
             years = np.array([x[0] for x in timeline_data])
             names = [x[1] for x in timeline_data]
+            observed_flags = [x[2] for x in timeline_data]
 
             # Normalize years to [0, 1] for timeline positioning
             if len(years) > 1:
@@ -2087,12 +2089,15 @@ def plot_galactic_supernovae_polar_hemispheres(
 
             # Timeline positioning: horizontal line from left to right edge, below southern hemisphere
             timeline_y = -1.2  # Below the southern hemisphere
-            timeline_x_start = -3.0  # Left edge of southern sky
-            timeline_x_end = 1.0   # Right edge of southern sky
+            timeline_x_start = -2.90  # Left edge of southern sky
+            timeline_x_end = 0.5   # Right edge of southern sky
 
             # Find the positions of Puppis A (-4000) and SN 386 (-386) - the uncertain boundary
             sn386_year = 386
             sn386_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((sn386_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
+
+            current_year = 2026
+            current_year_x = timeline_x_start + (timeline_x_end - timeline_x_start) * ((current_year - year_min) / (year_max - year_min)) if year_max > year_min else 0
 
             ax_r.plot(
                 [timeline_x_start, sn386_x],
@@ -2105,11 +2110,21 @@ def plot_galactic_supernovae_polar_hemispheres(
             )
 
             ax_r.plot(
-                [sn386_x, timeline_x_end],
+                [sn386_x, current_year_x],
                 [timeline_y, timeline_y],
                 color="white",
                 linewidth=2,
                 linestyle="-",
+                zorder=12,
+                clip_on=False,
+            )
+
+            ax_r.plot(
+                [current_year_x, timeline_x_end],
+                [timeline_y, timeline_y],
+                color="white",
+                linewidth=2,
+                linestyle="--",
                 zorder=12,
                 clip_on=False,
             )
@@ -2119,8 +2134,8 @@ def plot_galactic_supernovae_polar_hemispheres(
             timeline_y_positions = np.full_like(timeline_x_positions, timeline_y)
 
             # Plot each circle individually with its supernova's color (or X for Future CCSN)
-            for x, y, name in zip(timeline_x_positions, timeline_y_positions, names):
-                if name == "Future CCSN":
+            for x, y, name, observed in zip(timeline_x_positions, timeline_y_positions, names, observed_flags):
+                if "Core-Collapse" in name or name == "Future CCSN":
                     # Plot as X marker for Future CCSN
                     ax_r.scatter(
                         [x],
@@ -2138,17 +2153,38 @@ def plot_galactic_supernovae_polar_hemispheres(
                         [x],
                         [y],
                         s=750,
-                        c=fig_facecolor,  # Use SN color, default to gold
+                        c="none",
                         edgecolors=sn_colors.get(name, "#FFD700"),
-                        linewidth=1.5,
+                        linewidth=1.0,
                         linestyle="--",
                         alpha=1.0,
                         zorder=13,
                         clip_on=False,
                     )
+                    ax_r.scatter(
+                        [x],
+                        [y],
+                        s=750,
+                        c=sn_colors.get(name, "#FFD700") if observed else fig_facecolor,
+                        linewidth=0.0,
+                        alpha=1.0,
+                        zorder=12,
+                        clip_on=False,
+                    )   
+                    # if observed:
+                    #     ax_r.scatter(
+                    #         [x],
+                    #         [y],
+                    #         s=750,
+                    #         c=sn_colors.get(name, "#FFD700"),
+                    #         linewidth=0.0,
+                    #         alpha=0.8,
+                    #         zorder=13,
+                    #         clip_on=False,
+                    #     )
 
             # Add labels for each supernova on the timeline
-            for i, (x, y, name, year) in enumerate(zip(timeline_x_positions, timeline_y_positions, names, years)):
+            for i, (x, y, name, year, observed) in enumerate(zip(timeline_x_positions, timeline_y_positions, names, years, observed_flags)):
                 # Extract short name (before parentheses if present)
                 short_name = name.split("(")[0].strip()
                 
@@ -2156,7 +2192,7 @@ def plot_galactic_supernovae_polar_hemispheres(
                 display_year = display_years.get(name, year)
                 
                 # Format year label with era designation
-                if int(display_year) == 2026:
+                if int(display_year) == 2100:
                     year_label = "Future"
                 elif int(display_year) < 0:
                     year_label = rf"$\sim$ {abs(int(display_year))} BCE"
@@ -2170,7 +2206,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                     year_label,
                     ha="center",
                     va="bottom",
-                    fontsize=fontsize_small,
+                    multialignment="center",
+                    fontsize=fontsize_main,
                     color=text_color,
                     zorder=14,
                     clip_on=False,
@@ -2183,7 +2220,8 @@ def plot_galactic_supernovae_polar_hemispheres(
                     short_name,
                     ha="center",
                     va="top",
-                    fontsize=fontsize_small,
+                    multialignment="center",
+                    fontsize=fontsize_main,
                     color=text_color,
                     zorder=14,
                     clip_on=False,
@@ -2199,7 +2237,6 @@ def plot_galactic_supernovae_polar_hemispheres(
                 markeredgewidth=1.5,
                 linestyle="--",
                 markersize=9,  # Matches s=60 in scatter plot
-                label="Historic Supernovae",
             )
 
     # Add supernova marker to legend if requested
@@ -2212,7 +2249,6 @@ def plot_galactic_supernovae_polar_hemispheres(
             markersize=8 if format == "poster" else 9,
             markerfacecolor=supernova_colour,
             markeredgecolor="none",
-            label="Supernova",
         )
 
     if format == "thesis":
@@ -2227,26 +2263,16 @@ def plot_galactic_supernovae_polar_hemispheres(
             columnspacing=1.0,
             borderaxespad=0.2,
         )
-    else:
-        # Move legend to left side if timeline is enabled, otherwise right side
-        if timeline:
-            ax_l.legend(
-                loc="lower left",
-                bbox_to_anchor=(0.02, -0.08),
-                frameon=False,
-                labelcolor=text_color,
-                fontsize=fontsize_main,
-                borderaxespad=0.0,
-            )
-        else:
-            ax_r.legend(
-                loc="lower right",
-                bbox_to_anchor=(0.98, -0.08),
-                frameon=False,
-                labelcolor=text_color,
-                fontsize=fontsize_main,
-                borderaxespad=0.0,
-            )
+    elif not timeline:  # Only show legend when timeline is not enabled
+        # Move legend to bottom right when timeline is disabled
+        ax_r.legend(
+            loc="lower right",
+            bbox_to_anchor=(0.98, -0.08),
+            frameon=False,
+            labelcolor=text_color,
+            fontsize=fontsize_main,
+            borderaxespad=0.0,
+        )
 
     # -------------------------------------------------
     # Earth coastlines
