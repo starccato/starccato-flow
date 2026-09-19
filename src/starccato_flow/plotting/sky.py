@@ -1380,15 +1380,11 @@ def plot_galactic_supernovae_polar_hemispheres(
                 # Small radial offset to avoid overlapping with star or constellation sticks
                 r = np.sqrt(label_x**2 + label_y**2)
                 if r > 0.01:
-                    # Radial offset: move label outward normally, but reverse direction near edges
-                    offset_factor = 1.015
-                    
-                    # If too close to hemisphere edge (r > 0.95), move inward instead
-                    if r > 0.95:
-                        offset_factor = 0.985  # Move 1.5% inward
-                    
-                    label_x_display = label_x * offset_factor
-                    label_y_display = label_y * offset_factor
+                    # Use a fixed plot-space offset, while reversing direction near the edge.
+                    offset_distance = 0.01
+                    offset_direction = 1.0 if r <= 0.95 else -1.0
+                    label_x_display = label_x + offset_direction * offset_distance * label_x / r
+                    label_y_display = label_y + offset_direction * offset_distance * label_y / r
                 else:
                     # At origin: use fixed offset
                     label_x_display = label_x + 0.03
