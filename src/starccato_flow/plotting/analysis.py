@@ -1543,11 +1543,14 @@ def plot_flow_matching_trajectory(
     background: str = "white",
     font_family: str = "sans-serif",
     font_name: str = "Avenir",
-    figsize: tuple = (25, 5),
-    fontsize_title: int = 14,
-    fontsize_label: int = 12
+    figsize: tuple = (30, 14),
+    fontsize_title: int = 22,
+    fontsize_label: int = 12,
+    true_ra: Optional[float] = None,
+    true_dec: Optional[float] = None,
+    supernovae=None
 ) -> plt.Figure:
-    """Plot flow matching trajectory from t=0 to t=1 showing RA vs Dec distribution.
+    """Plot flow matching trajectory from t=0 to t=1 showing RA vs Dec distribution as celestial maps.
     
     Args:
         intermediate_samples_list: List of denormalized samples at each time step
@@ -1557,60 +1560,301 @@ def plot_flow_matching_trajectory(
         background: Background color ("white" or "black")
         font_family: Font family for text
         font_name: Font name for text
-        figsize: Figure size in inches
+        figsize: Figure size in cm as (width, height)
         fontsize_title: Font size for subplot titles
         fontsize_label: Font size for axis labels
+        true_ra: True RA in radians (optional)
+        true_dec: True Dec in radians (optional)
+        supernovae: Supernovae object for galactic coordinate reference (optional)
         
     Returns:
         matplotlib figure object
     """
-    set_plot_style(background)
-    text_color = "white" if background == "black" else "black"
+    # Set up plot styling
+    set_plot_style(background, font_family, font_name)
+    rcParams["font.family"] = font_family
+    rcParams["font.size"] = fontsize_label
+    if font_family == "sans-serif":
+        rcParams["font.sans-serif"] = [font_name]
+    elif font_family == "serif":
+        rcParams["font.serif"] = [font_name]
     
-    # Create 1x5 subplot grid (one for each time step)
-    fig, axes = plt.subplots(1, len(time_steps), figsize=figsize, facecolor=background)
-    if not isinstance(axes, np.ndarray):
-        axes = [axes]
+    text_color = "white" if _is_dark_color(background) else "black"
     
-    # Plot RA vs Dec for each time step
-    for ax, samples, t in zip(axes, intermediate_samples_list, time_steps):
-        # Extract RA (index 0) and Dec (index 1)
-        # Samples should already be denormalized from sin/cos space to angles in radians
-        ra = np.rad2deg(samples[:, 0])  # Convert to degrees
-        dec = np.rad2deg(samples[:, 1])  # Convert to degrees
-        
-        # Plot as small rasterized red dots
-        ax.scatter(
-            dec, ra,
-            s=5,
-            c="red",
-            alpha=0.6,
-            rasterized=True,
-            edgecolors="none"
-        )
-        
-        # Make plot square
-        ax.set_aspect("equal", adjustable="box")
-        
-        # Set labels
-        ax.set_xlabel("Dec (degrees)", fontsize=fontsize_label, color=text_color)
-        ax.set_ylabel("RA (degrees)", fontsize=fontsize_label, color=text_color)
-        ax.set_title(f"t = {t:.2f}", fontsize=fontsize_title, color=text_color)
-        
-        # Style axes
-        ax.tick_params(colors=text_color, labelsize=fontsize_label-2)
-        for spine in ax.spines.values():
-            spine.set_color(text_color)
-        
-        # Set reasonable limits for RA and Dec
-        ax.set_xlim(-180, 180)
-        ax.set_ylim(-90, 90)
-        ax.grid(True, alpha=0.2, color=text_color)
+    # Convert figsize from cm to inches
+    figsize_inches = (figsize[0] / CM_TO_INCHES, figsize[1] / CM_TO_INCHES)
     
-    plt.tight_layout()
+    # Helper function to project RA/Dec to hemisphere coordinates
+    def project_to_hemisphere(ra, dec, is_north=True):
+        """Project RA (radians) and Dec (radians) to hemisphere coordinates (x, y).
+        
+        If is_north=True, projects north hemisphere (dec >= 0).
+        If is_north=False, projects south hemisphere (dec <= 0).
+        """
+        ra = np.asarray(ra)
+        dec = np.asarray(dec)
+        
+        if is_north:
+            # North hemisphere: dec from 0 to pi/2
+            r = (np.pi / 2 - dec) / (np.pi / 2)
+            x = r * np.sin(ra)
+            y = r * np.cos(ra)
+        else:
+            # South hemisphere: dec from 0 to -pi/2, mirrored x
+            r = (np.pi / 2 + dec) / (np.pi / 2)
+            x = -r * np.sin(ra)
+            y = r * np.cos(ra)
+        
+        # Apply thesis-style rotation (CW 90°): (x, y) → (y, -x) for both hemispheres
+        # This places RA=0 on the right-hand side
+        x, y = y, -x
+        
+        return x, y
+    
+    # Create 2x5 subplot grid (2 rows for north/south, 5 columns for time steps)
+    fig, axes = plt.subplots(2, len(time_steps), figsize=figsize_inches, facecolor=background)
+    
+    # Draw grid lines for RA/Dec
+    theta = np.linspace(0, 2 * np.pi, 200)
+    lat_step_deg = 30  # Dec grid spacing
+    lat_radii = [(90.0 - lat_deg) / 90.0 for lat_deg in range(lat_step_deg, 90, lat_step_deg)]
+    ra_step_deg = 60  # RA grid spacing
+    
+    # Precompute galactic contour from supernovae distribution
+    gal_contours_north = None
+    gal_contours_south = None
+    gal_xcenters = None
+    gal_ycenters = None
+    gal_levels = None
+    gal_colors = None
+    
+    try:
+        if supernovae is not None:
+            # Use supernovae's RA/Dec to build galactic distribution density
+            all_ra = np.mod(np.asarray(supernovae.ra), 2 * np.pi)
+            all_dec = np.asarray(supernovae.dec)
+            
+            # Project supernovae to hemisphere coordinates
+            def project_to_hemisphere_simple(ra, dec, is_north=True):
+                ra = np.asarray(ra)
+                dec = np.asarray(dec)
+                if is_north:
+                    r = (np.pi / 2 - dec) / (np.pi / 2)
+                    x = r * np.sin(ra)
+                    y = r * np.cos(ra)
+                else:
+                    r = (np.pi / 2 + dec) / (np.pi / 2)
+                    x = -r * np.sin(ra)
+                    y = r * np.cos(ra)
+                # Apply thesis-style rotation
+                x, y = y, -x
+                return x, y
+            
+            # Separate north and south
+            north_mask = all_dec >= 0
+            x_n, y_n = project_to_hemisphere_simple(all_ra[north_mask], all_dec[north_mask], is_north=True)
+            
+            south_mask = all_dec <= 0
+            x_s, y_s = project_to_hemisphere_simple(all_ra[south_mask], all_dec[south_mask], is_north=False)
+            
+            # Create 2D histograms
+            bins = 320
+            hist_range = [[-1.0, 1.0], [-1.0, 1.0]]
+            h_n, xedges, yedges = np.histogram2d(x_n, y_n, bins=bins, range=hist_range)
+            h_s, _, _ = np.histogram2d(x_s, y_s, bins=bins, range=hist_range)
+            
+            # Apply Gaussian smoothing
+            k_radius = 3
+            k_sigma = 1.2
+            k_axis = np.arange(-k_radius, k_radius + 1)
+            kernel = np.exp(-(k_axis**2) / (2.0 * k_sigma**2))
+            kernel /= kernel.sum()
+            
+            h_n_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=0, arr=h_n)
+            h_n_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=1, arr=h_n_smooth)
+            h_s_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=0, arr=h_s)
+            h_s_smooth = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), axis=1, arr=h_s_smooth)
+            
+            # Get grid centers
+            gal_xcenters = 0.5 * (xedges[:-1] + xedges[1:])
+            gal_ycenters = 0.5 * (yedges[:-1] + yedges[1:])
+            xxc, yyc = np.meshgrid(gal_xcenters, gal_ycenters)
+            inside_circle = (xxc**2 + yyc**2) <= 1.0
+            
+            h_n_plot = np.ma.array(h_n_smooth.T, mask=~inside_circle)
+            h_s_plot = np.ma.array(h_s_smooth.T, mask=~inside_circle)
+            
+            # Compute CDF-based thresholds for probability levels
+            blue_probs = [0.995, 0.80, 0.50, 0.25]
+            combined_vals = np.concatenate([
+                h_n_smooth.T[inside_circle],
+                h_s_smooth.T[inside_circle],
+            ])
+            combined_vals = combined_vals[combined_vals > 0]
+            
+            if combined_vals.size == 0:
+                thr_shared = [1.0 for _ in blue_probs]
+            else:
+                vals = np.sort(combined_vals)[::-1]
+                cdf = np.cumsum(vals) / np.sum(vals)
+                thr_shared = []
+                for p in blue_probs:
+                    idx = np.searchsorted(cdf, p, side="left")
+                    idx = min(idx, vals.size - 1)
+                    thr_shared.append(float(vals[idx]))
+            
+            levels_shared = np.sort(np.array(thr_shared, dtype=float))
+            top_shared = max(levels_shared[-1] * 1.001, np.max(combined_vals) * 1.001) if combined_vals.size > 0 else 1.0
+            fill_levels_shared = np.concatenate([levels_shared, [top_shared]])
+            
+            # Create smooth color transitions
+            from matplotlib.colors import to_rgba
+            blue_bases = ["#486ac8", "#488af4", "#60a5fa", "#bfdbfe"]
+            fill_colors = [
+                to_rgba(blue_bases[0], alpha=0.20),
+                to_rgba(blue_bases[1], alpha=0.40),
+                to_rgba(blue_bases[2], alpha=0.62),
+                to_rgba(blue_bases[3], alpha=0.88),
+            ]
+            
+            # Interpolate colors in RGBA space
+            n_per_segment = 4
+            smooth_colors = []
+            for i in range(len(fill_colors) - 1):
+                color_a = np.array(fill_colors[i])
+                color_b = np.array(fill_colors[i + 1])
+                for j in range(n_per_segment):
+                    alpha = j / n_per_segment
+                    interp_color = color_a * (1 - alpha) + color_b * alpha
+                    smooth_colors.append(tuple(interp_color))
+            smooth_colors.append(fill_colors[-1])
+            
+            gal_levels = np.linspace(fill_levels_shared[0], fill_levels_shared[-1], len(smooth_colors) + 1)
+            gal_colors = smooth_colors
+            
+            gal_contours_north = h_n_plot
+            gal_contours_south = h_s_plot
+            
+    except Exception as e:
+        print(f"Warning: Could not load galactic contours from supernovae: {e}")
+    
+    # Plot RA vs Dec for each time step and hemisphere
+    for col_idx, (samples, t) in enumerate(zip(intermediate_samples_list, time_steps)):
+        # Extract RA (index 0) and Dec (index 1) in radians
+        ra_rad = samples[:, 0]
+        dec_rad = samples[:, 1]
+        
+        # Plot north hemisphere (row 0)
+        ax_north = axes[0, col_idx]
+        
+        # Draw galactic contours as background (if available)
+        if gal_contours_north is not None and gal_levels is not None and gal_xcenters is not None:
+            ax_north.contourf(gal_xcenters, gal_ycenters, gal_contours_north, levels=gal_levels, 
+                             colors=gal_colors, antialiased=True, zorder=0)
+        
+        # Filter for north hemisphere
+        north_mask = dec_rad >= 0
+        ra_north = ra_rad[north_mask]
+        dec_north = dec_rad[north_mask]
+        
+        if len(ra_north) > 0:
+            x_north, y_north = project_to_hemisphere(ra_north, dec_north, is_north=True)
+            ax_north.scatter(x_north, y_north, s=5, c="red", alpha=0.6, rasterized=True, edgecolors="none", zorder=10)
+        
+        # Plot true location on north if it's there
+        if true_ra is not None and true_dec is not None and true_dec >= 0:
+            true_x, true_y = project_to_hemisphere(np.array([true_ra]), np.array([true_dec]), is_north=True)
+            ax_north.scatter(true_x, true_y, s=120, marker="x", c=SIGNAL_COLOUR, linewidths=2.5, zorder=20)
+        
+        # Draw north hemisphere grid
+        # Apply thesis-style rotation (CW 90°): (x, y) → (y, -x)
+        theta_x_north, theta_y_north = np.sin(theta), -np.cos(theta)
+        ax_north.plot(theta_x_north, theta_y_north, color=text_color, lw=1.5, zorder=50)
+        
+        for r_lat in lat_radii:
+            lat_x, lat_y = r_lat * np.sin(theta), -r_lat * np.cos(theta)
+            ax_north.plot(lat_x, lat_y, color=text_color, alpha=0.3, lw=0.5, zorder=10)
+        
+        for ra_deg in range(0, 360, ra_step_deg):
+            ra_rad_line = np.deg2rad(ra_deg)
+            # Original meridian endpoints
+            x1, y1 = np.sin(ra_rad_line), np.cos(ra_rad_line)
+            x2, y2 = -np.sin(ra_rad_line), -np.cos(ra_rad_line)
+            # Apply thesis-style rotation (CW 90°): (x, y) → (y, -x)
+            x1_rot, y1_rot = y1, -x1
+            x2_rot, y2_rot = y2, -x2
+            ax_north.plot([x1_rot, x2_rot], [y1_rot, y2_rot], color=text_color, alpha=0.3, lw=0.5, zorder=10)
+        
+        ax_north.set_aspect("equal", adjustable="box")
+        ax_north.set_xlim(-1.05, 1.05)
+        ax_north.set_ylim(-1.05, 1.05)
+        ax_north.set_xticks([])
+        ax_north.set_yticks([])
+        for spine in ax_north.spines.values():
+            spine.set_visible(False)
+        ax_north.set_title(f"$t_f = {t:.2f}$", fontsize=fontsize_title, color=text_color, 
+                          fontfamily=font_family, fontname=font_name, pad=10)
+        
+        # Plot south hemisphere (row 1)
+        ax_south = axes[1, col_idx]
+        
+        # Draw galactic contours as background (if available)
+        if gal_contours_south is not None and gal_levels is not None and gal_xcenters is not None:
+            ax_south.contourf(gal_xcenters, gal_ycenters, gal_contours_south, levels=gal_levels, 
+                             colors=gal_colors, antialiased=True, zorder=0)
+        
+        # Filter for south hemisphere
+        south_mask = dec_rad <= 0
+        ra_south = ra_rad[south_mask]
+        dec_south = dec_rad[south_mask]
+        
+        if len(ra_south) > 0:
+            x_south, y_south = project_to_hemisphere(ra_south, dec_south, is_north=False)
+            ax_south.scatter(x_south, y_south, s=5, c="red", alpha=0.6, rasterized=True, edgecolors="none", zorder=10)
+        
+        # Plot true location on south if it's there
+        if true_ra is not None and true_dec is not None and true_dec <= 0:
+            true_x, true_y = project_to_hemisphere(np.array([true_ra]), np.array([true_dec]), is_north=False)
+            ax_south.scatter(true_x, true_y, s=120, marker="x", c=SIGNAL_COLOUR, linewidths=2.5, zorder=20)
+        
+        # Draw south hemisphere grid
+        # Apply thesis-style rotation (CW 90°): (x, y) → (y, -x)
+        theta_x_south, theta_y_south = np.sin(theta), -np.cos(theta)
+        ax_south.plot(theta_x_south, theta_y_south, color=text_color, lw=1.5, zorder=50)
+        
+        for r_lat in lat_radii:
+            lat_x, lat_y = r_lat * np.sin(theta), -r_lat * np.cos(theta)
+            ax_south.plot(lat_x, lat_y, color=text_color, alpha=0.3, lw=0.5, zorder=10)
+        
+        for ra_deg in range(0, 360, ra_step_deg):
+            ra_rad_line = np.deg2rad(ra_deg)
+            # South hemisphere is mirrored in x (before rotation)
+            x1, y1 = -np.sin(ra_rad_line), np.cos(ra_rad_line)
+            x2, y2 = np.sin(ra_rad_line), -np.cos(ra_rad_line)
+            # Apply thesis-style rotation (CW 90°): (x, y) → (y, -x)
+            x1_rot, y1_rot = y1, -x1
+            x2_rot, y2_rot = y2, -x2
+            ax_south.plot([x1_rot, x2_rot], [y1_rot, y2_rot], color=text_color, alpha=0.3, lw=0.5, zorder=10)
+        
+        ax_south.set_aspect("equal", adjustable="box")
+        ax_south.set_xlim(-1.05, 1.05)
+        ax_south.set_ylim(-1.05, 1.05)
+        ax_south.set_xticks([])
+        ax_south.set_yticks([])
+        for spine in ax_south.spines.values():
+            spine.set_visible(False)
+    
+    # Add left-side sky labels with 90 degree rotation
+    fig.text(0.015, 0.75, "Northern Sky", fontsize=fontsize_title, color=text_color,
+             rotation=90, ha="center", va="center", fontfamily=font_family, fontname=font_name)
+    fig.text(0.015, 0.25, "Southern Sky", fontsize=fontsize_title, color=text_color,
+             rotation=90, ha="center", va="center", fontfamily=font_family, fontname=font_name)
+    
+    # Adjust spacing to bring hemispheres nearly touching each other
+    plt.subplots_adjust(left=0.06, right=0.95, top=0.95, bottom=0.03, hspace=0.01, wspace=0.05)
     
     if fname:
-        plt.savefig(fname, dpi=300, facecolor=background, bbox_inches='tight', transparent=True)
+        plt.savefig(fname, dpi=300, bbox_inches='tight', transparent=True)
         print(f"✓ Saved flow matching trajectory plot to {fname}")
     
     return fig

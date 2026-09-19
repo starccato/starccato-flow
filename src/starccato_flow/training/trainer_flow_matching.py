@@ -495,7 +495,7 @@ class FlowMatchingTrainer:
         fontsize_title: int = 16, 
         figsize_detector_signals: tuple[float, float] = (14.5,8),
         figsize_corner: tuple[float, float] = (14.5,14.5),
-        figsize_flow_trajectory: tuple[float, float] = (25, 5),
+        figsize_flow_trajectory: tuple[float, float] = (31, 16.5),
         format: str = "thesis"
     ) -> None:
         """Run parameter estimation on a single signal and return the predicted parameters.
@@ -645,6 +645,32 @@ class FlowMatchingTrainer:
             elif param == 'dec':
                 print(f"    Dec in degrees: {np.rad2deg(true_param_denorm[i]):.2f}°")
         
+        # Set format-specific arguments for sky localization plot
+        if format == "poster":
+            sky_plot_kwargs = {
+                "background": "black",
+                "constellations": True,
+                "show_stars": True,
+                "coastline": False,
+                "timeline": True,
+                "circle_historic_ccsn": True,
+                "n_background_supernovae": 0,
+                "show_constellation_names": True,
+                "calculate_credible_area": False,
+            }
+        else:  # format == "thesis"
+            sky_plot_kwargs = {
+                "background": background,
+                "constellations": True,
+                "show_stars": False,
+                "coastline": False,
+                "timeline": False,
+                "circle_historic_ccsn": False,
+                "n_background_supernovae": 0,
+                "show_constellation_names": False,
+                "calculate_credible_area": True
+            }
+        
         self.plot_sky_localisation_sampled_signal(
             fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky.png") if fname_posterior_sky is None else fname_posterior_sky,
             posterior_samples_denorm=posterior_samples_denorm,
@@ -653,12 +679,10 @@ class FlowMatchingTrainer:
             font_name=font_name,
             transparent=True,
             format=format,
-            background=background,
-            constellations=True,
-            show_stars=False,
-            coastline=False,
+            **sky_plot_kwargs
         )
         plt.close('all')
+        
         # self.plot_sky_localisation_sampled_signal(
         #     fname=os.path.join(epoch_data_dir, f"{filename_suffix}_sky_training_data.png") if fname_posterior_sky is None else fname_posterior_sky.replace(".svg", "_training_data.svg"),
         #     font_family=font_family,
@@ -744,6 +768,10 @@ class FlowMatchingTrainer:
                 intermediate_radec_list.append(radec_samples)
                 time_steps_list.append(t)
             
+            # Get true location in radians
+            true_ra_rad = true_param_denorm[ra_idx]
+            true_dec_rad = true_param_denorm[dec_idx]
+            
             # Plot the trajectory using intermediate samples
             plot_flow_matching_trajectory(
                 intermediate_samples_list=intermediate_radec_list,
@@ -752,9 +780,12 @@ class FlowMatchingTrainer:
                 background=background,
                 font_family=font_family,
                 font_name=font_name,
-                figsize=(25, 5),
+                figsize=figsize_flow_trajectory,
                 fontsize_title=fontsize_title,
-                fontsize_label=fontsize_tick
+                fontsize_label=fontsize_tick,
+                true_ra=true_ra_rad,
+                true_dec=true_dec_rad,
+                supernovae=self.supernovae
             )
             plt.close('all')
 
@@ -1612,8 +1643,12 @@ class FlowMatchingTrainer:
         format: str = "thesis",
         background: str = "white",
         constellations: bool = False,
+        n_background_supernovae: int = 2_000_000,
         show_stars: bool = True,
+        show_constellation_names: bool = False,
         coastline: bool = True,
+        timeline: bool = False,
+        circle_historic_ccsn: bool = False,
         calculate_credible_area: bool = True
     ):
         """Generate a sky-localisation (RA/Dec) posterior plot or background skymap.
@@ -1707,22 +1742,6 @@ class FlowMatchingTrainer:
             true_ra = None
             true_dec = None
 
-        # if 1 == 1:
-        #     plot_galactic_supernovae_polar_hemispheres(
-        #         ccsn=self.supernovae,
-        #         posterior_ra_samples=ra_samples,
-        #         posterior_dec_samples=dec_samples,
-        #         true_ra_override=true_ra,
-        #         true_dec_override=true_dec,
-        #         show_constellation_borders=True,
-        #         fname="supernovae_galactic_polar_hemispheres.pdf",
-        #         font_family="sans-serif",
-        #         font_name="Futura",
-        #         n_background_supernovae=100000,
-        #         background="black",
-        #         coastline=True,
-        #         transparent=transparent
-        #     )
         plot_galactic_supernovae_polar_hemispheres(
             ccsn=self.supernovae,
             fname=fname,
@@ -1735,11 +1754,14 @@ class FlowMatchingTrainer:
             font_family=font_family,
             font_name=font_name,
             transparent=transparent,
-            n_background_supernovae=2_000_000 if not has_posterior else 20_000,
+            n_background_supernovae=n_background_supernovae,
             format=format,
             constellations=constellations,
+            show_constellation_names=show_constellation_names,
             show_stars=show_stars,
             coastline=coastline,
+            timeline=timeline,
+            circle_historic_ccsn=circle_historic_ccsn,
             credible_area_labels=credible_area_labels
         )
         

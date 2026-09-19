@@ -1413,9 +1413,9 @@ def plot_galactic_supernovae_polar_hemispheres(
     detector_markers = []
     if show_detectors:
         detector_markers = [
-            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), "red" if format == "poster" else text_color),
-            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), "red" if format == "poster" else text_color),
-            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), "red" if format == "poster" else text_color),
+            ("LIGO Hanford", np.deg2rad(240.6), np.deg2rad(46.5), SIGNAL_COLOUR if format == "poster" else text_color),
+            ("LIGO Livingston", np.deg2rad(269.2), np.deg2rad(30.5), SIGNAL_COLOUR if format == "poster" else text_color),
+            ("Virgo", np.deg2rad(10.5), np.deg2rad(43.6), SIGNAL_COLOUR if format == "poster" else text_color),
         ]
 
     if galaxy:
@@ -1743,10 +1743,10 @@ def plot_galactic_supernovae_polar_hemispheres(
     if circle_historic_ccsn:
         # Well-known CCSN with their J2000 coordinates (RA in degrees, Dec in degrees) and discovery year
         historic_ccsn = {
-            "Vela Remnant": (135.0, -46.0, -2000, False),
-            "Puppis A\nRemnant": (119.5, -42.5, -1000, False),
-            "Supernova\nof 386 CE": (12.5, -62.0, 386, True),
-            "Crab Supernova": (83.625, 22.014, 1054, True),
+            "Vela Remnant": (128.8360833, -45.1764444, -2000, False),
+            "Puppis A\nRemnant": (126.0291667, -42.9966667, -1000, False),
+            "Supernova\nof 386 CE": (272.875, -19.4166667, 386, True),
+            "Crab Supernova": (83.6330833, 22.0145, 1054, True),
             "Cassiopeia A\nRemnant": (350.85, 58.815, 1680, False),
         }
         
@@ -2068,7 +2068,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
         # Add Future CCSN to timeline if provided
         if future_ccsn_data is not None:
-            timeline_data.append((2100, "Example\nCore-Collapse\nSupernova", False))
+            timeline_data.append((2100, "Example\nSupernova", False))
 
         if timeline_data:
             # Sort by year
@@ -2135,7 +2135,7 @@ def plot_galactic_supernovae_polar_hemispheres(
 
             # Plot each circle individually with its supernova's color (or X for Future CCSN)
             for x, y, name, observed in zip(timeline_x_positions, timeline_y_positions, names, observed_flags):
-                if "Core-Collapse" in name or name == "Future CCSN":
+                if "Example" in name or name == "Example":
                     # Plot as X marker for Future CCSN
                     ax_r.scatter(
                         [x],
@@ -2309,12 +2309,13 @@ def plot_galactic_supernovae_polar_hemispheres(
         background = "#0f0d33"
     
     save_kwargs = {
-        "dpi": 100 if file_format == 'svg' else 300,
+        "dpi": 300,  # Use 300 DPI for all formats (SVG and PNG) for consistent high precision
         "facecolor": background if not transparent else None,
         "edgecolor": "none",
         "pad_inches": 0,
         "transparent": transparent,
         "bbox_inches": None,
+        "metadata": {"Creator": "matplotlib"}  # Add metadata for better SVG compatibility
     }
     if file_format:
         save_kwargs["format"] = file_format

@@ -146,7 +146,7 @@ def plot_signal_grid(
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', transparent=(background=="black"))
+            plt.savefig(fname, format='svg', transparent=(background=="black"), dpi=300, metadata={'Creator': 'matplotlib'})
         else:
             plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=(background=="black"))
     
@@ -294,7 +294,7 @@ def plot_detector_signal_channels(
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', transparent=transparent)
+            plt.savefig(fname, format='svg', transparent=transparent, dpi=300, metadata={'Creator': 'matplotlib'})
         else:
             plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=transparent)
 
@@ -377,7 +377,7 @@ def plot_reconstruction(
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', transparent=False)
+            plt.savefig(fname, format='svg', transparent=False, dpi=300, metadata={'Creator': 'matplotlib'})
         else:
             plt.savefig(fname, dpi=300, bbox_inches="tight", transparent=False)
 
@@ -428,7 +428,7 @@ def plot_single_signal(
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            plt.savefig(fname, format='svg', transparent=(background=="black"))
+            plt.savefig(fname, format='svg', transparent=(background=="black"), dpi=300, metadata={'Creator': 'matplotlib'})
         else:
             plt.savefig(fname, dpi=300, bbox_inches="tight", 
                        transparent=(background=="black"))
@@ -541,7 +541,7 @@ def plot_signal_distribution(
     if fname:
         if fname.endswith('.svg'):
             plt.rcParams['svg.fonttype'] = 'none'
-            fig.savefig(fname, format='svg', transparent=(background == "black"))
+            fig.savefig(fname, format='svg', transparent=(background == "black"), dpi=300, metadata={'Creator': 'matplotlib'})
         else:
             fig.savefig(fname, dpi=300, bbox_inches="tight", pad_inches=0.00, transparent=(background == "black"))
 
